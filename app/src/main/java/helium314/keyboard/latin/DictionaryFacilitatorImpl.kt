@@ -71,7 +71,7 @@ class DictionaryFacilitatorImpl : DictionaryFacilitator {
     // the ngram context to store next word suggestions for such cases.
     // todo: this is awful, find a better solution / workaround
     //  or remove completely? not sure if it's actually an improvement
-    //  should be fixed in the library, but that's not feasible with current user-provides-library approach
+    //  retained from the AOSP dictionary integration until the workaround can be measured directly
     //  added in 12cbd43bda7d0f0cd73925e9cf836de751c32ed0 / https://github.com/HeliBorg/HeliBoard/issues/135
     private var tryChangingWords = false
     private var changeFrom = ""

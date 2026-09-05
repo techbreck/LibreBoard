@@ -868,7 +868,7 @@ public class LatinIME extends InputMethodService implements
 
         mDictionaryFacilitator.onStartInput();
         // Switch to the null consumer to handle cases leading to early exit below, for which we
-        // also wouldn't be consuming gesture data.
+        // also would not consume gesture events.
         mGestureConsumer = GestureConsumer.NULL_GESTURE_CONSUMER;
         mRichImm.refreshSubtypeCaches();
         final KeyboardSwitcher switcher = mKeyboardSwitcher;

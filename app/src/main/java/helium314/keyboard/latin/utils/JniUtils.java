@@ -10,8 +10,6 @@ public final class JniUtils {
     private static final String TAG = JniUtils.class.getSimpleName();
     public static final String JNI_LIB_NAME = "jni_latinime";
 
-    /** Gesture input is provided by LibreBoard's data-only decoders, never a loaded plugin. */
-    public static boolean sHaveGestureLib = true;
     static {
         try {
             System.loadLibrary(JNI_LIB_NAME);

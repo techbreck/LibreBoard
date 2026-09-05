@@ -740,6 +740,8 @@ def source_checks(errors: list[str]) -> None:
         if path.suffix not in {".kt", ".java"}:
             continue
         text = path.read_text(encoding="utf-8")
+        if "sHaveGestureLib" in text:
+            fail(errors, "obsolete external gesture-library availability switch was reintroduced")
         if dynamic_load.search(text):
             fail(errors, f"dynamic native path loading is forbidden: {path.relative_to(ROOT)}")
         for match in load_library.finditer(text):
@@ -750,6 +752,7 @@ def source_checks(errors: list[str]) -> None:
         source_root / "helium314/keyboard/settings/preferences/LoadGestureLibPreference.kt",
         source_root / "helium314/keyboard/settings/screens/gesturedata",
         source_root / "helium314/keyboard/latin/utils/GestureDataGathering.kt",
+        ROOT / "tools/release.py",
     )
     for path in removed_paths:
         if path.is_file() or (path.is_dir() and any(child.is_file() for child in path.rglob("*"))):

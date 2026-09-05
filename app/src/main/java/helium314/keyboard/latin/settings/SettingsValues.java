@@ -34,7 +34,6 @@ import helium314.keyboard.latin.engine.FieldPolicy;
 import helium314.keyboard.latin.permissions.PermissionsUtil;
 import helium314.keyboard.latin.utils.FoldableUtils;
 import helium314.keyboard.latin.utils.InputTypeUtils;
-import helium314.keyboard.latin.utils.JniUtils;
 import helium314.keyboard.latin.utils.ScriptUtils;
 import helium314.keyboard.latin.utils.SubtypeSettings;
 import helium314.keyboard.latin.utils.SubtypeUtilsKt;
@@ -274,7 +273,7 @@ public class SettingsValues {
         mKeypressVibrationDuration = prefs.getInt(Settings.PREF_VIBRATION_DURATION_SETTINGS, Defaults.PREF_VIBRATION_DURATION_SETTINGS);
         mKeypressSoundVolume = prefs.getFloat(Settings.PREF_KEYPRESS_SOUND_VOLUME, Defaults.PREF_KEYPRESS_SOUND_VOLUME);
         mEnableEmojiAltPhysicalKey = prefs.getBoolean(Settings.PREF_ENABLE_EMOJI_ALT_PHYSICAL_KEY, Defaults.PREF_ENABLE_EMOJI_ALT_PHYSICAL_KEY);
-        mGestureInputEnabled = JniUtils.sHaveGestureLib && prefs.getBoolean(Settings.PREF_GESTURE_INPUT, Defaults.PREF_GESTURE_INPUT);
+        mGestureInputEnabled = prefs.getBoolean(Settings.PREF_GESTURE_INPUT, Defaults.PREF_GESTURE_INPUT);
         mGestureTrailEnabled = prefs.getBoolean(Settings.PREF_GESTURE_PREVIEW_TRAIL, Defaults.PREF_GESTURE_PREVIEW_TRAIL);
         mGestureFloatingPreviewTextEnabled = !mInputAttributes.mDisableGestureFloatingPreviewText
                 && prefs.getBoolean(Settings.PREF_GESTURE_FLOATING_PREVIEW_TEXT, Defaults.PREF_GESTURE_FLOATING_PREVIEW_TEXT);

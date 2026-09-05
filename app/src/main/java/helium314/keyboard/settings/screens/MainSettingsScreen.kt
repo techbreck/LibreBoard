@@ -17,7 +17,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import helium314.keyboard.latin.R
-import helium314.keyboard.latin.utils.JniUtils
 import helium314.keyboard.latin.utils.SubtypeLocaleUtils.displayName
 import helium314.keyboard.latin.utils.SubtypeSettings
 import helium314.keyboard.latin.utils.NextScreenIcon
@@ -72,12 +71,11 @@ fun MainSettingsScreen(
                     onClick = onClickToolbar,
                     icon = R.drawable.ic_settings_toolbar
                 ) { NextScreenIcon() }
-                if (JniUtils.sHaveGestureLib)
-                    Preference(
-                        name = stringResource(R.string.settings_screen_gesture),
-                        onClick = onClickGestureTyping,
-                        icon = R.drawable.ic_settings_gesture
-                    ) { NextScreenIcon() }
+                Preference(
+                    name = stringResource(R.string.settings_screen_gesture),
+                    onClick = onClickGestureTyping,
+                    icon = R.drawable.ic_settings_gesture
+                ) { NextScreenIcon() }
                 Preference(
                     name = stringResource(R.string.settings_screen_correction),
                     onClick = onClickTextCorrection,

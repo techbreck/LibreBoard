@@ -12,7 +12,6 @@ import helium314.keyboard.keyboard.KeyboardSwitcher
 import helium314.keyboard.latin.R
 import helium314.keyboard.latin.settings.Defaults
 import helium314.keyboard.latin.settings.Settings
-import helium314.keyboard.latin.utils.JniUtils
 import helium314.keyboard.latin.utils.Log
 import helium314.keyboard.latin.utils.getActivity
 import helium314.keyboard.latin.utils.prefs
@@ -115,7 +114,6 @@ fun createGestureTypingSettings(context: Context) = listOf(
 @Preview
 @Composable
 private fun Preview() {
-    JniUtils.sHaveGestureLib = true
     initPreview(LocalContext.current)
     Theme(previewDark) {
         Surface {
