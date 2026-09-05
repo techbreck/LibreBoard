@@ -12,6 +12,15 @@ The accepted v1 design reserves engine ABI 1 for:
 - ONNX Runtime Mobile 1.26.0 source at commit
   `8c546c37b43caaca1fa25db430dab94b901cf277`, reduced to committed model operators.
 
+`swipe-latin-v1.onnx` has a fixed, test-covered tensor ABI. It receives `path_coordinates`
+`float32[1,64,2]`, `key_centers` `float32[1,64,2]`, and `key_mask` `float32[1,64]`. Coordinates are
+arc-length-resampled and normalized against the live letter-key bounds; unused or disabled key slots
+are masked. It returns finite `logits` `float32[1,32,65]`, where class zero is CTC blank and classes
+1–64 correspond to the supplied key-slot order. Output validation, CTC blank/repeat handling,
+lexicon-constrained prefix beam search, language filtering, and candidate construction live in pure
+Kotlin rather than inside the model or runtime bridge. Apostrophes and hyphens may be absent from a
+gesture emission while the lexicon retains the canonical surface form.
+
 No stock Maven AAR, ORT Extensions, NNAPI/Play delegate, GGUF runtime, downloaded executable, or
 arbitrary model signature is permitted. `ModelManifestValidator` is fail-closed on schema, engine ABI,
 app version, size, hashes, operator allowlist, locale list, license, and provenance.

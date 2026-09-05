@@ -1,0 +1,390 @@
+// SPDX-License-Identifier: GPL-3.0-only
+package helium314.keyboard.latin.engine.ctc
+
+import helium314.keyboard.latin.engine.Candidate
+import helium314.keyboard.latin.engine.CandidateSource
+import helium314.keyboard.latin.engine.Deadline
+import helium314.keyboard.latin.engine.EngineAvailability
+import helium314.keyboard.latin.engine.InputStyle
+import helium314.keyboard.latin.engine.KeyGeometry
+import helium314.keyboard.latin.engine.ScoreComponents
+import helium314.keyboard.latin.engine.SwipeDecodeResult
+import helium314.keyboard.latin.engine.SwipeDecoder
+import helium314.keyboard.latin.engine.TouchPoint
+import helium314.keyboard.latin.engine.TypingRequest
+import helium314.keyboard.latin.engine.WordLock
+import helium314.keyboard.latin.engine.geometric.LexiconWord
+import helium314.keyboard.latin.engine.geometric.SwipeLexicon
+import helium314.keyboard.latin.engine.geometric.TraceKeySequence
+import helium314.keyboard.latin.engine.normalizeCandidate
+import java.util.Locale
+import kotlin.math.exp
+import kotlin.math.hypot
+import kotlin.math.ln
+import kotlin.math.ln1p
+import kotlin.math.max
+
+/** Fixed tensor ABI consumed by swipe-latin-v1.onnx. Arrays are row-major. */
+data class CtcSwipeFeatures(
+    /** Shape `[1, 64, 2]`; x/y are normalized against the live letter-key bounds. */
+    val pathCoordinates: FloatArray,
+    /** Shape `[1, 64, 2]`; unused slots are zero. */
+    val keyCenters: FloatArray,
+    /** Shape `[1, 64]`; one for an enabled key slot and zero for padding/disabled slots. */
+    val keyMask: FloatArray,
+    /** The surface emitted by output classes 1 through 64. Class zero is CTC blank. */
+    val keyLabels: List<String?>,
+)
+
+data class CtcInferenceResult(
+    val availability: EngineAvailability,
+    /** Shape `[1, 32, 65]`; values are unnormalized logits. */
+    val logits: FloatArray? = null,
+    val frameCount: Int = 0,
+    val classCount: Int = 0,
+)
+
+/** The source-built ONNX bridge implements this interface; decoding policy stays in Kotlin. */
+fun interface CtcInferenceSession {
+    fun infer(features: CtcSwipeFeatures, deadline: Deadline): CtcInferenceResult
+}
+
+/**
+ * Layout-conditioned CTC swipe decoder with lexicon-constrained prefix beam search.
+ *
+ * Runtime absence and malformed output are explicit states. They never throw through the shared
+ * candidate pipeline, so the geometric decoder running beside this path can always publish.
+ */
+class CtcSwipeDecoder(
+    private val inferenceSession: CtcInferenceSession,
+    private val lexicon: SwipeLexicon,
+    private val beamWidth: Int = DEFAULT_BEAM_WIDTH,
+    private val maximumLexiconWords: Int = MAX_LEXICON_WORDS,
+) : SwipeDecoder {
+    init {
+        require(beamWidth in 1..MAX_BEAM_WIDTH)
+        require(maximumLexiconWords > 0)
+    }
+
+    override fun decode(request: TypingRequest, deadline: Deadline): SwipeDecodeResult {
+        require(request.inputStyle == InputStyle.SWIPE)
+        if (request.path.size < 2) return SwipeDecodeResult(EngineAvailability.AVAILABLE)
+        if (deadline.expired) return SwipeDecodeResult(EngineAvailability.TIMEOUT)
+
+        val features = runCatching { featureTensor(request.path, request.geometry) }
+            .getOrElse { return SwipeDecodeResult(EngineAvailability.INCOMPATIBLE) }
+        val inference = runCatching { inferenceSession.infer(features, deadline) }
+            .getOrElse { return SwipeDecodeResult(EngineAvailability.UNAVAILABLE) }
+        if (inference.availability != EngineAvailability.AVAILABLE) {
+            return SwipeDecodeResult(inference.availability)
+        }
+        if (!validOutput(inference)) return SwipeDecodeResult(EngineAvailability.INCOMPATIBLE)
+        if (deadline.expired) return SwipeDecodeResult(EngineAvailability.TIMEOUT)
+
+        val languageTags = when (val lock = request.wordLock) {
+            is WordLock.Manual -> listOf(lock.languageTag).filter(request.enabledLanguages::contains)
+            else -> request.enabledLanguages
+        }
+        if (languageTags.isEmpty()) return SwipeDecodeResult(EngineAvailability.INCOMPATIBLE)
+        val trace = TraceKeySequence.decode(request.path, request.geometry)
+        val approximateLength = trace.codePointCount(0, trace.length)
+        val trie = buildTrie(
+            lexicon.words(languageTags, approximateLength),
+            features.keyLabels,
+            languageTags.toSet(),
+            deadline,
+        ) ?: return SwipeDecodeResult(EngineAvailability.TIMEOUT)
+        if (trie.wordCount == 0) return SwipeDecodeResult(EngineAvailability.AVAILABLE)
+
+        return decodeLogits(inference, trie, deadline)
+    }
+
+    private fun decodeLogits(
+        inference: CtcInferenceResult,
+        trie: LexiconTrie,
+        deadline: Deadline,
+    ): SwipeDecodeResult {
+        val logits = requireNotNull(inference.logits)
+        var beam = mapOf(IntArrayKey.EMPTY to BeamProbability(blank = 0.0))
+        var terminalCandidates = emptyList<Candidate>()
+
+        for (frame in 0 until inference.frameCount) {
+            if (deadline.expired) {
+                return SwipeDecodeResult(EngineAvailability.TIMEOUT, terminalCandidates)
+            }
+            val frameOffset = frame * inference.classCount
+            val logProbabilities = logSoftmax(logits, frameOffset, inference.classCount)
+            val next = HashMap<IntArrayKey, BeamProbability>(beamWidth * 4)
+            beam.forEach { (prefix, probability) ->
+                val node = trie.node(prefix.values) ?: return@forEach
+                val total = logAdd(probability.blank, probability.nonBlank)
+                next.getOrPut(prefix) { BeamProbability() }.blank = logAdd(
+                    next.getValue(prefix).blank,
+                    total + logProbabilities[BLANK_CLASS],
+                )
+                for (outputClass in 1 until inference.classCount) {
+                    val repeatedClass = prefix.values.lastOrNull() == outputClass
+                    if (repeatedClass) {
+                        // A repeated emission without an intervening blank keeps the same prefix.
+                        val same = next.getOrPut(prefix) { BeamProbability() }
+                        same.nonBlank = logAdd(
+                            same.nonBlank,
+                            probability.nonBlank + logProbabilities[outputClass],
+                        )
+                    }
+                    val child = node.children[outputClass] ?: continue
+                    val extensionProbability = if (repeatedClass) probability.blank else total
+                    if (extensionProbability == LOG_ZERO) continue
+                    val extended = prefix.append(outputClass)
+                    val target = next.getOrPut(extended) { BeamProbability() }
+                    target.nonBlank = logAdd(
+                        target.nonBlank,
+                        extensionProbability + logProbabilities[outputClass],
+                    )
+                    // Retain the reference so trie reachability is checked while expanding, not
+                    // only after the potentially expensive beam has grown.
+                    check(child.depth == extended.values.size)
+                }
+            }
+            beam = next.entries
+                .sortedByDescending { logAdd(it.value.blank, it.value.nonBlank) }
+                .take(beamWidth)
+                .associateTo(LinkedHashMap()) { it.key to it.value }
+            terminalCandidates = candidatesForBeam(beam, trie, inference.frameCount)
+        }
+        return SwipeDecodeResult(EngineAvailability.AVAILABLE, terminalCandidates)
+    }
+
+    private fun candidatesForBeam(
+        beam: Map<IntArrayKey, BeamProbability>,
+        trie: LexiconTrie,
+        frameCount: Int,
+    ): List<Candidate> = beam.flatMap { (prefix, probability) ->
+        val ctcScore = logAdd(probability.blank, probability.nonBlank) / frameCount
+        trie.node(prefix.values)?.words.orEmpty().map { entry ->
+            Candidate(
+                surface = entry.word,
+                languageTag = entry.languageTag,
+                sources = buildSet {
+                    add(CandidateSource.CTC_SWIPE)
+                    if (entry.personal) add(CandidateSource.PERSONAL)
+                },
+                components = ScoreComponents(
+                    spatial = ctcScore,
+                    staticFrequency = ln1p(entry.frequency.coerceAtLeast(0).toDouble()),
+                    personal = if (entry.personal) 1.0 else null,
+                ),
+                exactPersonalMatch = entry.personal,
+                totalScore = ctcScore,
+            )
+        }
+    }.sortedWith(
+        compareByDescending<Candidate> { it.components.spatial }
+            .thenByDescending { it.components.staticFrequency }
+            .thenBy { it.surface },
+    ).distinctBy { normalizeCandidate(it.surface) to it.languageTag }.take(MAX_RESULTS)
+
+    private fun buildTrie(
+        words: Sequence<LexiconWord>,
+        keyLabels: List<String?>,
+        allowedLanguageTags: Set<String>,
+        deadline: Deadline,
+    ): LexiconTrie? {
+        val classByLabel = keyLabels.mapIndexedNotNull { index, label ->
+            label?.let { normalizeCandidate(it) to index + 1 }
+        }.toMap()
+        val trie = LexiconTrie()
+        val iterator = words.iterator()
+        var inspected = 0
+        while (iterator.hasNext() && inspected < maximumLexiconWords) {
+            if (deadline.expired) return null
+            inspected++
+            val word = iterator.next()
+            if (word.languageTag !in allowedLanguageTags) continue
+            val emissions = emissionClasses(word.word, classByLabel) ?: continue
+            trie.add(emissions, word)
+        }
+        return trie
+    }
+
+    private fun emissionClasses(word: String, classByLabel: Map<String, Int>): IntArray? {
+        val classes = ArrayList<Int>(word.length)
+        val normalized = normalizeCandidate(word).lowercase(Locale.ROOT)
+        if (normalized.codePointCount(0, normalized.length) > MAX_EMISSION_LENGTH) return null
+        var index = 0
+        while (index < normalized.length) {
+            val codePoint = normalized.codePointAt(index)
+            val label = String(Character.toChars(codePoint))
+            val outputClass = classByLabel[label]
+            when {
+                outputClass != null -> classes += outputClass
+                codePoint == '\''.code || codePoint == 0x2019 || codePoint == '-'.code -> Unit
+                else -> return null
+            }
+            index += Character.charCount(codePoint)
+        }
+        return classes.takeIf { it.isNotEmpty() }?.toIntArray()
+    }
+
+    private fun validOutput(result: CtcInferenceResult): Boolean {
+        val logits = result.logits ?: return false
+        return result.frameCount == OUTPUT_FRAMES &&
+            result.classCount == OUTPUT_CLASSES &&
+            logits.size == OUTPUT_FRAMES * OUTPUT_CLASSES &&
+            logits.all(Float::isFinite)
+    }
+
+    internal companion object {
+        const val PATH_POINTS = 64
+        const val KEY_SLOTS = 64
+        const val OUTPUT_FRAMES = 32
+        const val OUTPUT_CLASSES = KEY_SLOTS + 1
+        const val BLANK_CLASS = 0
+        const val MAX_RESULTS = 32
+        const val DEFAULT_BEAM_WIDTH = 64
+        const val MAX_BEAM_WIDTH = 256
+        const val MAX_LEXICON_WORDS = 100_000
+        const val MAX_EMISSION_LENGTH = 64
+        const val LOG_ZERO = Double.NEGATIVE_INFINITY
+
+        internal fun featureTensor(path: List<TouchPoint>, geometry: KeyGeometry): CtcSwipeFeatures {
+            require(path.size >= 2)
+            require(path.all { it.x.isFinite() && it.y.isFinite() }) { "swipe path is not finite" }
+            val keys = geometry.keys.take(KEY_SLOTS)
+            require(keys.all {
+                it.centerX.isFinite() && it.centerY.isFinite() &&
+                    it.width.isFinite() && it.height.isFinite() && it.width > 0f && it.height > 0f
+            }) { "live keyboard geometry is invalid" }
+            require(keys.any { it.enabled }) { "live keyboard has no enabled key slots" }
+            val enabledKeys = keys.filter { it.enabled }
+            val letterKeys = enabledKeys.filter { key ->
+                val codePoint = key.label.codePointAtOrNull(0)
+                codePoint != null && key.label.codePointCount(0, key.label.length) == 1 &&
+                    Character.isLetter(codePoint)
+            }.ifEmpty { enabledKeys }
+            val left = letterKeys.minOf { it.centerX - it.width / 2f }
+            val right = letterKeys.maxOf { it.centerX + it.width / 2f }
+            val top = letterKeys.minOf { it.centerY - it.height / 2f }
+            val bottom = letterKeys.maxOf { it.centerY + it.height / 2f }
+            val width = (right - left).coerceAtLeast(1f)
+            val height = (bottom - top).coerceAtLeast(1f)
+            fun normalizedX(value: Float) = ((value - left) / width).coerceIn(-0.5f, 1.5f)
+            fun normalizedY(value: Float) = ((value - top) / height).coerceIn(-0.5f, 1.5f)
+
+            val sampled = resample(path, PATH_POINTS)
+            val pathCoordinates = FloatArray(PATH_POINTS * 2)
+            sampled.forEachIndexed { index, point ->
+                pathCoordinates[index * 2] = normalizedX(point.x)
+                pathCoordinates[index * 2 + 1] = normalizedY(point.y)
+            }
+            val keyCenters = FloatArray(KEY_SLOTS * 2)
+            val keyMask = FloatArray(KEY_SLOTS)
+            val keyLabels = MutableList<String?>(KEY_SLOTS) { null }
+            keys.forEachIndexed { index, key ->
+                keyCenters[index * 2] = normalizedX(key.centerX)
+                keyCenters[index * 2 + 1] = normalizedY(key.centerY)
+                val validLabel = key.label.lowercase(Locale.ROOT).takeIf {
+                    it.codePointCount(0, it.length) == 1 && it.isNotBlank()
+                }
+                if (key.enabled && validLabel != null) {
+                    keyMask[index] = 1f
+                    keyLabels[index] = validLabel
+                }
+            }
+            require(keyLabels.filterNotNull().map(::normalizeCandidate).distinct().size == keyLabels.count { it != null }) {
+                "CTC output key labels must be unique"
+            }
+            return CtcSwipeFeatures(pathCoordinates, keyCenters, keyMask, keyLabels)
+        }
+
+        private fun resample(points: List<TouchPoint>, count: Int): List<TouchPoint> {
+            val cumulative = FloatArray(points.size)
+            for (index in 1 until points.size) {
+                cumulative[index] = cumulative[index - 1] + hypot(
+                    (points[index].x - points[index - 1].x).toDouble(),
+                    (points[index].y - points[index - 1].y).toDouble(),
+                ).toFloat()
+            }
+            val total = cumulative.last()
+            if (total <= 0f) return List(count) { points.first() }
+            return List(count) { sampleIndex ->
+                val target = total * sampleIndex / (count - 1)
+                var upper = cumulative.binarySearch(target)
+                if (upper < 0) upper = -upper - 1
+                upper = upper.coerceIn(1, points.lastIndex)
+                val lower = upper - 1
+                val span = cumulative[upper] - cumulative[lower]
+                val fraction = if (span == 0f) 0f else (target - cumulative[lower]) / span
+                TouchPoint(
+                    x = points[lower].x + (points[upper].x - points[lower].x) * fraction,
+                    y = points[lower].y + (points[upper].y - points[lower].y) * fraction,
+                    timeMillis = points[lower].timeMillis +
+                        ((points[upper].timeMillis - points[lower].timeMillis) * fraction).toLong(),
+                )
+            }
+        }
+
+        private fun logSoftmax(values: FloatArray, offset: Int, count: Int): DoubleArray {
+            val maximum = (offset until offset + count).maxOf { values[it].toDouble() }
+            var sum = 0.0
+            for (index in offset until offset + count) sum += exp(values[index] - maximum)
+            val denominator = maximum + ln(sum)
+            return DoubleArray(count) { values[offset + it] - denominator }
+        }
+
+        private fun logAdd(first: Double, second: Double): Double {
+            if (first == LOG_ZERO) return second
+            if (second == LOG_ZERO) return first
+            val maximum = max(first, second)
+            return maximum + ln(exp(first - maximum) + exp(second - maximum))
+        }
+
+        private fun String.codePointAtOrNull(index: Int): Int? =
+            takeIf { index in indices }?.codePointAt(index)
+    }
+
+    private class LexiconTrie {
+        val root = TrieNode(0)
+        var wordCount = 0
+            private set
+
+        fun add(classes: IntArray, word: LexiconWord) {
+            var node = root
+            classes.forEach { outputClass ->
+                node = node.children.getOrPut(outputClass) { TrieNode(node.depth + 1) }
+            }
+            if (node.words.none { it.word == word.word && it.languageTag == word.languageTag }) {
+                node.words += word
+                wordCount++
+            }
+        }
+
+        fun node(classes: IntArray): TrieNode? {
+            var node = root
+            classes.forEach { outputClass -> node = node.children[outputClass] ?: return null }
+            return node
+        }
+    }
+
+    private class TrieNode(val depth: Int) {
+        val children = HashMap<Int, TrieNode>()
+        val words = ArrayList<LexiconWord>()
+    }
+
+    private class BeamProbability(
+        var blank: Double = LOG_ZERO,
+        var nonBlank: Double = LOG_ZERO,
+    )
+
+    private class IntArrayKey private constructor(val values: IntArray) {
+        private val hash = values.contentHashCode()
+
+        fun append(value: Int) = IntArrayKey(values + value)
+        override fun equals(other: Any?) = other is IntArrayKey && values.contentEquals(other.values)
+        override fun hashCode() = hash
+
+        companion object {
+            val EMPTY = IntArrayKey(IntArray(0))
+        }
+    }
+}

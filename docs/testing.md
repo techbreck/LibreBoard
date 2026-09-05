@@ -6,8 +6,10 @@ correct, fast, and compatible with GrapheneOS.
 ## Host tests
 
 `./gradlew testRunTestsUnitTest` exercises engine contracts, field policy, candidate fusion,
-language lock, geometric swipe, model-manifest and ONNX validation, persistence, deadlines, and
-stale-result handling. Backup tests additionally exercise ZIP path traversal, canonical aliases,
+language lock, geometric swipe, CTC feature tensors and lexicon beam decoding, model-manifest and
+ONNX validation, persistence, deadlines, and stale-result handling. CTC tests cover double letters,
+return-trip words, canonical contractions, language locks, malformed tensors, runtime failure, and
+deadline fallback. Backup tests additionally exercise ZIP path traversal, canonical aliases,
 entry and expanded-size limits, strict typed-settings parsing, preservation of excluded private
 state, and process-death recovery on both sides of the restore commit point. Learned-data tests
 require idempotent removal without deleting clipboard, model, or explicit dictionary fixtures.
