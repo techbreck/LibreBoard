@@ -429,6 +429,45 @@ def source_checks(errors: list[str]) -> None:
             fail(errors, "FUTO model weights or outputs are forbidden; only the MIT gesture dataset is approved")
         if swipe_spec.raw.get("parameterCount") > 1_000_000:
             fail(errors, "swipe model exceeds the audited one-million-parameter architecture ceiling")
+        corpus_manifest_path = swipe_model_contract.DEFAULT_CORPUS_MANIFEST
+        try:
+            corpus_manifest = json.loads(corpus_manifest_path.read_bytes())
+        except (OSError, json.JSONDecodeError) as exc:
+            fail(errors, f"committed swipe corpus manifest is invalid: {exc}")
+        else:
+            if corpus_manifest.get("sourceManifestSha256") != source_manifest.sha256:
+                fail(errors, "swipe corpus manifest is not bound to the current source manifest")
+            if corpus_manifest.get("policySha256") != swipe_policy.sha256:
+                fail(errors, "swipe corpus manifest is not bound to the current data policy")
+            if corpus_manifest.get("toolSha256") != model_sources.file_sha256(ROOT / "tools/prepare_swipe_dataset.py"):
+                fail(errors, "swipe corpus manifest is not bound to the current preparation tool")
+            if corpus_manifest.get("source") != {
+                "id": swipe_source.identifier,
+                "license": swipe_source.license,
+                "revision": swipe_source.revision,
+            }:
+                fail(errors, "swipe corpus manifest has unexpected source provenance")
+            counts = corpus_manifest.get("counts")
+            outputs = corpus_manifest.get("outputs")
+            strata = corpus_manifest.get("strata")
+            if not isinstance(counts, dict) or counts.get("acceptedRows", 0) < 100_000:
+                fail(errors, "swipe corpus manifest has insufficient accepted training data")
+            elif counts.get("rejectedFraction", 1.0) > swipe_policy.maximum_rejected_fraction:
+                fail(errors, "swipe corpus manifest exceeds the rejection ceiling")
+            if not isinstance(outputs, dict) or set(outputs) != {
+                "train.jsonl", "validation.jsonl", "test.jsonl", "layout.json",
+            }:
+                fail(errors, "swipe corpus manifest has incomplete outputs")
+            else:
+                held_out = outputs.get("test.jsonl")
+                if not isinstance(held_out, dict) or held_out.get("records", 0) < 5_000:
+                    fail(errors, "swipe corpus manifest has fewer than 5000 held-out gestures")
+            test_strata = strata.get("test") if isinstance(strata, dict) else None
+            if not isinstance(test_strata, dict) or any(
+                test_strata.get(name, 0) < 500
+                for name in ("short", "return_trip", "double_letter", "sloppy", "very_sloppy")
+            ):
+                fail(errors, "swipe corpus test split is not adequately stratified")
 
     training_lock = ROOT / "models/training/requirements-linux-x86_64.lock"
     try:

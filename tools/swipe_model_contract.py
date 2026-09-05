@@ -14,6 +14,7 @@ import model_sources
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 DEFAULT_SPEC = ROOT / "models" / "swipe" / "model-spec.json"
+DEFAULT_CORPUS_MANIFEST = ROOT / "models" / "swipe" / "corpus-manifest.json"
 MAXIMUM_SPEC_BYTES = 256 * 1024
 SPEC_KEYS = {
     "schemaVersion",
@@ -203,12 +204,13 @@ def load_spec(path: pathlib.Path = DEFAULT_SPEC) -> SwipeModelSpec:
     return SwipeModelSpec(path=path, sha256=hashlib.sha256(payload).hexdigest(), raw=raw)
 
 
-def load_prepared_manifest(data_root: pathlib.Path) -> dict[str, Any]:
+def load_prepared_manifest(data_root: pathlib.Path, *, require_pinned: bool = False) -> dict[str, Any]:
     manifest_path = data_root.resolve() / "split-manifest.json"
     try:
         if not manifest_path.is_file() or manifest_path.is_symlink() or manifest_path.stat().st_size > 1024 * 1024:
             raise SwipeModelContractError("prepared swipe split manifest is missing or too large")
-        manifest = json.loads(manifest_path.read_bytes())
+        manifest_payload = manifest_path.read_bytes()
+        manifest = json.loads(manifest_payload)
     except SwipeModelContractError:
         raise
     except (OSError, json.JSONDecodeError) as failure:
@@ -239,4 +241,14 @@ def load_prepared_manifest(data_root: pathlib.Path) -> dict[str, Any]:
             sessions = details.get("sessions")
             if any(isinstance(value, bool) or not isinstance(value, int) or value <= 0 for value in (records, sessions)):
                 raise SwipeModelContractError(f"prepared output counts are invalid: {filename}")
+    if require_pinned:
+        try:
+            pinned_payload = DEFAULT_CORPUS_MANIFEST.read_bytes()
+            json.loads(pinned_payload)
+        except (OSError, json.JSONDecodeError) as failure:
+            raise SwipeModelContractError(f"cannot read pinned swipe corpus manifest: {failure}") from failure
+        if manifest_payload != pinned_payload:
+            raise SwipeModelContractError(
+                "prepared swipe corpus does not match models/swipe/corpus-manifest.json"
+            )
     return manifest

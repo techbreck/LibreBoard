@@ -47,6 +47,9 @@ build/model-venv/bin/python tools/train_swipe_model.py --device cpu
 build/model-venv/bin/python tools/export_swipe_model.py
 ```
 
+The reviewed preparation accepted 1,020,528 gestures and rejected 2.23%; its exact source,
+policy, tool, output, session, and stratum hashes are committed in `corpus-manifest.json`.
+
 The source fetch is intentionally explicit and is approximately 5.7 GB. A development smoke run
 uses `--max-train-steps` and `--max-validation-steps`; its filenames contain `development` and it
 cannot produce release-eligible evidence.

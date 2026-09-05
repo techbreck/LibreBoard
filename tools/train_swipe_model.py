@@ -246,7 +246,8 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
     torch, safetensors, save_file, nn, DataLoader, IterableDataset = _dependencies()
     spec = swipe_model_contract.load_spec(args.spec)
     data_root = args.data_root.resolve()
-    data_manifest = swipe_model_contract.load_prepared_manifest(data_root)
+    release_attempt = args.max_train_steps is None and args.max_validation_steps is None
+    data_manifest = swipe_model_contract.load_prepared_manifest(data_root, require_pinned=release_attempt)
     layout = _load_layout(data_root, spec)
     commit, dirty = _git_state()
     if dirty and not args.allow_dirty:

@@ -32,6 +32,24 @@ class SwipeModelContractTest(unittest.TestCase):
             with self.assertRaisesRegex(contract.SwipeModelContractError, "does not match architecture"):
                 contract.load_spec(path)
 
+    def test_release_corpus_must_match_the_committed_manifest(self):
+        with tempfile.TemporaryDirectory() as temp:
+            data_root = pathlib.Path(temp)
+            manifest = json.loads(contract.DEFAULT_CORPUS_MANIFEST.read_text())
+            for filename, details in manifest["outputs"].items():
+                path = data_root / filename
+                path.write_bytes(b"fixture\n")
+                details["bytes"] = path.stat().st_size
+                details["sha256"] = __import__("hashlib").sha256(path.read_bytes()).hexdigest()
+                if filename.endswith(".jsonl"):
+                    details["records"] = 1
+                    details["sessions"] = 1
+            (data_root / "split-manifest.json").write_text(json.dumps(manifest))
+
+            contract.load_prepared_manifest(data_root)
+            with self.assertRaisesRegex(contract.SwipeModelContractError, "does not match"):
+                contract.load_prepared_manifest(data_root, require_pinned=True)
+
             raw = json.loads(contract.DEFAULT_SPEC.read_text())
             raw["export"]["inputs"][0]["shape"] = [1, 63, 2]
             path.write_text(json.dumps(raw))

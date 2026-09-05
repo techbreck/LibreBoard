@@ -15,6 +15,8 @@ The swipe build path is now implemented without committing or pretending to acce
   hashes session IDs, strips timestamps/context, resamples paths to the Android 64-point convention,
   uses top-left-to-bottom-right key-slot order, deduplicates records, and emits a hash-bound split
   manifest with all rejection and difficulty-stratum counts.
+- `models/swipe/corpus-manifest.json` pins the exact reviewed million-gesture corpus. A
+  release-eligible training run refuses any prepared split whose manifest is not byte-identical.
 - `models/swipe/model-spec.json` fixes the 821,121-parameter layout-conditioned architecture and
   tensor ABI. `tools/train_swipe_model.py` uses deterministic CTC training and writes hash-bound
   safetensors. `tools/export_swipe_model.py` stores learned initializers as FP16, retains float32

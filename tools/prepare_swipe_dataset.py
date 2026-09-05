@@ -208,6 +208,17 @@ def _normalize_label(value: str) -> str:
     return unicodedata.normalize("NFKC", value).casefold().replace("\u2019", "'")
 
 
+def _trim_edge_punctuation(value: str) -> str:
+    """Remove sentence punctuation that is not represented by the swipe path."""
+    start = 0
+    end = len(value)
+    while start < end and unicodedata.category(value[start]).startswith("P"):
+        start += 1
+    while end > start and unicodedata.category(value[end - 1]).startswith("P"):
+        end -= 1
+    return value[start:end]
+
+
 def load_layout(path: pathlib.Path, policy: Policy) -> Layout:
     raw, _payload = _read_json(path, 1024 * 1024, "swipe layout")
     identifier = raw.get("name")
@@ -374,7 +385,7 @@ def normalize_record(
     word = raw.get("word")
     if not isinstance(word, str):
         return None, "invalid_target"
-    target = _normalize_label(word.strip())
+    target = _trim_edge_punctuation(_normalize_label(word.strip()))
     if not target or len(target) > MAXIMUM_TARGET_CODEPOINTS:
         return None, "invalid_target"
     target_labels = []
@@ -624,8 +635,14 @@ def prepare(
             raise SwipeDataError("swipe source produced no accepted examples")
         rejected_fraction = counters["rejectedRows"] / counters["inputRows"]
         if rejected_fraction > policy.maximum_rejected_fraction:
+            rejection_summary = ", ".join(
+                f"{key.removeprefix('rejection:')}={value}"
+                for key, value in sorted(counters.items())
+                if key.startswith("rejection:")
+            )
             raise SwipeDataError(
-                f"swipe rejection fraction {rejected_fraction:.6f} exceeds {policy.maximum_rejected_fraction:.6f}"
+                f"swipe rejection fraction {rejected_fraction:.6f} exceeds "
+                f"{policy.maximum_rejected_fraction:.6f}: {rejection_summary}"
             )
         if any(accepted_by_split[split] == 0 for split in SPLITS):
             raise SwipeDataError("every session split must contain accepted examples")

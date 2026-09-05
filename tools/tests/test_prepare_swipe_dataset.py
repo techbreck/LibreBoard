@@ -200,6 +200,29 @@ class PrepareSwipeDatasetTest(unittest.TestCase):
             self.assertEqual(1, report["counts"]["rejectedRows"])
             self.assertEqual(1, report["counts"]["rejections"]["invalid_point_count"])
 
+    def test_sentence_punctuation_is_trimmed_but_embedded_punctuation_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            temporary_policy_path = root / "lookup-policy.json"
+            temporary_policy_path.write_text(json.dumps(policy_document()))
+            policy = swipe_data.load_policy(temporary_policy_path)
+            sessions = {split: find_session(split, policy) for split in swipe_data.SPLITS}
+            fixture = PreparedFixture(root, {
+                "train.jsonl": [row(1, sessions["train"], "\u201cQt,\u201d")],
+                "dev.jsonl": [row(2, sessions["validation"], "qt.")],
+                "test.jsonl": [
+                    row(3, sessions["test"], "qt!"),
+                    row(4, sessions["test"], "q.t"),
+                ],
+            })
+
+            report = fixture.prepare()
+
+            self.assertEqual(3, report["counts"]["acceptedRows"])
+            self.assertEqual(1, report["counts"]["rejections"]["unsupported_target"])
+            train_record = json.loads((fixture.output_root / "train.jsonl").read_text())
+            self.assertEqual("qt", train_record["target"])
+
     def test_wrong_source_hash_cannot_publish_outputs(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)

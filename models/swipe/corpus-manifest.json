@@ -1,0 +1,97 @@
+{
+  "counts": {
+    "acceptedRows": 1020528,
+    "duplicateRows": 3,
+    "inputRows": 1043789,
+    "rejectedFraction": 0.022282281189014253,
+    "rejectedRows": 23258,
+    "rejections": {
+      "invalid_point_count": 16280,
+      "invalid_target": 47,
+      "out_of_bounds_point": 98,
+      "stationary_path": 6786,
+      "target_exceeds_ctc_frames": 1,
+      "unsupported_target": 46
+    }
+  },
+  "outputs": {
+    "layout.json": {
+      "bytes": 1320,
+      "sha256": "b4f704d8671fb52959abc57ee016ba16fe3e6e13797ee96f0f7672584cc94706"
+    },
+    "test.jsonl": {
+      "bytes": 95738639,
+      "records": 53836,
+      "sessions": 582,
+      "sha256": "176fe51975742e8378668ae8e7531a2d4f3d94fe5f27434a72577a840bec19fa"
+    },
+    "train.jsonl": {
+      "bytes": 1635804758,
+      "records": 919337,
+      "sessions": 10924,
+      "sha256": "fdef76ca8c722531d9f5866f0148eba1a9e0f464d2cbaa7d4e7dffeaec2a3d3e"
+    },
+    "validation.jsonl": {
+      "bytes": 84488774,
+      "records": 47355,
+      "sessions": 603,
+      "sha256": "bc11f707c849b9c9daec5a5ffef06108771887f1c9d019b4c123f4bf8714be6e"
+    }
+  },
+  "policySha256": "7bfcacdafe0181a213968dcdb59122734ac93979059801c80f0938157553e532",
+  "schemaVersion": 1,
+  "sloppiness": {
+    "metric": "mean-target-polyline-distance-plus-half-endpoint-error-v1",
+    "sloppyThreshold": 0.09378175,
+    "thresholdPopulation": "train",
+    "verySloppyThreshold": 0.13259636
+  },
+  "source": {
+    "id": "futo-swipe-dataset-v1",
+    "license": "MIT",
+    "revision": "d71bf5fd7f45b3e7c2ed2d76a21b0dbd3b4ba566"
+  },
+  "sourceManifestSha256": "22d5de1bd8937bb6052c6bc04afd178d0d9037b3c8642cf78492b01cf2b4d213",
+  "splitPolicy": {
+    "basisPoints": {
+      "test": 500,
+      "train": 9000,
+      "validation": 500
+    },
+    "method": "sha256-session-basis-points-v1",
+    "saltSha256": "1884a8a30fa365132ff15b7431bf75dfcd8ed279d71ede58ba8dca06c594931a"
+  },
+  "strata": {
+    "test": {
+      "clean": 43328,
+      "double_letter": 5301,
+      "long": 6216,
+      "medium": 28272,
+      "return_trip": 15909,
+      "short": 19348,
+      "sloppy": 10508,
+      "very_sloppy": 2287
+    },
+    "train": {
+      "clean": 735469,
+      "double_letter": 90486,
+      "long": 106804,
+      "medium": 478537,
+      "return_trip": 271504,
+      "short": 333996,
+      "sloppy": 183868,
+      "very_sloppy": 45967
+    },
+    "validation": {
+      "clean": 38089,
+      "double_letter": 4541,
+      "long": 5603,
+      "medium": 24423,
+      "return_trip": 13925,
+      "short": 17329,
+      "sloppy": 9266,
+      "very_sloppy": 2325
+    }
+  },
+  "toolSha256": "d5d03b091a47eee9e843d41f42ed207bf519b02c6afdb5173c7e011078f7d0c6"
+}
