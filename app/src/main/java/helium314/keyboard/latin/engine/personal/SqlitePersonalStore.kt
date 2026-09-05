@@ -36,16 +36,24 @@ class SqlitePersonalStore private constructor(context: Context) :
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if (oldVersion == 1 && newVersion == 2) {
+            db.execSQL("ALTER TABLE unigram ADD COLUMN surface TEXT")
+            db.execSQL("UPDATE unigram SET surface = word WHERE surface IS NULL")
+            return
+        }
         throw IllegalStateException("No personal-store migration exists from $oldVersion to $newVersion")
     }
 
     override fun observeCommit(observation: CommitObservation) {
-        val committedTokens = observation.tokens.map(::normalizeCandidate).filter { it.isNotBlank() }.takeLast(MAX_PHRASE_TOKENS)
+        val committedSurfaces = observation.tokens.filter { it.isNotBlank() }.takeLast(MAX_PHRASE_TOKENS)
+        val committedTokens = committedSurfaces.map(::normalizeCandidate)
         val precedingTokens = observation.precedingTokens.map(::normalizeCandidate).filter { it.isNotBlank() }
             .takeLast(MAX_PHRASE_TOKENS - 1)
         if (committedTokens.isEmpty() || observation.languageTag.isBlank()) return
         writableDatabase.transaction {
-            committedTokens.forEach { word -> incrementUnigram(this, word, observation.languageTag, observation.timestampMillis) }
+            committedTokens.zip(committedSurfaces).forEach { (word, surface) ->
+                incrementUnigram(this, word, surface, observation.languageTag, observation.timestampMillis)
+            }
             val sequence = precedingTokens + committedTokens
             val firstCommitted = precedingTokens.size
             for (end in firstCommitted + 1..sequence.size) {
@@ -126,9 +134,34 @@ class SqlitePersonalStore private constructor(context: Context) :
             val prefix = escapeLike(raw) + "%"
             request.enabledLanguages.forEach { language ->
                 if (deadline.expired) return@forEach
+                // Fetch the exact personal word independently so a large prefix family can never
+                // push the user's explicit entry outside the bounded completion query.
                 db.query(
                     "unigram",
-                    arrayOf("word", "count", "last_used"),
+                    arrayOf("word", "surface", "count", "last_used"),
+                    "language = ? AND word = ?",
+                    arrayOf(language, raw),
+                    null,
+                    null,
+                    null,
+                    "1",
+                ).use { cursor ->
+                    if (cursor.moveToFirst() && !deadline.expired) {
+                        val word = cursor.getString(0)
+                        val decayed = decayedCount(cursor.getLong(2), cursor.getLong(3), now)
+                        result[word to language] = Candidate(
+                            surface = cursor.getString(1) ?: word,
+                            languageTag = language,
+                            sources = setOf(CandidateSource.PERSONAL),
+                            components = ScoreComponents(personal = ln1p(decayed)),
+                            exactPersonalMatch = true,
+                        )
+                    }
+                }
+                if (deadline.expired) return@forEach
+                db.query(
+                    "unigram",
+                    arrayOf("word", "surface", "count", "last_used"),
                     "language = ? AND word LIKE ? ESCAPE '\\'",
                     arrayOf(language, prefix),
                     null,
@@ -138,9 +171,10 @@ class SqlitePersonalStore private constructor(context: Context) :
                 ).use { cursor ->
                     while (cursor.moveToNext() && !deadline.expired) {
                         val word = cursor.getString(0)
-                        val decayed = decayedCount(cursor.getLong(1), cursor.getLong(2), now)
+                        val surface = cursor.getString(1) ?: word
+                        val decayed = decayedCount(cursor.getLong(2), cursor.getLong(3), now)
                         val candidate = Candidate(
-                            surface = word,
+                            surface = surface,
                             languageTag = language,
                             sources = setOf(CandidateSource.PERSONAL),
                             components = ScoreComponents(personal = ln1p(decayed)),
@@ -175,7 +209,7 @@ class SqlitePersonalStore private constructor(context: Context) :
                             val decayed = decayedCount(cursor.getLong(1), cursor.getLong(2), now)
                             val existing = result[continuation to language]
                             result[continuation to language] = (existing ?: Candidate(
-                                surface = continuation,
+                                surface = preferredSurface(db, continuation, language),
                                 languageTag = language,
                                 sources = emptySet(),
                             )).copy(
@@ -189,7 +223,10 @@ class SqlitePersonalStore private constructor(context: Context) :
                 }
             }
         }
-        return result.values.sortedByDescending { it.components.personal }.take(32)
+        return result.values.sortedWith(
+            compareByDescending<Candidate> { it.exactPersonalMatch }
+                .thenByDescending { it.components.personal },
+        ).take(32)
     }
 
     fun isCorrectionSuppressed(raw: String, replacement: String, languageTag: String): Boolean {
@@ -212,9 +249,11 @@ class SqlitePersonalStore private constructor(context: Context) :
     override fun export(): ByteArray {
         val db = readableDatabase
         val unigrams = mutableListOf<ExportUnigram>()
-        db.query("unigram", arrayOf("word", "language", "count", "last_used"), null, null, null, null,
+        db.query("unigram", arrayOf("word", "language", "count", "last_used", "surface"), null, null, null, null,
             "language, word").use { c ->
-            while (c.moveToNext()) unigrams += ExportUnigram(c.getString(0), c.getString(1), c.getLong(2), c.getLong(3))
+            while (c.moveToNext()) unigrams += ExportUnigram(
+                c.getString(0), c.getString(1), c.getLong(2), c.getLong(3), c.getString(4) ?: c.getString(0),
+            )
         }
         val ngrams = mutableListOf<ExportNgram>()
         db.query("ngram", arrayOf("prefix", "continuation", "language", "order_n", "count", "last_used"),
@@ -230,14 +269,16 @@ class SqlitePersonalStore private constructor(context: Context) :
                 c.getString(0), c.getString(1), c.getString(2), c.getString(3), c.getLong(4), c.getInt(5),
             )
         }
-        return JSON.encodeToString(PersonalExport(1, unigrams, ngrams, rejections)).encodeToByteArray()
+        return JSON.encodeToString(
+            PersonalExport(EXPORT_SCHEMA_VERSION, unigrams, ngrams, rejections),
+        ).encodeToByteArray()
     }
 
     /** Replace learned data from a validated, versioned manual-backup payload in one transaction. */
     fun restore(payload: ByteArray) {
         require(payload.size <= MAX_EXPORT_BYTES) { "Personal backup is too large" }
         val restored = JSON.decodeFromString<PersonalExport>(payload.decodeToString())
-        require(restored.schemaVersion == 1) { "Unsupported personal backup schema" }
+        require(restored.schemaVersion in 1..EXPORT_SCHEMA_VERSION) { "Unsupported personal backup schema" }
         require(restored.unigrams.size + restored.ngrams.size + restored.rejections.size <= MAX_EXPORT_ROWS) {
             "Personal backup has too many rows"
         }
@@ -249,7 +290,7 @@ class SqlitePersonalStore private constructor(context: Context) :
             restored.unigrams.forEach { row ->
                 insertOrThrow("unigram", null, ContentValues().apply {
                     put("word", row.word); put("language", row.language)
-                    put("count", row.count); put("last_used", row.lastUsed)
+                    put("count", row.count); put("last_used", row.lastUsed); put("surface", row.surface)
                 })
             }
             restored.ngrams.forEach { row ->
@@ -277,17 +318,30 @@ class SqlitePersonalStore private constructor(context: Context) :
         }
     }
 
-    private fun incrementUnigram(db: SQLiteDatabase, word: String, language: String, timestamp: Long) {
+    private fun incrementUnigram(
+        db: SQLiteDatabase,
+        word: String,
+        surface: String,
+        language: String,
+        timestamp: Long,
+    ) {
         val updated = db.execUpdate(
-            "UPDATE unigram SET count = count + 1, last_used = ? WHERE word = ? AND language = ?",
-            arrayOf(timestamp, word, language),
+            "UPDATE unigram SET count = count + 1, last_used = ?, surface = ? WHERE word = ? AND language = ?",
+            arrayOf(timestamp, surface, word, language),
         )
         if (updated == 0) {
             db.insertOrThrow("unigram", null, ContentValues().apply {
-                put("word", word); put("language", language); put("count", 1); put("last_used", timestamp)
+                put("word", word); put("surface", surface); put("language", language)
+                put("count", 1); put("last_used", timestamp)
             })
         }
     }
+
+    private fun preferredSurface(db: SQLiteDatabase, word: String, language: String): String =
+        db.query(
+            "unigram", arrayOf("surface"), "word = ? AND language = ?", arrayOf(word, language),
+            null, null, null, "1",
+        ).use { if (it.moveToFirst()) it.getString(0) ?: word else word }
 
     private fun incrementNgram(
         db: SQLiteDatabase,
@@ -379,7 +433,8 @@ class SqlitePersonalStore private constructor(context: Context) :
 
     companion object {
         private const val DATABASE_NAME = "libreboard_personal.db"
-        private const val DATABASE_VERSION = 1
+        private const val DATABASE_VERSION = 2
+        private const val EXPORT_SCHEMA_VERSION = 2
         private const val MAX_EXPORT_BYTES = 16 * 1024 * 1024
         private const val MAX_EXPORT_ROWS = 100_000
         private const val MAX_PHRASE_TOKENS = 4
@@ -392,6 +447,7 @@ class SqlitePersonalStore private constructor(context: Context) :
         private const val CREATE_UNIGRAM = """
             CREATE TABLE unigram (
                 word TEXT NOT NULL,
+                surface TEXT NOT NULL,
                 language TEXT NOT NULL,
                 count INTEGER NOT NULL,
                 last_used INTEGER NOT NULL,
@@ -425,8 +481,11 @@ class SqlitePersonalStore private constructor(context: Context) :
             CredentialEncryptedStorage.contextOrNull(context)?.let(::SqlitePersonalStore)
 
         fun tokenize(text: String): List<String> = text
-            .split(Regex("[^\\p{L}\\p{N}'’]+"))
+            .let(::tokenizeSurfaces)
             .map(::normalizeCandidate)
+
+        fun tokenizeSurfaces(text: String): List<String> = text
+            .split(Regex("[^\\p{L}\\p{N}'’]+"))
             .filter(String::isNotBlank)
 
         /** Stores only a one-way fingerprint, never the surrounding prose. */
@@ -440,7 +499,10 @@ class SqlitePersonalStore private constructor(context: Context) :
 
 private fun PersonalExport.validate() {
     fun validToken(value: String, maxLength: Int = 256) = value.isNotBlank() && value.length <= maxLength
-    require(unigrams.all { validToken(it.word) && validToken(it.language, 64) && it.count >= 0 && it.lastUsed >= 0 })
+    require(unigrams.all {
+        validToken(it.word) && validToken(it.surface) && normalizeCandidate(it.surface) == it.word &&
+            validToken(it.language, 64) && it.count >= 0 && it.lastUsed >= 0
+    })
     require(ngrams.all {
         validToken(it.prefix, 1024) && validToken(it.continuation) && validToken(it.language, 64) &&
             it.order in 2..4 && it.count >= 0 && it.lastUsed >= 0
@@ -459,7 +521,13 @@ private data class PersonalExport(
     val rejections: List<ExportRejection>,
 )
 
-@Serializable private data class ExportUnigram(val word: String, val language: String, val count: Long, val lastUsed: Long)
+@Serializable private data class ExportUnigram(
+    val word: String,
+    val language: String,
+    val count: Long,
+    val lastUsed: Long,
+    val surface: String = word,
+)
 @Serializable private data class ExportNgram(
     val prefix: String,
     val continuation: String,

@@ -127,6 +127,8 @@ public final class RichInputConnection implements PrivateCommandPerformer {
     private final InputMethodService mParent;
     private InputConnection mIC;
     private int mNestLevel;
+    /** Whether automatic surrounding-text reads are permitted for the active editor. */
+    private boolean mContextReadsAllowed = false;
 
     /**
      * The timestamp of the last slow InputConnection operation
@@ -152,11 +154,30 @@ public final class RichInputConnection implements PrivateCommandPerformer {
                         <= SLOW_INPUTCONNECTION_PERSIST_MS;
     }
 
-    public void onStartInput() {
+    public void onStartInput(final boolean contextReadsAllowed) {
         mLastSlowInputConnectionTime = -SLOW_INPUTCONNECTION_PERSIST_MS;
+        // A new editor must never inherit a prefix cached from the previous one, even when both
+        // editors permit context. The normal reset immediately following this call repopulates it.
+        clearTextCachesForPrivacy();
+        setContextReadsAllowed(contextReadsAllowed);
+        final EditorInfo editorInfo = mParent.getCurrentInputEditorInfo();
+        mExpectedSelStart = editorInfo == null
+                ? INVALID_CURSOR_POSITION : editorInfo.initialSelStart;
+        mExpectedSelEnd = editorInfo == null
+                ? INVALID_CURSOR_POSITION : editorInfo.initialSelEnd;
+    }
+
+    /**
+     * Changes the context boundary without querying the editor. Disabling access also drops every
+     * cached character so a field-policy or incognito transition cannot expose an older prefix.
+     */
+    public void setContextReadsAllowed(final boolean allowed) {
+        mContextReadsAllowed = allowed;
+        if (!allowed) clearTextCachesForPrivacy();
     }
 
     private void checkConsistencyForDebug() {
+        if (!mContextReadsAllowed) return;
         final ExtractedTextRequest r = new ExtractedTextRequest();
         r.hintMaxChars = 0;
         r.hintMaxLines = 0;
@@ -231,6 +252,14 @@ public final class RichInputConnection implements PrivateCommandPerformer {
     public boolean resetCachesUponCursorMoveAndReturnSuccess(final int newSelStart,
             final int newSelEnd, final boolean shouldFinishComposition) {
         mComposingText.setLength(0);
+        if (!mContextReadsAllowed) {
+            mCommittedTextBeforeComposingText.setLength(0);
+            mIC = mParent.getCurrentInputConnection();
+            mExpectedSelStart = newSelStart;
+            mExpectedSelEnd = newSelEnd;
+            if (isConnected() && shouldFinishComposition) mIC.finishComposingText();
+            return isConnected();
+        }
         final boolean didReloadTextSuccessfully = reloadTextCache();
         if (!didReloadTextSuccessfully) {
             Log.d(TAG, "Will try to retrieve text later.");
@@ -263,6 +292,7 @@ public final class RichInputConnection implements PrivateCommandPerformer {
         // always empty, but looks like things still work normally
         mComposingText.setLength(0);
         mIC = mParent.getCurrentInputConnection();
+        if (!mContextReadsAllowed) return isConnected();
         // Call upon the inputconnection directly since our own method is using the cache, and
         // we want to refresh it.
         final CharSequence textBeforeCursor = getTextBeforeCursorAndDetectLaggyConnection(
@@ -293,7 +323,7 @@ public final class RichInputConnection implements PrivateCommandPerformer {
     }
 
     private void reloadCursorPosition() {
-        if (!isConnected()) return;
+        if (!mContextReadsAllowed || !isConnected()) return;
         final ExtractedText et = mIC.getExtractedText(new ExtractedTextRequest(), 0);
         if (et == null) return;
         mExpectedSelStart = et.selectionStart + et.startOffset;
@@ -371,7 +401,7 @@ public final class RichInputConnection implements PrivateCommandPerformer {
 
     @Nullable
     public CharSequence getSelectedText(final int flags) {
-        return isConnected() ?  mIC.getSelectedText(flags) : null;
+        return mContextReadsAllowed && isConnected() ? mIC.getSelectedText(flags) : null;
     }
 
     public boolean canDeleteCharacters() {
@@ -452,6 +482,7 @@ public final class RichInputConnection implements PrivateCommandPerformer {
 
     @Nullable public CharSequence getTextBeforeCursor(final int n, final int flags) {
         final int cachedLength = mCommittedTextBeforeComposingText.length() + mComposingText.length();
+        if (!mContextReadsAllowed) return cachedTextBeforeCursor(n);
         // If we have enough characters to satisfy the request, or if we have all characters in
         // the text field, then we can return the cached version right away.
         // However, if we don't have an expected cursor position, then we should always
@@ -459,19 +490,7 @@ public final class RichInputConnection implements PrivateCommandPerformer {
         // test for this explicitly)
         if (INVALID_CURSOR_POSITION != mExpectedSelStart
                 && (cachedLength >= n || cachedLength >= mExpectedSelStart)) {
-            final StringBuilder s = new StringBuilder(mCommittedTextBeforeComposingText.toString());
-            // We call #toString() here to create a temporary object.
-            // In some situations, this method is called on a worker thread, and it's possible
-            // the main thread touches the contents of mComposingText while this worker thread
-            // is suspended, because mComposingText is a StringBuilder. This may lead to crashes,
-            // so we call #toString() on it. That will result in the return value being strictly
-            // speaking wrong, but since this is used for basing bigram probability off, and
-            // it's only going to matter for one getSuggestions call, it's fine in the practice.
-            s.append(mComposingText.toString());
-            if (s.length() > n) {
-                s.delete(0, s.length() - n);
-            }
-            return s;
+            return cachedTextBeforeCursor(n);
         }
         return getTextBeforeCursorAndDetectLaggyConnection(
                 OPERATION_GET_TEXT_BEFORE_CURSOR,
@@ -479,8 +498,25 @@ public final class RichInputConnection implements PrivateCommandPerformer {
                 n, flags);
     }
 
+    private CharSequence cachedTextBeforeCursor(final int n) {
+        final StringBuilder s = new StringBuilder(mCommittedTextBeforeComposingText.toString());
+        // We call #toString() here to create a temporary object.
+        // In some situations, this method is called on a worker thread, and it's possible
+        // the main thread touches the contents of mComposingText while this worker thread
+        // is suspended, because mComposingText is a StringBuilder. This may lead to crashes,
+        // so we call #toString() on it. That will result in the return value being strictly
+        // speaking wrong, but since this is used for basing bigram probability off, and
+        // it's only going to matter for one getSuggestions call, it's fine in the practice.
+        s.append(mComposingText.toString());
+        if (s.length() > n) {
+            s.delete(0, s.length() - n);
+        }
+        return s;
+    }
+
     @Nullable private CharSequence getTextBeforeCursorAndDetectLaggyConnection(
             final int operation, final long timeout, final int n, final int flags) {
+        if (!mContextReadsAllowed) return cachedTextBeforeCursor(n);
         mIC = mParent.getCurrentInputConnection();
         if (!isConnected()) {
             return null;
@@ -541,6 +577,7 @@ public final class RichInputConnection implements PrivateCommandPerformer {
     }
 
     @Nullable public CharSequence getTextAfterCursor(final int n, final int flags) {
+        if (!mContextReadsAllowed) return "";
         return getTextAfterCursorAndDetectLaggyConnection(
                 OPERATION_GET_TEXT_AFTER_CURSOR,
                 SLOW_INPUT_CONNECTION_ON_PARTIAL_RELOAD_MS,
@@ -549,6 +586,7 @@ public final class RichInputConnection implements PrivateCommandPerformer {
 
     @Nullable private CharSequence getTextAfterCursorAndDetectLaggyConnection(
             final int operation, final long timeout, final int n, final int flags) {
+        if (!mContextReadsAllowed) return "";
         mIC = mParent.getCurrentInputConnection();
         if (!isConnected()) {
             return null;
@@ -710,7 +748,8 @@ public final class RichInputConnection implements PrivateCommandPerformer {
             if (DebugFlags.DEBUG_ENABLED)
                 Log.d(TAG, "setting composing text of length "+text.length()); // don't log actual text
             mIC.setComposingText(text, newCursorPosition);
-            if (!Settings.getValues().mInputAttributes.mFieldPolicy.getAllowsComposing()
+            if (mContextReadsAllowed
+                    && !Settings.getValues().mInputAttributes.mFieldPolicy.getAllowsComposing()
                     && text.length() > 0) {
                 // We have a field that disables suggestions, but still committed text is set.
                 // This might lead to weird bugs (e.g. https://github.com/HeliBorg/HeliBoard/issues/225), so better do
@@ -782,6 +821,7 @@ public final class RichInputConnection implements PrivateCommandPerformer {
     }
 
     public void copyText(final boolean getSelection) {
+        if (!mContextReadsAllowed) return;
         CharSequence text = null;
         if (getSelection) {
             // copy selected text, and if nothing is selected copy the whole text
@@ -1102,6 +1142,7 @@ public final class RichInputConnection implements PrivateCommandPerformer {
      * being initial and thus possibly outdated)
      */
     public void tryFixIncorrectCursorPosition() {
+        if (!mContextReadsAllowed) return;
         mIC = mParent.getCurrentInputConnection();
         final CharSequence textBeforeCursor = getTextBeforeCursor(
                 Constants.EDITOR_CONTENTS_CACHE_SIZE, 0);

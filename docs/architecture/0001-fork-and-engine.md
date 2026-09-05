@@ -21,6 +21,9 @@ and pointer collection. New behaviour enters through Android-independent contrac
 
 All published results must still match the active sequence. The raw tap input occupies the first
 suggestion slot. Autocorrection is a separately gated decision and cannot be forced by a model.
+The retained suggestion path now consumes bounded personal candidates without allowing an
+uncalibrated personal score to displace its classic winner; full source fusion remains gated on the
+Phase 0 measurements.
 
 ## Gesture decision
 
@@ -35,6 +38,10 @@ The application context remains credential protected. Static settings that must 
 unlock explicitly use HeliBoard's device-protected helper. Clipboard, personalization, rejection,
 model registry, and caches remain credential protected and fail closed while locked. Android cloud
 backup is disabled; explicit SAF backup is the only supported transfer mechanism.
+
+Field policy is also enforced at the `InputConnection` boundary. Disabling context access clears
+the IME's text mirrors and prevents all surrounding/selected/extracted-text IPC, so a later caller
+cannot accidentally bypass policy by invoking a retained HeliBoard helper.
 
 ## Consequences
 

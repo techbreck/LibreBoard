@@ -4,8 +4,16 @@ package helium314.keyboard.latin.engine.personal
 import android.content.Context
 import android.view.inputmethod.EditorInfo
 import helium314.keyboard.latin.engine.CommitObservation
+import helium314.keyboard.latin.engine.Candidate
+import helium314.keyboard.latin.engine.Deadline
+import helium314.keyboard.latin.engine.FieldClass
+import helium314.keyboard.latin.engine.FieldPolicy
 import helium314.keyboard.latin.engine.FieldPolicyResolver
+import helium314.keyboard.latin.engine.InputStyle
+import helium314.keyboard.latin.engine.KeyGeometry
 import helium314.keyboard.latin.engine.RejectionObservation
+import helium314.keyboard.latin.engine.TypingRequest
+import helium314.keyboard.latin.engine.WordLock
 import helium314.keyboard.latin.engine.normalizeCandidate
 import java.util.concurrent.ConcurrentHashMap
 
@@ -27,13 +35,14 @@ object PersonalizationRuntime {
         correctionRaw: String? = null,
     ) {
         if (incognito || !FieldPolicyResolver.resolve(editorInfo).allowsPersistence) return
-        val committedTokens = SqlitePersonalStore.tokenize(committedWord).takeLast(4)
-        if (committedTokens.isEmpty()) return
+        val committedSurfaces = SqlitePersonalStore.tokenizeSurfaces(committedWord).takeLast(4)
+        if (committedSurfaces.isEmpty()) return
+        val committedTokens = committedSurfaces.map(::normalizeCandidate)
         val personalStore = open(context) ?: return
         val precedingTokens = synchronized(sessionLock) { sessionCommittedTokens.takeLast(3) }
         val contextFingerprint = SqlitePersonalStore.fingerprintContext(precedingTokens.joinToString(" "))
         personalStore.observeCommit(CommitObservation(
-            tokens = committedTokens,
+            tokens = committedSurfaces,
             languageTag = languageTag,
             timestampMillis = System.currentTimeMillis(),
             wasManualSelection = manualSelection,
@@ -99,6 +108,39 @@ object PersonalizationRuntime {
     ): Boolean = isRejectedThisSession(raw, replacement, languageTag) ||
         (open(context)?.isCorrectionSuppressed(raw, replacement, languageTag) == true)
 
+    /**
+     * Read personal candidates only for a policy that permits both suggestions and persistence.
+     * The supplied context must already be a bounded, policy-approved snapshot; this facade never
+     * reaches back into the editor or accepts an application identifier.
+     */
+    @JvmStatic
+    fun suggest(
+        context: Context,
+        rawText: String,
+        precedingContext: String,
+        enabledLanguageTags: List<String>,
+        fieldPolicy: FieldPolicy,
+        incognito: Boolean,
+        inputStyle: InputStyle,
+        sequenceId: Long,
+    ): List<Candidate> {
+        if (incognito || !fieldPolicy.allowsSuggestions || !fieldPolicy.allowsPersistence) return emptyList()
+        val languages = enabledLanguageTags.filter(String::isNotBlank).distinct().take(MAX_PERSONAL_LANGUAGES)
+        if (languages.isEmpty()) return emptyList()
+        val request = TypingRequest.bounded(
+            rawText = rawText,
+            precedingContext = precedingContext,
+            geometry = EMPTY_GEOMETRY,
+            enabledLanguages = languages,
+            wordLock = WordLock.Unlocked,
+            fieldPolicy = fieldPolicy,
+            fieldClass = FieldClass.PLAIN,
+            inputStyle = inputStyle,
+            sequenceId = sequenceId,
+        )
+        return open(context)?.suggest(request, Deadline.afterMillis(PERSONAL_QUERY_BUDGET_MILLIS)).orEmpty()
+    }
+
     @JvmStatic
     fun clearSession() {
         sessionRejections.clear()
@@ -136,4 +178,7 @@ object PersonalizationRuntime {
         size >= suffix.size && subList(size - suffix.size, size) == suffix
 
     private const val MAX_SESSION_TOKENS = 8
+    private const val MAX_PERSONAL_LANGUAGES = 8
+    private const val PERSONAL_QUERY_BUDGET_MILLIS = 15L
+    private val EMPTY_GEOMETRY = KeyGeometry(1f, 1f, emptyList())
 }

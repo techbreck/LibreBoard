@@ -19,7 +19,10 @@ temporarily to keep upstream review practical; the Android application ID is `or
 - Credential-encrypted clipboard and personal stores with Direct-Boot-safe degradation.
 - Central field policy for passwords, PINs, email/URI fields, terminals,
   `IME_FLAG_NO_PERSONALIZED_LEARNING`, and `TYPE_TEXT_FLAG_NO_SUGGESTIONS`.
-- Local unigram, n-gram, phrase, and correction-rejection persistence with decay and atomic wipe.
+- Enforced `InputConnection` context boundary: restricted fields and incognito never query
+  surrounding editor text, even during cache refresh or cursor reconciliation.
+- Local unigram, n-gram, phrase, and correction-rejection persistence with decay, preferred word
+  casing, live personal completions/predictions, and atomic wipe.
 
 The context and CTC model artifacts are not represented as complete until their held-out quality,
 latency, provenance, reproducibility, and GrapheneOS gates pass. See [Phase 0](docs/phase-0.md).

@@ -59,6 +59,9 @@ class InputLogicTest {
     private val settingsValues get() = Settings.getValues()
     private val inputLogic get() = latinIME.mInputLogic
     private val connection: RichInputConnection get() = inputLogic.mConnection
+    private val contextReadsAllowed get() =
+        settingsValues.mInputAttributes.mFieldPolicy.allowsContextRead
+            && !settingsValues.mIncognitoModeEnabled
     private val composerReader = InputLogic::class.java.getDeclaredField("mWordComposer").apply { isAccessible = true }
     private val composer get() = composerReader.get(inputLogic) as WordComposer
     private val spaceStateReader = InputLogic::class.java.getDeclaredField("mSpaceState").apply { isAccessible = true }
@@ -335,6 +338,60 @@ class InputLogicTest {
         input('.')
         input('c')
         assertEquals("", composingText)
+    }
+
+    @Test fun `restricted field policies never read surrounding editor text`() {
+        val restrictedEditors = listOf(
+            "text password" to EditorInfo().apply {
+                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            },
+            "number password" to EditorInfo().apply {
+                inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            },
+            "email" to EditorInfo().apply {
+                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
+            },
+            "URI" to EditorInfo().apply {
+                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+            },
+            "no suggestions" to EditorInfo().apply {
+                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            },
+            "no personalized learning" to EditorInfo().apply {
+                inputType = InputType.TYPE_CLASS_TEXT
+                imeOptions = EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING
+            },
+            "TYPE_NULL terminal" to EditorInfo().apply {
+                inputType = InputType.TYPE_NULL
+            },
+            "private-option terminal" to EditorInfo().apply {
+                inputType = InputType.TYPE_CLASS_TEXT
+                privateImeOptions = "org.libreboard.test:terminal"
+            },
+        )
+
+        for ((name, editorInfo) in restrictedEditors) {
+            ShadowInputMethodService.resetReadCounts()
+            startInput(editorInfo, "")
+            input('a')
+            assertEquals(0, ShadowInputMethodService.surroundingTextReads, name)
+        }
+    }
+
+    @Test fun `incognito transition clears cached context and blocks editor reads`() {
+        setText("existing ")
+        chainInput("secret")
+        ShadowInputMethodService.resetReadCounts()
+
+        latinIME.prefs().edit { putBoolean(Settings.PREF_ALWAYS_INCOGNITO_MODE, true) }
+        inputLogic.onIncognitoModeChanged(true)
+
+        assertEquals("", connectionTextBeforeComposingText)
+        assertEquals("", connectionComposingText)
+        assertEquals("", connection.getTextBeforeCursor(100, 0).toString())
+        assertEquals("", connection.getTextAfterCursor(100, 0).toString())
+        assertEquals(null, connection.getSelectedText(0))
+        assertEquals(0, ShadowInputMethodService.surroundingTextReads)
     }
 
     @Test fun `don't select whole thing as composing word if URL detection disabled`() {
@@ -761,7 +818,9 @@ class InputLogicTest {
                 assert(oldBefore + phantomSpaceToInsert + insert == textBeforeCursor || oldBefore + insert == textBeforeCursor)
         }
         assertEquals(oldAfter, textAfterCursor)
-        assertEquals(textBeforeCursor + textAfterCursor, getTextFromConnection())
+        if (contextReadsAllowed) {
+            assertEquals(textBeforeCursor + textAfterCursor, getTextFromConnection())
+        }
         if (composer.isComposingWord) // if we're not composing any more cursor is always at the end
             assertEquals(oldIsAtEnd, !composer.isCursorFrontOrMiddleOfComposingWord)
         checkConnectionConsistency()
@@ -789,7 +848,9 @@ class InputLogicTest {
             assert(oldBefore + phantomSpaceToInsert + insert == textBeforeCursor || oldBefore + insert == textBeforeCursor)
         assert(oldBefore + insert == textBeforeCursor || "$oldBefore $insert" == textBeforeCursor)
         assertEquals(oldAfter, textAfterCursor)
-        assertEquals(textBeforeCursor + textAfterCursor, getTextFromConnection())
+        if (contextReadsAllowed) {
+            assertEquals(textBeforeCursor + textAfterCursor, getTextFromConnection())
+        }
         checkConnectionConsistency()
     }
 
@@ -805,7 +866,7 @@ class InputLogicTest {
         // adjust text in inputConnection first, otherwise fixLyingCursorPosition will move cursor
         // to the end of the text
         val fullText = textBeforeCursor + selectedText + textAfterCursor
-        assertEquals(fullText, getTextFromConnection())
+        if (contextReadsAllowed) assertEquals(fullText, getTextFromConnection())
 
         // need to update ic before, otherwise when reloading text cache from ic, ric will load wrong text before cursor
         val oldStart = selectionStart
@@ -823,7 +884,7 @@ class InputLogicTest {
             handleMessages()
         }
 
-        assertEquals(fullText, getTextFromConnection())
+        if (contextReadsAllowed) assertEquals(fullText, getTextFromConnection())
         assertEquals(start, selectionStart)
         assertEquals(end, selectionEnd)
         checkConnectionConsistency()
@@ -838,18 +899,25 @@ class InputLogicTest {
 
     // just sets the text and starts input so connection it set up correctly
     private fun setText(newText: String) {
+        startInput(EditorInfo().apply { inputType = currentInputType }, newText)
+    }
+
+    private fun startInput(editorInfo: EditorInfo, newText: String) {
         ShadowInputMethodService.text = newText
         selectionStart = newText.length
         selectionEnd = selectionStart
         composingStart = -1
-        composingStart = -1
+        composingEnd = -1
+        currentInputType = editorInfo.inputType
+        ShadowInputMethodService.currentImeOptions = editorInfo.imeOptions
+        ShadowInputMethodService.currentPrivateImeOptions = editorInfo.privateImeOptions
+        editorInfo.initialSelStart = selectionStart
+        editorInfo.initialSelEnd = selectionEnd
 
         // we need to start input to notify that something changed
         // restarting is false, so this is seen as a new text field
-        val ei = EditorInfo()
-        ei.inputType = currentInputType
-        latinIME.mHandler.onStartInput(ei, false)
-        latinIME.mHandler.onStartInputView(ei, false)
+        latinIME.mHandler.onStartInput(editorInfo, false)
+        latinIME.mHandler.onStartInputView(editorInfo, false)
         handleMessages() // this is important so the composing span is set correctly
         checkConnectionConsistency()
     }
@@ -891,10 +959,17 @@ class InputLogicTest {
                 ", $textAfterCursor, ${connection.getTextAfterCursor(textAfterCursor.length, 0)}")
         assertEquals(selectionStart, connection.expectedSelectionStart)
         assertEquals(selectionEnd, connection.expectedSelectionEnd)
-        assertEquals(textBeforeComposingText, connectionTextBeforeComposingText)
-        assertEquals(expectedConnectionComposingText, connectionComposingText)
-        assertEquals(textBeforeCursor, connection.getTextBeforeCursor(textBeforeCursor.length, 0).toString())
-        assertEquals(textAfterCursor, connection.getTextAfterCursor(textAfterCursor.length, 0).toString())
+        if (contextReadsAllowed) {
+            assertEquals(textBeforeComposingText, connectionTextBeforeComposingText)
+            assertEquals(expectedConnectionComposingText, connectionComposingText)
+            assertEquals(textBeforeCursor, connection.getTextBeforeCursor(textBeforeCursor.length, 0).toString())
+            assertEquals(textAfterCursor, connection.getTextAfterCursor(textAfterCursor.length, 0).toString())
+        } else {
+            val locallyObservedText = connectionTextBeforeComposingText + connectionComposingText
+            assertEquals(locallyObservedText, connection.getTextBeforeCursor(100, 0).toString())
+            assertEquals("", connection.getTextAfterCursor(100, 0).toString())
+            assertEquals(null, connection.getSelectedText(0))
+        }
     }
 
     private fun getTextFromConnection() =

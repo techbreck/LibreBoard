@@ -19,6 +19,7 @@ import helium314.keyboard.latin.dictionary.DictionaryStats;
 import helium314.keyboard.latin.settings.SettingsValuesForSuggestion;
 import helium314.keyboard.latin.utils.SuggestionResults;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
@@ -85,6 +86,14 @@ public interface DictionaryFacilitator {
 
     /** the most "trusted" locale, differs from getMainLocale only if multilingual typing is used */
     @NonNull Locale getCurrentLocale();
+
+    /** All language-tagged dictionary groups participating in the current multilingual slate. */
+    @NonNull default List<Locale> getActiveLocales() {
+        final ArrayList<Locale> locales = new ArrayList<>();
+        locales.add(getMainLocale());
+        if (!getMainLocale().equals(getCurrentLocale())) locales.add(getCurrentLocale());
+        return locales;
+    }
 
     boolean usesSameSettings(
             @NonNull final List<Locale> locales,

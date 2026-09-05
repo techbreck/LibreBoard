@@ -133,6 +133,15 @@ class ShadowInputMethodService {
         var composingStart = -1
         var composingEnd = -1
         var currentInputType = InputType.TYPE_CLASS_TEXT
+        var currentImeOptions = 0
+        var currentPrivateImeOptions: String? = null
+        var textBeforeCursorReads = 0
+        var textAfterCursorReads = 0
+        var selectedTextReads = 0
+        var extractedTextReads = 0
+
+        val surroundingTextReads get() =
+            textBeforeCursorReads + textAfterCursorReads + selectedTextReads + extractedTextReads
 
         // convenience for access
         val textBeforeCursor get() = text.substring(0, selectionStart)
@@ -152,13 +161,24 @@ class ShadowInputMethodService {
             composingStart = -1
             composingEnd = -1
             currentInputType = InputType.TYPE_CLASS_TEXT
+            currentImeOptions = 0
+            currentPrivateImeOptions = null
+            resetReadCounts()
+        }
+
+        fun resetReadCounts() {
+            textBeforeCursorReads = 0
+            textAfterCursorReads = 0
+            selectedTextReads = 0
+            extractedTextReads = 0
         }
     }
 
     @Implementation
     fun getCurrentInputEditorInfo() = EditorInfo().apply {
         inputType = currentInputType
-        // anything else?
+        imeOptions = currentImeOptions
+        privateImeOptions = currentPrivateImeOptions
     }
     @Implementation
     fun getCurrentInputConnection() = ic
@@ -169,12 +189,20 @@ class ShadowInputMethodService {
     private val ic = object : InputConnection {
         // pretty clear (though this may be slow depending on the editor)
         // bad return value here is likely the cause for that weird bug improved/fixed by fixIncorrectLength
-        override fun getTextBeforeCursor(p0: Int, p1: Int): CharSequence = textBeforeCursor.take(p0)
+        override fun getTextBeforeCursor(p0: Int, p1: Int): CharSequence {
+            ++textBeforeCursorReads
+            return textBeforeCursor.takeLast(p0)
+        }
         // pretty clear (though this may be slow depending on the editor)
-        override fun getTextAfterCursor(p0: Int, p1: Int): CharSequence = textAfterCursor.take(p0)
+        override fun getTextAfterCursor(p0: Int, p1: Int): CharSequence {
+            ++textAfterCursorReads
+            return textAfterCursor.take(p0)
+        }
         // pretty clear
-        override fun getSelectedText(p0: Int): CharSequence? = if (selectionStart == selectionEnd) null
-        else text.substring(selectionStart, selectionEnd)
+        override fun getSelectedText(p0: Int): CharSequence? {
+            ++selectedTextReads
+            return if (selectionStart == selectionEnd) null else text.substring(selectionStart, selectionEnd)
+        }
         // inserts text at cursor (right?), and sets it as composing text
         // this REPLACES currently composing text (even if at a different position)
         // moves the cursor: positive means relative to composing text start, negative means relative to start
@@ -305,6 +333,7 @@ class ShadowInputMethodService {
         }
         // implementation is only to work with getTextBeforeCursorAndDetectLaggyConnection
         override fun getExtractedText(p0: ExtractedTextRequest?, p1: Int): ExtractedText {
+            ++extractedTextReads
             return ExtractedText().also {
                 it.startOffset = 0
                 it.selectionStart = selectionStart

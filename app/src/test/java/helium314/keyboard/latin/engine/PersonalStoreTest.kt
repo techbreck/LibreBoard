@@ -15,6 +15,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 
@@ -63,6 +64,16 @@ class PersonalStoreTest {
         val before = store.export()
         assertFailsWith<IllegalArgumentException> { store.restore("{}".encodeToByteArray()) }
         assertArrayEquals(before, store.export())
+    }
+
+    @Test
+    fun versionOneBackupRestoresWithNormalizedSurface() {
+        val legacy = """{"schemaVersion":1,"unigrams":[{"word":"legacy","language":"en-US","count":2,"lastUsed":1000}],"ngrams":[],"rejections":[]}"""
+        store.restore(legacy.encodeToByteArray())
+
+        val upgraded = store.export().decodeToString()
+        assertTrue(upgraded.contains("\"schemaVersion\":2"))
+        assertTrue(upgraded.contains("\"surface\":\"legacy\""))
     }
 
     @Test
@@ -115,5 +126,60 @@ class PersonalStoreTest {
             if (it == 0) assertTrue(store.isCorrectionSuppressed("teh", "the", "en-US"))
         }
         assertFalse(store.isCorrectionSuppressed("teh", "the", "en-US"))
+    }
+
+    @Test
+    fun runtimeReturnsPreferredSurfaceOnlyInNormalFields() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val editorInfo = EditorInfo().apply { inputType = InputType.TYPE_CLASS_TEXT }
+        PersonalizationRuntime.wipe(context)
+        PersonalizationRuntime.observeCommit(context, editorInfo, false, "LibreBoard", "en-US", false)
+
+        val normal = PersonalizationRuntime.suggest(
+            context = context,
+            rawText = "libre",
+            precedingContext = "",
+            enabledLanguageTags = listOf("en-US"),
+            fieldPolicy = FieldPolicy.NORMAL,
+            incognito = false,
+            inputStyle = InputStyle.TAP,
+            sequenceId = 1,
+        )
+        assertEquals("LibreBoard", normal.single().surface)
+        assertTrue(normal.single().exactPersonalMatch.not())
+
+        val sensitive = PersonalizationRuntime.suggest(
+            context = context,
+            rawText = "libre",
+            precedingContext = "should never be read",
+            enabledLanguageTags = listOf("en-US"),
+            fieldPolicy = FieldPolicy.SENSITIVE,
+            incognito = false,
+            inputStyle = InputStyle.TAP,
+            sequenceId = 2,
+        )
+        assertTrue(sensitive.isEmpty())
+    }
+
+    @Test
+    fun exactPersonalWordSurvivesABusyPrefixFamily() {
+        store.observeCommit(CommitObservation(listOf("Libre"), "en-US", 1_000, false))
+        repeat(40) { index ->
+            repeat(2) {
+                store.observeCommit(CommitObservation(listOf("libre$index"), "en-US", 2_000L + index, false))
+            }
+        }
+        val request = TypingRequest.bounded(
+            rawText = "libre",
+            geometry = KeyGeometry(1f, 1f, emptyList()),
+            enabledLanguages = listOf("en-US"),
+            fieldPolicy = FieldPolicy.NORMAL,
+            inputStyle = InputStyle.TAP,
+            sequenceId = 3,
+        )
+
+        val candidates = store.suggest(request, Deadline.afterMillis(1_000))
+        assertEquals("Libre", candidates.first().surface)
+        assertTrue(candidates.first().exactPersonalMatch)
     }
 }

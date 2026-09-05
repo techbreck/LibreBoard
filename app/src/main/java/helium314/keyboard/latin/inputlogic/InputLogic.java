@@ -157,7 +157,8 @@ public final class InputLogic {
         PersonalizationRuntime.clearSession();
         mEnteredText = null;
         mWordBeingCorrectedByCursor = null;
-        mConnection.onStartInput();
+        mConnection.onStartInput(settingsValues.mInputAttributes.mFieldPolicy.getAllowsContextRead()
+                && !settingsValues.mIncognitoModeEnabled);
         if (!mWordComposer.getTypedWord().isEmpty()) {
             // For messaging apps that offer send button, the IME does not get the opportunity
             // to capture the last word. This block should capture those uncommitted words.
@@ -229,6 +230,8 @@ public final class InputLogic {
         mInputLogicHandler.reset();
         mSuggest.clearNextWordSuggestionsCache();
         PersonalizationRuntime.clearSession();
+        mConnection.setContextReadsAllowed(!enabled
+                && Settings.getValues().mInputAttributes.mFieldPolicy.getAllowsContextRead());
         if (enabled) {
             mConnection.beginBatchEdit();
             if (mWordComposer.isComposingWord()) {

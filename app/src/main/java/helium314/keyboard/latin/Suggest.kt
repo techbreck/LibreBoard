@@ -18,6 +18,8 @@ import helium314.keyboard.latin.define.DebugFlags
 import helium314.keyboard.latin.define.DecoderSpecificConstants.SHOULD_AUTO_CORRECT_USING_NON_WHITE_LISTED_SUGGESTION
 import helium314.keyboard.latin.define.DecoderSpecificConstants.SHOULD_REMOVE_PREVIOUSLY_REJECTED_SUGGESTION
 import helium314.keyboard.latin.dictionary.Dictionary
+import helium314.keyboard.latin.engine.Candidate
+import helium314.keyboard.latin.engine.InputStyle
 import helium314.keyboard.latin.engine.integration.HeliBoardGeometricFallback
 import helium314.keyboard.latin.engine.personal.PersonalizationRuntime
 import helium314.keyboard.latin.settings.Settings
@@ -91,7 +93,11 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
         val firstOccurrenceOfTypedWordInSuggestions = SuggestedWordInfo.removeDupsAndTypedWord(capitalizedTypedWord, suggestionsContainer)
         makeFirstTwoSuggestionsNonEmoji(suggestionsContainer)
 
-        val (allowsToBeAutoCorrected, hasAutoCorrection) = shouldBeAutoCorrected(
+        val personalCandidates = getPersonalCandidates(
+            typedWordString, ngramContext, resultsArePredictions, sequenceNumber,
+        )
+        val exactPersonalMatch = personalCandidates.any { it.exactPersonalMatch }
+        val correctionDecision = shouldBeAutoCorrected(
             trailingSingleQuotesCount,
             capitalizedTypedWord,
             suggestionsContainer.firstOrNull(),
@@ -107,6 +113,12 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
             suggestionResults,
             firstOccurrenceOfTypedWordInSuggestions,
             typedWordFirstOccurrenceWordInfo
+        )
+        val allowsToBeAutoCorrected = correctionDecision.first
+        val hasAutoCorrection = correctionDecision.second && !exactPersonalMatch
+        addPersonalCandidates(
+            suggestionsContainer, personalCandidates, capsMode, trailingSingleQuotesCount,
+            mDictionaryFacilitator.mainLocale, capitalizedTypedWord,
         )
         val typedWordInfo = SuggestedWordInfo(typedWordString, "", SuggestedWordInfo.MAX_SCORE,
             SuggestedWordInfo.KIND_TYPED, typedWordFirstOccurrenceWordInfo?.mSourceDict ?: Dictionary.DICTIONARY_USER_TYPED,
@@ -130,7 +142,7 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
         // If there is an incoming autocorrection, make sure typed word is shown, so user is able to override it.
         // Otherwise, if the relevant setting is enabled, show the typed word in the middle.
         val typedWordWasCapitalized = capitalizedTypedWord != typedWordString
-        val correctToCapitalizedWord = typedWordWasCapitalized && isCorrectionEnabled && Settings.getValues().mAutoCorrectCapitalizedSuggestion
+        val correctToCapitalizedWord = !exactPersonalMatch && typedWordWasCapitalized && isCorrectionEnabled && Settings.getValues().mAutoCorrectCapitalizedSuggestion
             && !wordComposer.isCursorFrontOrMiddleOfComposingWord && typedWordString.drop(1).none { it.isUpperCase() }
         val indexOfTypedWord = 1 + if (hasAutoCorrection) SuggestedWords.INDEX_OF_AUTO_CORRECTION else SuggestedWords.INDEX_OF_TYPED_WORD
         if (
@@ -148,7 +160,8 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
                 )
             }
         }
-        val isTypedWordValid = firstOccurrenceOfTypedWordInSuggestions > -1 || (!resultsArePredictions && !allowsToBeAutoCorrected)
+        val isTypedWordValid = exactPersonalMatch || firstOccurrenceOfTypedWordInSuggestions > -1 ||
+            (!resultsArePredictions && !allowsToBeAutoCorrected)
         return SuggestedWords(suggestionsList, suggestionResults.mRawSuggestions, typedWordInfo,
             isTypedWordValid, hasAutoCorrection || correctToCapitalizedWord, false, inputStyle, sequenceNumber)
     }
@@ -377,6 +390,57 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
         return newResults
     }
 
+    private fun getPersonalCandidates(
+        typedWord: String,
+        ngramContext: NgramContext,
+        isPrediction: Boolean,
+        sequenceNumber: Int,
+    ): List<Candidate> {
+        val settings = Settings.getValues()
+        if (!settings.mUsePersonalizedDicts) return emptyList()
+        return PersonalizationRuntime.suggest(
+            context = Settings.getCurrentContext(),
+            rawText = typedWord,
+            precedingContext = ngramContext.extractPrevWordsContext(),
+            enabledLanguageTags = mDictionaryFacilitator.activeLocales.map(Locale::toLanguageTag),
+            fieldPolicy = settings.mInputAttributes.mFieldPolicy,
+            incognito = settings.mIncognitoModeEnabled,
+            inputStyle = if (isPrediction) InputStyle.PREDICTION else InputStyle.TAP,
+            sequenceId = sequenceNumber.toLong(),
+        )
+    }
+
+    /**
+     * Personal candidates enrich the visible slate without changing the retained dictionary's
+     * calibrated winner. An exact personal match separately vetoes autocorrection above.
+     */
+    private fun addPersonalCandidates(
+        suggestions: ArrayList<SuggestedWordInfo>,
+        candidates: List<Candidate>,
+        capsMode: CapsMode,
+        trailingSingleQuotesCount: Int,
+        defaultLocale: Locale,
+        typedWord: String,
+    ) {
+        if (candidates.isEmpty()) return
+        val personal = ArrayList(candidates.take(MAX_VISIBLE_PERSONAL_CANDIDATES).map { candidate ->
+            SuggestedWordInfo(
+                candidate.surface,
+                "",
+                max(1, (candidate.components.personal.orZero() * 100).toInt()),
+                if (typedWord.isEmpty()) SuggestedWordInfo.KIND_PREDICTION else SuggestedWordInfo.KIND_COMPLETION,
+                Dictionary.DICTIONARY_USER_TYPED,
+                SuggestedWordInfo.NOT_AN_INDEX,
+                SuggestedWordInfo.NOT_A_CONFIDENCE,
+            )
+        })
+        capitalizeAndAddTrailingSingleQuotes(personal, capsMode, trailingSingleQuotesCount, defaultLocale)
+        val existing = suggestions.mapTo(hashSetOf()) { it.mWord }
+        personal.removeAll { it.mWord == typedWord || !existing.add(it.mWord) }
+        suggestions.addAll(min(1, suggestions.size), personal)
+        while (suggestions.size > SuggestedWords.MAX_SUGGESTIONS) suggestions.removeLast()
+    }
+
     companion object {
         private val TAG: String = Suggest::class.java.simpleName
 
@@ -389,8 +453,11 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
         private const val SUPPRESS_SUGGEST_THRESHOLD = -2000000000
 
         private const val MAXIMUM_AUTO_CORRECT_LENGTH_FOR_GERMAN = 12
+        private const val MAX_VISIBLE_PERSONAL_CANDIDATES = 4
         // TODO: should we add Finnish here?
         private val sLanguageToMaximumAutoCorrectionWithSpaceLength = hashMapOf(Locale.GERMAN.language to MAXIMUM_AUTO_CORRECT_LENGTH_FOR_GERMAN)
+
+        private fun Double?.orZero() = this ?: 0.0
 
         private fun capitalizeAndAddTrailingSingleQuotes(
             suggestions: ArrayList<SuggestedWordInfo>, capsMode: CapsMode, trailingSingleQuotesCount: Int, defaultLocale: Locale

@@ -21,6 +21,7 @@ import helium314.keyboard.latin.common.Constants
 import helium314.keyboard.latin.common.InputPointers
 import helium314.keyboard.latin.common.StringUtils
 import helium314.keyboard.latin.dictionary.Dictionary
+import helium314.keyboard.latin.engine.personal.PersonalizationRuntime
 import helium314.keyboard.latin.settings.Settings
 import helium314.keyboard.latin.settings.SettingsValuesForSuggestion
 import helium314.keyboard.latin.utils.SuggestionResults
@@ -599,6 +600,34 @@ class SuggestTest {
         assertEquals(listOf("bur", "BUR", "BUT", "BIT", "BUY", "😢", "BUTTER"), result4.mSuggestedWordInfoList.map { it.mWord })
     }
 
+    @Test fun `personal candidates enter the live slate without taking over autocorrect`() {
+        val editorInfo = EditorInfo().apply { inputType = InputType.TYPE_CLASS_TEXT }
+        PersonalizationRuntime.wipe(latinIME)
+        try {
+            PersonalizationRuntime.observeCommit(
+                latinIME, editorInfo, false, "LibreBoard", currentTypingLocale.toLanguageTag(), false,
+            )
+            tapTypingSuggestions = suggestionResults(listOf(suggestion("libretto", 900_000)))
+            val completion = getSuggestedWords(false, "libre", CapsMode.OFF)
+            assertEquals("libre", completion.getWord(0))
+            assertEquals("libretto", completion.getWord(1))
+            assert("LibreBoard" in completion.mSuggestedWordInfoList.map { it.mWord })
+
+            enableAutocorrect(confidenceVeryAggressive)
+            tapTypingSuggestions = suggestionResults(listOf(suggestion("whiteboard", 1_500_000)))
+            val exactPersonal = getSuggestedWords(false, "libreboard", CapsMode.OFF)
+            assert(!exactPersonal.mWillAutoCorrect)
+            assertEquals("libreboard", exactPersonal.getWord(0))
+            assert("LibreBoard" in exactPersonal.mSuggestedWordInfoList.map { it.mWord })
+
+            val exactPersonalWithShift = getSuggestedWords(false, "libreboard", CapsMode.MANUAL)
+            assert(!exactPersonalWithShift.mWillAutoCorrect)
+            assert("LibreBoard" in exactPersonalWithShift.mSuggestedWordInfoList.map { it.mWord })
+        } finally {
+            PersonalizationRuntime.wipe(latinIME)
+        }
+    }
+
     private fun getSuggestedWords(gesture: Boolean, typedWord: String, capsMode: CapsMode): SuggestedWords {
         val wc = WordComposer()
         if (gesture) wc.setBatchInputPointers(InputPointers(1))
@@ -704,6 +733,8 @@ class ShadowFacilitator {
     fun getCurrentLocale(): Locale = currentTypingLocale
     @Implementation
     fun getMainLocale(): Locale = currentTypingLocale
+    @Implementation
+    fun getActiveLocales(): List<Locale> = listOf(currentTypingLocale)
     @Implementation
     fun hasAtLeastOneInitializedMainDictionary() = true // otherwise no autocorrect
     @Implementation
