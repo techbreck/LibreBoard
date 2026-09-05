@@ -14,7 +14,8 @@ entry and expanded-size limits, strict typed-settings parsing, preservation of e
 state, and process-death recovery on both sides of the restore commit point. Learned-data tests
 require idempotent removal without deleting clipboard, model, or explicit dictionary fixtures.
 `python3 -m unittest discover -s tools/tests` exercises the Phase 0 evaluator and release-evidence
-verifier. These tests run for every pull request.
+verifier. It also locks the ONNX Runtime source-build schema, ABI set, SDK levels, CPU-only flags,
+and strict reduced-operator configuration parser. These tests run for every pull request.
 
 ## Android instrumentation
 

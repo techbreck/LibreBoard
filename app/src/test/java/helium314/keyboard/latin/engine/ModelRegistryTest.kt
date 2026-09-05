@@ -36,6 +36,7 @@ class ModelRegistryTest {
             ApplicationProvider.getApplicationContext<Context>(),
             ModelValidationLimits(
                 allowedOperators = setOf("MatMul", "Add", "If", "com.microsoft::MatMulNBits"),
+                acceptedModelKinds = setOf(ModelKind.CONTEXT_RESCORER),
                 appVersionCode = 1,
             ),
             keyPair.public,
@@ -144,6 +145,8 @@ class ModelRegistryTest {
         val manifest = ModelManifest(
             schemaVersion = 1,
             engineAbi = 1,
+            modelKind = ModelKind.CONTEXT_RESCORER,
+            tensorAbi = "context-en-de-v1",
             locales = listOf("en-US", "de"),
             architecture = "fixture",
             parameterCount = 1,

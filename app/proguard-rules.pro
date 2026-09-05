@@ -3,6 +3,9 @@
     native <methods>;
 }
 
+# The optional local AAR is built from LibreBoard's pinned ONNX Runtime source submodule.
+-keep class ai.onnxruntime.** { *; }
+
 # Keep classes that are used as a parameter type of methods that are also marked as keep
 # to preserve changing those methods' signature.
 -keep class helium314.keyboard.latin.dictionary.Dictionary

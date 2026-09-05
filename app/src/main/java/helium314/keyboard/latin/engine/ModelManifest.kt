@@ -5,9 +5,20 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
+enum class ModelKind {
+    @SerialName("swipe-ctc")
+    SWIPE_CTC,
+
+    @SerialName("context-rescorer")
+    CONTEXT_RESCORER,
+}
+
+@Serializable
 data class ModelManifest(
     val schemaVersion: Int,
     val engineAbi: Int,
+    val modelKind: ModelKind,
+    val tensorAbi: String,
     val locales: List<String>,
     val architecture: String,
     val parameterCount: Long,
@@ -33,9 +44,15 @@ data class ModelValidationLimits(
     val supportedEngineAbi: Int = 1,
     val maximumBytes: Long = 24L * 1024 * 1024,
     val allowedOperators: Set<String>,
+    val acceptedModelKinds: Set<ModelKind>,
     val appVersionCode: Int,
     val maximumParameterCount: Long = 50_000_000,
     val allowedModelLicenses: Set<String> = setOf("Apache-2.0"),
+    val allowedTensorAbis: Map<ModelKind, Set<String>> = mapOf(
+        ModelKind.SWIPE_CTC to setOf("swipe-latin-v1"),
+        ModelKind.CONTEXT_RESCORER to setOf("context-en-de-v1"),
+    ),
+    val tokenizerRequiredFor: Set<ModelKind> = setOf(ModelKind.CONTEXT_RESCORER),
 )
 
 sealed interface ModelValidationResult {
@@ -50,12 +67,19 @@ object ModelManifestValidator {
         if (manifest.schemaVersion != limits.supportedSchemaVersion) return invalid("unsupported schema")
         if (manifest.engineAbi != limits.supportedEngineAbi) return invalid("incompatible engine ABI")
         if (manifest.minimumAppVersionCode > limits.appVersionCode) return invalid("app is too old")
+        if (manifest.modelKind !in limits.acceptedModelKinds) return invalid("model kind is not accepted")
+        if (manifest.tensorAbi !in limits.allowedTensorAbis[manifest.modelKind].orEmpty()) {
+            return invalid("unsupported model tensor ABI")
+        }
         if (manifest.architecture.isBlank() || manifest.architecture.length > 128) return invalid("invalid architecture")
         if (manifest.parameterCount <= 0 || manifest.parameterCount > limits.maximumParameterCount) return invalid("parameter count is outside allowed bounds")
         if (manifest.quantization.isBlank() || manifest.quantization.length > 32) return invalid("invalid quantization")
         if (modelBytes <= 0 || modelBytes > limits.maximumBytes) return invalid("model size is outside allowed bounds")
         if (!sha256.matches(manifest.modelSha256)) return invalid("invalid model hash")
         if (manifest.tokenizerSha256 != null && !sha256.matches(manifest.tokenizerSha256)) return invalid("invalid tokenizer hash")
+        if (manifest.modelKind in limits.tokenizerRequiredFor && manifest.tokenizerSha256 == null) {
+            return invalid("model tokenizer is required")
+        }
         if (manifest.requiredOnnxOperators.isEmpty()
             || manifest.requiredOnnxOperators.size > 256
             || manifest.requiredOnnxOperators.distinct().size != manifest.requiredOnnxOperators.size

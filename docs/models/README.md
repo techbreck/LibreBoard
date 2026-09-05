@@ -23,7 +23,9 @@ gesture emission while the lexicon retains the canonical surface form.
 
 No stock Maven AAR, ORT Extensions, NNAPI/Play delegate, GGUF runtime, downloaded executable, or
 arbitrary model signature is permitted. `ModelManifestValidator` is fail-closed on schema, engine ABI,
-app version, size, hashes, operator allowlist, locale list, license, and provenance.
+model kind, exact tensor ABI, app version, size, hashes, required tokenizer, operator allowlist,
+locale list, license, and provenance. A signed context model therefore cannot be loaded through the
+swipe tensor interface, or vice versa.
 
 Operator validation is independent of the signed declaration. Before native inference, LibreBoard
 maps the bounded ONNX protobuf, enumerates nodes in the inference graph, graph-valued attributes,

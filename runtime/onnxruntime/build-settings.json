@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "8c546c37b43caaca1fa25db430dab94b901cf277",
+  "configuration": "Release",
+  "abis": [
+    "armeabi-v7a",
+    "arm64-v8a",
+    "x86",
+    "x86_64"
+  ],
+  "androidMinSdk": 26,
+  "androidTargetSdk": 36,
+  "maximumNativeBytesPerAbi": 8388608,
+  "buildParameters": [
+    "--android",
+    "--parallel",
+    "--cmake_generator=Ninja",
+    "--build_java",
+    "--build_shared_lib",
+    "--disable_ml_ops",
+    "--enable_lto",
+    "--skip_tests"
+  ]
+}

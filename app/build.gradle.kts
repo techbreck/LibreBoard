@@ -1,5 +1,49 @@
 import com.android.build.api.variant.ApplicationVariant
+import groovy.json.JsonSlurper
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.security.MessageDigest
+
+val pinnedOnnxRuntimeCommit = "8c546c37b43caaca1fa25db430dab94b901cf277"
+
+private fun sha256(file: File): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+    file.inputStream().buffered().use { input ->
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            digest.update(buffer, 0, count)
+        }
+    }
+    return digest.digest().joinToString("") { "%02x".format(it) }
+}
+
+val onnxRuntimeAarProperty = providers.gradleProperty("libreboardOnnxRuntimeAar").orNull
+val onnxRuntimeManifestProperty = providers.gradleProperty("libreboardOnnxRuntimeManifest").orNull
+require((onnxRuntimeAarProperty == null) == (onnxRuntimeManifestProperty == null)) {
+    "The source-built ONNX Runtime AAR and build manifest must be supplied together"
+}
+val verifiedOnnxRuntimeAar = onnxRuntimeAarProperty?.let { aarPath ->
+    val aar = rootProject.file(aarPath)
+    val manifestFile = rootProject.file(requireNotNull(onnxRuntimeManifestProperty))
+    val runtimeSettings = rootProject.file("runtime/onnxruntime/build-settings.json")
+    require(aar.isFile && manifestFile.isFile) { "The source-built ONNX Runtime artifacts are missing" }
+    require(runtimeSettings.isFile) { "The audited ONNX Runtime build settings are missing" }
+    @Suppress("UNCHECKED_CAST")
+    val manifest = JsonSlurper().parse(manifestFile) as? Map<String, Any?>
+        ?: error("The ONNX Runtime build manifest is invalid")
+    require(manifest["schemaVersion"] == 1) { "Unsupported ONNX Runtime build manifest" }
+    require(manifest["sourceCommit"] == pinnedOnnxRuntimeCommit) {
+        "The ONNX Runtime AAR was built from an unapproved source commit"
+    }
+    require(manifest["settingsSha256"] == sha256(runtimeSettings)) {
+        "The ONNX Runtime AAR was built with different settings"
+    }
+    require(manifest["aarSha256"] == sha256(aar)) {
+        "The ONNX Runtime AAR hash does not match its build manifest"
+    }
+    aar
+}
 
 plugins {
     id("com.android.application")
@@ -18,6 +62,7 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0-alpha01"
+        buildConfigField("boolean", "LIBREBOARD_ONNX_RUNTIME_PACKAGED", (verifiedOnnxRuntimeAar != null).toString())
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             abiFilters.clear()
@@ -121,6 +166,8 @@ android {
 }
 
 dependencies {
+    verifiedOnnxRuntimeAar?.let { implementation(files(it)) }
+
     // androidx
     implementation("androidx.core:core-ktx:1.17.0") // 1.18.0 requires minSdk 23
     implementation("androidx.recyclerview:recyclerview:1.4.0")

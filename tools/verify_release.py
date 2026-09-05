@@ -43,8 +43,9 @@ ALLOWED_NATIVE_LIBRARIES = {
     "libjni_latinime.so",
     # Apache-2.0 AndroidX dependency, pinned by the Compose BOM and verified for 16 KiB pages.
     "libandroidx.graphics.path.so",
-    # Reserved for the pinned, reduced-operator source build after its model gate passes.
-    "liblibreboard_onnxruntime.so",
+    # Produced only by tools/build_onnxruntime_android.py from the pinned source submodule.
+    "libonnxruntime.so",
+    "libonnxruntime4j_jni.so",
 }
 BACKUP_DOMAINS = {"root", "file", "database", "sharedpref", "external"}
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -94,6 +95,7 @@ PHASE0_ENVIRONMENTS = {
     "grapheneos_hardware",
     "low_ram_emulator",
 }
+ONNXRUNTIME_COMMIT = "8c546c37b43caaca1fa25db430dab94b901cf277"
 
 
 def fail(errors: list[str], message: str) -> None:
@@ -237,6 +239,40 @@ def source_checks(errors: list[str]) -> None:
     for marker in FORBIDDEN_DEPENDENCY_MARKERS:
         if marker in build_text:
             fail(errors, f"forbidden network/proprietary dependency marker: {marker}")
+
+    runtime_settings = read_json_object(
+        errors,
+        ROOT / "runtime/onnxruntime/build-settings.json",
+        "ONNX Runtime build settings",
+    )
+    if runtime_settings is not None and runtime_settings.get("sourceCommit") != ONNXRUNTIME_COMMIT:
+        fail(errors, "ONNX Runtime build settings do not pin the approved commit")
+    gitmodules = ROOT / ".gitmodules"
+    if not gitmodules.is_file():
+        fail(errors, "pinned ONNX Runtime source submodule is missing")
+    else:
+        module_text = gitmodules.read_text(encoding="utf-8")
+        if ("path = third_party/onnxruntime" not in module_text
+                or "url = https://github.com/microsoft/onnxruntime.git" not in module_text):
+            fail(errors, "ONNX Runtime submodule declaration is not approved")
+    if (ROOT / ".git").exists():
+        submodule_entry = run([
+            "git", "-C", str(ROOT), "ls-files", "--stage", "--", "third_party/onnxruntime",
+        ])
+        expected = f"160000 {ONNXRUNTIME_COMMIT} 0\tthird_party/onnxruntime"
+        if submodule_entry.returncode != 0 or submodule_entry.stdout.strip() != expected:
+            fail(errors, "ONNX Runtime gitlink does not pin the approved commit")
+
+    committed_runtime_binaries = [
+        path for path in ROOT.rglob("*")
+        if path.is_file()
+        and "third_party" not in path.relative_to(ROOT).parts
+        and path.suffix.lower() in {".aar", ".so"}
+        and "onnxruntime" in path.name.lower()
+        and "build" not in path.relative_to(ROOT).parts
+    ]
+    if committed_runtime_binaries:
+        fail(errors, "generated ONNX Runtime binaries must not be committed as source")
 
 
 def run(command: list[str]) -> subprocess.CompletedProcess[str]:
@@ -533,6 +569,19 @@ def apk_checks(errors: list[str], apk: pathlib.Path) -> None:
                     fail(errors, f"APK DEX contains forbidden dependency marker {marker}: {dex_entry}")
 
         native_entries = [name for name in archive.namelist() if name.endswith(".so")]
+        ort_names = {"libonnxruntime.so", "libonnxruntime4j_jni.so"}
+        ort_by_abi: dict[str, set[str]] = {}
+        for entry in native_entries:
+            path = pathlib.PurePosixPath(entry)
+            if path.name not in ort_names:
+                continue
+            if len(path.parts) < 3:
+                fail(errors, f"ONNX Runtime library has an invalid APK path: {entry}")
+                continue
+            ort_by_abi.setdefault(path.parts[-2], set()).add(path.name)
+        for abi, libraries in ort_by_abi.items():
+            if libraries != ort_names:
+                fail(errors, f"ONNX Runtime native pair is incomplete for {abi}")
         for entry in native_entries:
             name = pathlib.PurePosixPath(entry).name
             if name not in ALLOWED_NATIVE_LIBRARIES:
