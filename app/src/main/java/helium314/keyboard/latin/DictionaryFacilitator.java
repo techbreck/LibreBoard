@@ -153,6 +153,9 @@ public interface DictionaryFacilitator {
 
     void clearUserHistoryDictionary(final Context context);
 
+    /** Clears all in-memory learned dictionaries, rejection state, and related read caches. */
+    void clearLearnedData(final Context context);
+
     String dump(final Context context);
 
     void dumpDictionaryForDebug(final String dictName);

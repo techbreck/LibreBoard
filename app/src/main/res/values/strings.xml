@@ -100,6 +100,11 @@
     <string name="use_personalized_dicts">Personalized suggestions</string>
     <!-- Dialog message informing that dictionaries will be deleted on changing the setting -->
     <string name="disable_personalized_dicts_message">Warning: Disabling this setting will clear learned data</string>
+    <string name="delete_learned_data">Delete learned data</string>
+    <string name="delete_learned_data_summary">Remove personal words, phrases, correction rejections, and learning caches from this device</string>
+    <string name="delete_learned_data_confirmation">Permanently delete all locally learned typing data? Personal dictionaries, clipboard history, and installed model packs will remain.</string>
+    <string name="learned_data_deleted">Learned data deleted</string>
+    <string name="learned_data_delete_failed">Some learned data could not be deleted</string>
     <!-- Option name for adding learned words to personal dictionary -->
     <string name="add_to_personal_dictionary">Add words to personal dictionary</string>
     <!-- Description for option to add learned words to system-wide user dictionary -->

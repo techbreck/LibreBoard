@@ -4,6 +4,9 @@ package helium314.keyboard.settings.screens
 import android.Manifest
 import android.content.Context
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.Surface
@@ -23,6 +26,8 @@ import helium314.keyboard.latin.R
 import helium314.keyboard.latin.permissions.PermissionsUtil
 import helium314.keyboard.latin.settings.Defaults
 import helium314.keyboard.latin.settings.Settings
+import helium314.keyboard.latin.engine.personal.LearnedDataWiper
+import helium314.keyboard.latin.utils.ExecutorUtils
 import helium314.keyboard.latin.utils.JniUtils
 import helium314.keyboard.latin.utils.Log
 import helium314.keyboard.latin.utils.ToolbarMode
@@ -83,6 +88,7 @@ fun TextCorrectionScreen(
         if (suggestionsEnabled || autocorrectEnabled) Settings.PREF_SUGGEST_EMOJIS else null,
         if (suggestionsEnabled || autocorrectEnabled) Settings.PREF_INLINE_EMOJI_SEARCH else null,
         Settings.PREF_KEY_USE_PERSONALIZED_DICTS,
+        SettingsWithoutKey.DELETE_LEARNED_DATA,
         Settings.PREF_BIGRAM_PREDICTIONS,
         Settings.PREF_SUGGEST_PUNCTUATION,
         if (prefs.getBoolean(Settings.PREF_SUGGEST_PUNCTUATION, Defaults.PREF_SUGGEST_PUNCTUATION))
@@ -201,16 +207,67 @@ fun createCorrectionSettings(context: Context) = listOf(
             }
         )
         if (showConfirmDialog) {
-            val prefs = LocalContext.current.prefs()
+            val ctx = LocalContext.current
+            val prefs = ctx.prefs()
             ConfirmationDialog(
                 onDismissRequest = { showConfirmDialog = false },
                 onConfirmed = {
                     prefs.edit { putBoolean(setting.key, false) }
+                    ExecutorUtils.getBackgroundExecutor(ExecutorUtils.KEYBOARD).execute {
+                        runCatching { LearnedDataWiper.wipe(ctx) }.onFailure { failure ->
+                            Log.w("TextCorrectionScreen", "could not delete learned data", failure)
+                            Handler(Looper.getMainLooper()).post {
+                                Toast.makeText(ctx, R.string.learned_data_delete_failed, Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }
                 },
                 content = { Text(stringResource(R.string.disable_personalized_dicts_message)) }
             )
         }
 
+    },
+    Setting(
+        context,
+        SettingsWithoutKey.DELETE_LEARNED_DATA,
+        R.string.delete_learned_data,
+        R.string.delete_learned_data_summary,
+    ) { setting ->
+        val ctx = LocalContext.current
+        var showConfirmDialog by rememberSaveable { mutableStateOf(false) }
+        var wipeInProgress by remember { mutableStateOf(false) }
+        Preference(
+            name = setting.title,
+            description = setting.description,
+            onClick = { if (!wipeInProgress) showConfirmDialog = true },
+        )
+        if (showConfirmDialog) {
+            ConfirmationDialog(
+                onDismissRequest = { showConfirmDialog = false },
+                onConfirmed = {
+                    showConfirmDialog = false
+                    wipeInProgress = true
+                    ExecutorUtils.getBackgroundExecutor(ExecutorUtils.KEYBOARD).execute {
+                        val result = runCatching { LearnedDataWiper.wipe(ctx) }
+                        result.exceptionOrNull()?.let {
+                            Log.w("TextCorrectionScreen", "could not delete learned data", it)
+                        }
+                        Handler(Looper.getMainLooper()).post {
+                            wipeInProgress = false
+                            Toast.makeText(
+                                ctx,
+                                if (result.isSuccess) R.string.learned_data_deleted
+                                else R.string.learned_data_delete_failed,
+                                Toast.LENGTH_LONG,
+                            ).show()
+                        }
+                    }
+                },
+                title = { Text(stringResource(R.string.delete_learned_data)) },
+                content = { Text(stringResource(R.string.delete_learned_data_confirmation)) },
+                confirmButtonText = stringResource(R.string.delete_learned_data),
+            )
+        }
     },
     Setting(context, Settings.PREF_BIGRAM_PREDICTIONS,
         R.string.bigram_prediction, R.string.bigram_prediction_summary

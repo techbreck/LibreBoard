@@ -80,6 +80,7 @@ import helium314.keyboard.latin.utils.KtxKt;
 import helium314.keyboard.latin.utils.LeakGuardHandlerWrapper;
 import helium314.keyboard.latin.utils.Log;
 import helium314.keyboard.latin.engine.personal.PersonalizationRuntime;
+import helium314.keyboard.latin.engine.personal.LearnedDataWiper;
 import helium314.keyboard.latin.utils.RecapitalizeMode;
 import helium314.keyboard.latin.utils.StatsUtils;
 import helium314.keyboard.latin.utils.StatsUtilsManager;
@@ -157,6 +158,16 @@ public class LatinIME extends InputMethodService implements
 
     private final BroadcastReceiver mDictionaryDumpBroadcastReceiver =
             new DictionaryDumpBroadcastReceiver(this);
+
+    private final BroadcastReceiver mLearnedDataWipeReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(final Context context, final Intent intent) {
+            if (!LearnedDataWiper.ACTION_LEARNED_DATA_WIPED.equals(intent.getAction())) return;
+            mDictionaryFacilitator.clearLearnedData(LatinIME.this);
+            mInputLogic.mSuggest.clearNextWordSuggestionsCache();
+            PersonalizationRuntime.clearSession();
+        }
+    };
 
     FoldableUtils.FoldableObserver foldableObserver;
 
@@ -573,6 +584,11 @@ public class LatinIME extends InputMethodService implements
         dictDumpFilter.addAction(DictionaryDumpBroadcastReceiver.DICTIONARY_DUMP_INTENT_ACTION);
         ContextCompat.registerReceiver(this, mDictionaryDumpBroadcastReceiver, dictDumpFilter, ContextCompat.RECEIVER_NOT_EXPORTED);
 
+        final IntentFilter learnedDataWipeFilter = new IntentFilter();
+        learnedDataWipeFilter.addAction(LearnedDataWiper.ACTION_LEARNED_DATA_WIPED);
+        ContextCompat.registerReceiver(this, mLearnedDataWipeReceiver, learnedDataWipeFilter,
+                ContextCompat.RECEIVER_NOT_EXPORTED);
+
         final IntentFilter restartAfterUnlockFilter = new IntentFilter();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N)
             restartAfterUnlockFilter.addAction(Intent.ACTION_USER_UNLOCKED);
@@ -699,6 +715,7 @@ public class LatinIME extends InputMethodService implements
         unregisterReceiver(mRingerModeChangeReceiver);
         unregisterReceiver(mDictionaryPackInstallReceiver);
         unregisterReceiver(mDictionaryDumpBroadcastReceiver);
+        unregisterReceiver(mLearnedDataWipeReceiver);
         unregisterReceiver(mRestartAfterDeviceUnlockReceiver);
         mStatsUtilsManager.onDestroy(this /* context */);
         super.onDestroy();

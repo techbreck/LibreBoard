@@ -12,6 +12,7 @@ import helium314.keyboard.latin.database.ClipboardDao
 import helium314.keyboard.latin.database.ClipboardHistoryPolicy
 import helium314.keyboard.keyboard.clipboard.ClipboardSearchActivity
 import helium314.keyboard.latin.engine.personal.PersonalizationRuntime
+import helium314.keyboard.latin.engine.personal.LearnedDataWiper
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -44,6 +45,10 @@ class OnDevicePrivacyInstrumentedTest {
     fun tearDown() {
         PersonalizationRuntime.wipe(context)
         ClipboardDao.getInstance(context)?.clear()
+        context.filesDir.resolve("models/active/fixture.onnx").delete()
+        context.filesDir.resolve("models/active").delete()
+        context.filesDir.resolve("models").delete()
+        context.filesDir.resolve("clipboard/fixture").delete()
     }
 
     @Suppress("DEPRECATION")
@@ -214,6 +219,40 @@ class OnDevicePrivacyInstrumentedTest {
             setOf("GrapheneOS release checklist", "expired-but-pinned"),
             dao.getAll().mapNotNull { it.text }.toSet(),
         )
+    }
+
+    @Test
+    fun explicitLearnedDataWipeClearsCeRowsAndLegacyFilesWithoutTouchingModelsOrClipboard() {
+        PersonalizationRuntime.observeCommit(
+            context,
+            editor(InputType.TYPE_CLASS_TEXT),
+            incognito = false,
+            committedWord = "DeleteMeOnDevice",
+            languageTag = "en-US",
+            manualSelection = true,
+        )
+        val blacklist = context.filesDir.resolve("blacklists/en-US.txt").apply {
+            parentFile!!.mkdirs()
+            writeText("rejected\n")
+        }
+        val model = context.filesDir.resolve("models/active/fixture.onnx").apply {
+            parentFile!!.mkdirs()
+            writeText("model")
+        }
+        val clipboardFile = context.filesDir.resolve("clipboard/fixture").apply {
+            parentFile!!.mkdirs()
+            writeText("clip")
+        }
+
+        LearnedDataWiper.wipe(context)
+
+        val exported = requireNotNull(PersonalizationRuntime.export(context)).decodeToString()
+        assertFalse(exported.contains("DeleteMeOnDevice"))
+        assertFalse(blacklist.exists())
+        assertTrue(model.exists())
+        assertTrue(clipboardFile.exists())
+        model.parentFile?.parentFile?.deleteRecursively()
+        clipboardFile.parentFile?.deleteRecursively()
     }
 
     private fun assertFullyRestricted(editorInfo: EditorInfo) {

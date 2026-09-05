@@ -596,6 +596,13 @@ class DictionaryFacilitatorImpl : DictionaryFacilitator {
         }
     }
 
+    override fun clearLearnedData(context: Context) {
+        clearUserHistoryDictionary(context)
+        dictionaryGroups.forEach(DictionaryGroup::clearBlacklist)
+        mValidSpellingWordReadCache?.evictAll()
+        mValidSpellingWordWriteCache?.evictAll()
+    }
+
     override fun localesAndConfidences(): String? {
         if (dictionaryGroups.size < 2) return null
         return dictionaryGroups.joinToString(", ") { "${it.locale} ${it.confidence}" }
@@ -794,10 +801,11 @@ private class DictionaryGroup(
         else null
     }
 
+    private val blacklistLock = Any()
     private val blacklist = hashSetOf<String>().apply {
         if (blacklistFile?.isFile != true) return@apply
         scope.launch {
-            synchronized(this) {
+            synchronized(blacklistLock) {
                 try {
                     addAll(blacklistFile.readLines())
                 } catch (e: IOException) {
@@ -807,13 +815,14 @@ private class DictionaryGroup(
         }
     }
 
-    fun isBlacklisted(word: String) = blacklist.contains(word)
+    fun isBlacklisted(word: String) = synchronized(blacklistLock) { blacklist.contains(word) }
 
     fun addToBlacklist(word: String) {
-        if (!blacklist.add(word) || blacklistFile == null) return
+        if (!synchronized(blacklistLock) { blacklist.add(word) } || blacklistFile == null) return
         scope.launch {
-            synchronized(this) {
+            synchronized(blacklistLock) {
                 try {
+                    if (!blacklist.contains(word)) return@synchronized
                     if (blacklistFile.isDirectory) blacklistFile.delete()
                     blacklistFile.appendText("$word\n")
                 } catch (e: IOException) {
@@ -824,9 +833,9 @@ private class DictionaryGroup(
     }
 
     fun removeFromBlacklist(word: String) {
-        if (!blacklist.remove(word) || blacklistFile == null) return
+        if (!synchronized(blacklistLock) { blacklist.remove(word) } || blacklistFile == null) return
         scope.launch {
-            synchronized(this) {
+            synchronized(blacklistLock) {
                 try {
                     val newLines = blacklistFile.readLines().filterNot { it == word }
                     blacklistFile.writeText(newLines.joinToString("\n"))
@@ -834,6 +843,13 @@ private class DictionaryGroup(
                     Log.e(TAG, "Exception while trying to remove word \"$word\" to blacklist ${blacklistFile.name}", e)
                 }
             }
+        }
+    }
+
+    fun clearBlacklist() = synchronized(blacklistLock) {
+        blacklist.clear()
+        require(blacklistFile?.let { !it.exists() || it.delete() } != false) {
+            "could not clear rejection blacklist"
         }
     }
 

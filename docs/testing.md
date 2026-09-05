@@ -7,8 +7,12 @@ correct, fast, and compatible with GrapheneOS.
 
 `./gradlew testRunTestsUnitTest` exercises engine contracts, field policy, candidate fusion,
 language lock, geometric swipe, model-manifest and ONNX validation, persistence, deadlines, and
-stale-result handling. `python3 -m unittest discover -s tools/tests` exercises the Phase 0 evaluator
-and release-evidence verifier. These tests run for every pull request.
+stale-result handling. Backup tests additionally exercise ZIP path traversal, canonical aliases,
+entry and expanded-size limits, strict typed-settings parsing, preservation of excluded private
+state, and process-death recovery on both sides of the restore commit point. Learned-data tests
+require idempotent removal without deleting clipboard, model, or explicit dictionary fixtures.
+`python3 -m unittest discover -s tools/tests` exercises the Phase 0 evaluator and release-evidence
+verifier. These tests run for every pull request.
 
 ## Android instrumentation
 
@@ -20,10 +24,12 @@ The suite checks the installed package rather than only source XML: merged permi
 cleartext flags, the IME service permission/direct-boot flag, the non-exported clipboard-search
 activity, the Android `EditorInfo` policy matrix, and real credential-encrypted SQLite behavior for
 personalization plus clipboard search, storage limits, pruning, and stale-id handling.
+The device suite also verifies that an explicit wipe clears real credential-encrypted personal rows
+and legacy rejection files while leaving installed-model and clipboard fixtures intact.
 
 The connected suite must expand with editor fixtures for composing reconciliation, cursor movement,
 correction rejection, WebView, terminal single-commit behavior, model failure, clipboard expiry,
-backup/wipe, the clipboard-search interaction flow, language lock, and latency collection as those
+the complete SAF backup/restore UI flow, the clipboard-search interaction flow, language lock, and latency collection as those
 paths land.
 
 ## Physical GrapheneOS acceptance

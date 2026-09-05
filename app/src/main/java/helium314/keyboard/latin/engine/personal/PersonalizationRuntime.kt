@@ -153,6 +153,15 @@ object PersonalizationRuntime {
         clearSession()
     }
 
+    /** Explicit user-initiated deletion must fail closed if CE storage cannot be opened. */
+    @JvmStatic
+    fun wipeRequired(context: Context) {
+        val personalStore = open(context)
+            ?: throw IllegalStateException("Credential-encrypted personalization storage is unavailable")
+        personalStore.wipe()
+        clearSession()
+    }
+
     @JvmStatic
     fun export(context: Context): ByteArray? = open(context)?.export()
 

@@ -69,6 +69,7 @@ private fun createSettings(context: Context) = createAboutSettings(context) + cr
 
 object SettingsWithoutKey {
     const val EDIT_PERSONAL_DICTIONARY = "edit_personal_dictionary"
+    const val DELETE_LEARNED_DATA = "delete_learned_data"
     const val APP = "app"
     const val VERSION = "version"
     const val LICENSE = "license"

@@ -133,6 +133,8 @@ class SingleDictionaryFacilitator(private val dict: Dictionary) : DictionaryFaci
 
     override fun clearUserHistoryDictionary(context: Context) {}
 
+    override fun clearLearnedData(context: Context) {}
+
     override fun localesAndConfidences(): String? = null
 
     override fun dumpDictionaryForDebug(dictName: String) {}

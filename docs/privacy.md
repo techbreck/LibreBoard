@@ -37,7 +37,12 @@ tests count every underlying surrounding-text call and require zero reads for ea
   the `NO_LEARNING` field policy, so query text is neither persisted nor exposed to suggestion,
   context, capture, or personalization paths.
 - Private stores return unavailable before first unlock; the static keyboard still types.
-- `android:allowBackup` is false. Explicit SAF export excludes clipboard unless the user selects it.
+- `android:allowBackup` is false. Explicit SAF export currently excludes clipboard by design.
+- Backup archives have strict entry-count, per-entry, and total expanded-size limits. Restore rejects
+  traversal, absolute paths, duplicate targets, malformed typed settings, and personal data without
+  a LibreBoard schema manifest. A crash journal rolls allowlisted file replacement back before
+  commit or finishes deleting obsolete rollback copies after commit. Clipboard attachments, model
+  packs, and other files outside the documented archive allowlist survive a restore.
 - Personal facts are normalized tokens, preferred token casing, 1–4-token n-grams, counts,
   timestamps, language tags, and one-way context fingerprints. Surrounding paragraphs and
   application package names are forbidden. Personal candidates join the live tap/prediction slate
@@ -45,8 +50,12 @@ tests count every underlying surrounding-text call and require zero reads for ea
   personal match vetoes autocorrection.
 
 Incognito clears process-local rejection/model context, suppresses suggestions and clipboard capture,
-and prevents all personal writes. Existing learned data is not silently erased. The learned-data wipe
-uses one database transaction and also clears process caches.
+and prevents all personal writes. Existing learned data is not silently erased. The explicit,
+searchable learned-data action clears personal tables in one database transaction, removes legacy
+history, rejection files, dedicated learning caches/adapters, and learned files inside interrupted
+restore copies, then notifies the live IME through a non-exported receiver so in-memory dictionaries
+and next-word caches are cleared. Manually managed personal dictionaries, clipboard history, and
+installed static models are outside that wipe boundary.
 
 ## Automated guard
 
