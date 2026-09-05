@@ -168,12 +168,22 @@ def build_environment(build_root: pathlib.Path) -> dict[str, str]:
     return env
 
 
+def resolved_build_parameters(settings: dict, jobs: int) -> list[str]:
+    if not 1 <= jobs <= 64:
+        raise BuildConfigurationError("runtime build jobs must be between 1 and 64")
+    return [
+        f"--parallel={jobs}" if value == "--parallel" else value
+        for value in settings["buildParameters"]
+    ]
+
+
 def build_aar(
     settings: dict,
     sdk: pathlib.Path,
     ndk: pathlib.Path,
     ops_config: pathlib.Path,
     build_root: pathlib.Path,
+    jobs: int,
 ) -> pathlib.Path:
     intermediates = build_root / "intermediates"
     jni_root = intermediates / "jnilibs" / settings["configuration"]
@@ -185,10 +195,11 @@ def build_aar(
 
     for abi in settings["abis"]:
         abi_build = intermediates / abi
+        parameters = resolved_build_parameters(settings, jobs)
         command = [
             sys.executable,
             str(SOURCE / "tools" / "ci_build" / "build.py"),
-            *settings["buildParameters"],
+            *parameters,
             f"--config={settings['configuration']}",
             f"--android_abi={abi}",
             f"--android_api={settings['androidMinSdk']}",
@@ -293,8 +304,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sdk", type=pathlib.Path, default=os.environ.get("ANDROID_HOME"))
     parser.add_argument("--ndk", type=pathlib.Path, default=os.environ.get("ANDROID_NDK_HOME"))
     parser.add_argument("--build-root", type=pathlib.Path, default=DEFAULT_BUILD_ROOT)
+    parser.add_argument("--jobs", type=int, default=4)
     parser.add_argument("--check-only", action="store_true")
-    return parser.parse_args()
+    args = parser.parse_args()
+    if not 1 <= args.jobs <= 64:
+        parser.error("jobs must be between 1 and 64")
+    return args
 
 
 def main() -> int:
@@ -316,7 +331,7 @@ def main() -> int:
             return 0
         build_root = args.build_root.resolve()
         build_root.mkdir(parents=True, exist_ok=True)
-        aar = build_aar(settings, sdk, ndk, ops_config, build_root)
+        aar = build_aar(settings, sdk, ndk, ops_config, build_root, args.jobs)
         manifest = verify_aar(aar, settings, readobj, ops_config, build_root)
         print(f"Built {aar}")
         print(f"Verified {manifest}")

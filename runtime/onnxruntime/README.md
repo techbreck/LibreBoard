@@ -15,8 +15,12 @@ with:
 git submodule update --init --recursive third_party/onnxruntime
 python3 tools/assemble_runtime_operator_config.py
 python3 tools/build_onnxruntime_android.py \
-  --ops-config build/model-export/onnxruntime/required_operators.config
+  --ops-config build/model-export/onnxruntime/required_operators.config \
+  --jobs 4
 ```
+
+`--jobs` bounds native compilation parallelism without changing the audited build configuration or
+artifact contract. Lower it on a machine concurrently running model training.
 
 The builder verifies the source commit, clean source tree, initialized nested submodules, exact build
 settings, NDK r28, reduced-operator configuration, native size ceiling, and 16 KiB ELF alignment. It

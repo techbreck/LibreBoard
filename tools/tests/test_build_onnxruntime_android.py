@@ -43,6 +43,14 @@ class OnnxRuntimeBuildTest(unittest.TestCase):
             with self.assertRaises(builder.BuildConfigurationError):
                 builder.validate_ops_config(path)
 
+    def test_parallel_flag_is_audited_and_accepts_an_explicit_bound(self):
+        settings = builder.load_settings()
+        parameters = builder.resolved_build_parameters(settings, 2)
+        self.assertIn("--parallel=2", parameters)
+        self.assertNotIn("--parallel", parameters)
+        with self.assertRaises(builder.BuildConfigurationError):
+            builder.resolved_build_parameters(settings, 0)
+
             path.write_text("# no operators\n", encoding="utf-8")
             with self.assertRaises(builder.BuildConfigurationError):
                 builder.validate_ops_config(path)
