@@ -33,6 +33,7 @@ Install Android SDK 36, NDK `28.0.13004108`, JDK 17, and set `sdk.dir` in `local
 
 ```sh
 ./gradlew testRunTestsUnitTest
+./gradlew assembleDebugNoMinifyAndroidTest --max-workers=1
 ./gradlew assembleDebug
 python3 tools/verify_release.py --source --apk app/build/outputs/apk/debug/LibreBoard_0.1.0-alpha01-debug.apk
 ```
@@ -44,6 +45,7 @@ python3 tools/verify_release.py --source --apk app/build/outputs/apk/debug/Libre
 - [GrapheneOS compatibility gate](docs/grapheneos.md)
 - [GrapheneOS physical-device record](docs/release/grapheneos-device-record.md)
 - [GrapheneOS machine-verifiable evidence](docs/release/grapheneos-evidence-schema.md)
+- [Testing and release evidence](docs/testing.md)
 - [Model and runtime policy](docs/models/README.md)
 - [Phase 0 evaluation gate](docs/phase-0.md)
 - [Phase 0 measurement schema](docs/phase-0-dataset-schema.md)

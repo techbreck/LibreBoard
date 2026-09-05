@@ -10,6 +10,7 @@ plugins {
 
 android {
     compileSdk = 36
+    testBuildType = "debugNoMinify"
 
     defaultConfig {
         applicationId = "org.libreboard.keyboard"
@@ -17,6 +18,7 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0-alpha01"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             abiFilters.clear()
             abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64"))
@@ -148,4 +150,7 @@ dependencies {
     testImplementation("org.robolectric:robolectric:4.16.1")
     testImplementation("androidx.test:runner:1.7.0")
     testImplementation("androidx.test:core:1.7.0")
+    androidTestImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("androidx.test:core:1.7.0")
 }

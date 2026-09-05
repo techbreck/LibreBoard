@@ -35,7 +35,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build with Gradle
-        run: ./gradlew testRunTestsUnitTest
+        run: ./gradlew testRunTestsUnitTest assembleDebugNoMinifyAndroidTest --max-workers=1
 
       - name: Test Phase 0 evaluation gate
         run: python3 -m unittest discover -s tools/tests
