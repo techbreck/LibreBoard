@@ -62,6 +62,17 @@ class ModelRegistryTest {
     }
 
     @Test
+    fun explicitRuntimeRejectionRestoresTheLastKnownGoodModel() {
+        val first = model("MatMul", marker = "first")
+        val second = model("MatMul", marker = "second")
+        registry.activate(ByteArrayInputStream(archive(first)))
+        registry.activate(ByteArrayInputStream(archive(second)))
+
+        assertArrayEquals(first, registry.rollbackActive()!!.model.readBytes())
+        assertNull(registry.rollbackActive())
+    }
+
+    @Test
     fun rejectsTamperedModelWithoutReplacingActiveModel() {
         val original = model("MatMul", marker = "trusted")
         registry.activate(ByteArrayInputStream(archive(original)))

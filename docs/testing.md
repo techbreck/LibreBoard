@@ -21,7 +21,10 @@ restricted-field bypass, and safety-veto precedence. Swipe live-path tests addit
 revision-safe static lexicon caching, CE-only personal vocabulary gates, negative-score multilingual
 locking, CTC/geometric provenance union, missing-model fallback, non-cooperative timeout circuit
 breaking, delayed native-owner cleanup, and batch single-commit metadata. Registry tests prove
-swipe/context activation and rollback slots cannot collide. Retained input-logic tests exercise
+swipe/context activation and rollback slots cannot collide, and explicit runtime rejection restores
+the last-known-good model. Runtime-bootstrap tests also require core-only manual import to fail before
+opening an untrusted URI and bundled activation to occur only for a missing model or app update.
+Retained input-logic tests exercise
 terminal policy through the editor adapter: tap input creates no composing span, swipe commits
 directly, and duplicate asynchronous tail delivery cannot commit the same gesture twice. Lexical
 tests require contractions,

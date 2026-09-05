@@ -125,8 +125,11 @@ optional `tokenizer.json`, and `signature.der`. `ModelRegistry` streams the blob
 enforces size and entry allowlists, verifies SHA-256 and the injected project RSA key, atomically
 activates it, and retains one last-known-good version for corruption rollback. Swipe and context
 models own separate CE activation/rollback slots, so installing or wiping one cannot replace the
-other. No ZIP entry is ever loaded as code. A production signing public key and accepted model still
-need to pass the Phase 0 gate.
+other. The searchable text-correction setting imports a user-selected archive through the Storage
+Access Framework, copies it to bounded CE staging, validates and opens it off the UI thread, and
+restores the previous model if its runtime tensor contract is incompatible. No ZIP entry is ever
+loaded as code. A production signing public key and accepted model still need to pass the Phase 0
+gate.
 
 `tools/package_model.py` accepts only a hash-matched release export and a private RSA key of at least
 3072 bits whose file is inaccessible to group/other users. It signs the exact manifest twice to
@@ -164,7 +167,9 @@ background bootstrap activates the swipe archive in credential-encrypted storage
 session, and installs it into the live CTC/geometric union. It also discovers the official context
 provider and installs its accepted model when available. Core-only, Direct Boot, low-RAM, missing,
 corrupt, incompatible, and slow-model states continue through classic tap and geometric swipe paths;
-model setup never runs on the input UI thread.
+model setup never runs on the input UI thread. The bundled swipe archive is activated once per app
+version; a manually imported accepted model is therefore not overwritten on every IME process start,
+while an app update can intentionally advance the bundled model and rolls back if opening it fails.
 
 When the verified source-built runtime is packaged, LibreBoard opens the model by local filesystem
 path and validates the runtime-reported input/output names, element types, and static or required

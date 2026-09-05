@@ -3,8 +3,10 @@ package helium314.keyboard.latin.engine.runtime
 
 import android.app.ActivityManager
 import android.content.Context
+import android.net.Uri
 import helium314.keyboard.latin.BuildConfig
 import helium314.keyboard.latin.engine.ModelKind
+import helium314.keyboard.latin.engine.ModelManifest
 import helium314.keyboard.latin.engine.ModelRegistry
 import helium314.keyboard.latin.engine.ModelValidationLimits
 import helium314.keyboard.latin.engine.OfficialContextModelPackImporter
@@ -14,6 +16,10 @@ import helium314.keyboard.latin.engine.onnx.InstalledNeuralModelLoader
 import helium314.keyboard.latin.engine.onnx.LoadedSwipeModel
 import helium314.keyboard.latin.privacy.CredentialEncryptedStorage
 import helium314.keyboard.latin.utils.Log
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.Json
+import java.io.File
+import java.io.FileOutputStream
 import java.io.InputStream
 import java.security.KeyFactory
 import java.security.PublicKey
@@ -21,6 +27,14 @@ import java.security.interfaces.RSAPublicKey
 import java.security.spec.X509EncodedKeySpec
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.zip.ZipFile
+
+internal sealed interface SignedModelImportResult {
+    data class Installed(val modelKind: ModelKind) : SignedModelImportResult
+    data object Locked : SignedModelImportResult
+    data object Unavailable : SignedModelImportResult
+    data object Rejected : SignedModelImportResult
+}
 
 /** Fixed, auditable acceptance policy shared by the bundled swipe and official context models. */
 internal object OfficialModelPolicy {
@@ -68,6 +82,12 @@ internal object OfficialModelPolicy {
         return parsePublicKey(output.toByteArray())
     }
 
+    fun shouldActivateBundledSwipe(
+        installedBundleVersion: Int,
+        appVersionCode: Int,
+        hasActiveModel: Boolean,
+    ): Boolean = !hasActiveModel || installedBundleVersion != appVersionCode
+
     private const val MAXIMUM_PUBLIC_KEY_BYTES = 8 * 1024
     private const val MINIMUM_RSA_BITS = 3072
 }
@@ -87,6 +107,18 @@ internal object InstalledModelRuntime {
     private var swipeModel: LoadedSwipeModel? = null
     private var swipeLexicon: SwipeLexicon? = null
     private var contextReady = false
+
+    fun installFromUri(
+        context: Context,
+        uri: Uri,
+        onComplete: (SignedModelImportResult) -> Unit,
+    ) {
+        val applicationContext = context.applicationContext
+        executor.execute {
+            val result = installFromUriBlocking(applicationContext, uri)
+            runCatching { onComplete(result) }
+        }
+    }
 
     fun ensureLoaded(context: Context, lexicon: SwipeLexicon) {
         if (!BuildConfig.LIBREBOARD_ONNX_RUNTIME_PACKAGED || !BuildConfig.LIBREBOARD_SIGNED_MODELS_PACKAGED) {
@@ -116,12 +148,8 @@ internal object InstalledModelRuntime {
     }
 
     private fun refresh(context: Context, lexicon: SwipeLexicon) {
-        if (CredentialEncryptedStorage.contextOrNull(context) == null) return
-        val publicKey = runCatching {
-            context.assets.open(PUBLIC_KEY_ASSET).use {
-                OfficialModelPolicy.readPublicKey(it)
-            }
-        }.getOrElse {
+        val privateContext = CredentialEncryptedStorage.contextOrNull(context) ?: return
+        val publicKey = loadProjectKey(context) ?: run {
             Log.w(TAG, "Signed model public key is unavailable; fallback remains active")
             return
         }
@@ -129,14 +157,31 @@ internal object InstalledModelRuntime {
         if (synchronized(monitor) { swipeModel == null }) {
             val loaded = runCatching {
                 val registry = ModelRegistry(
-                    context,
+                    privateContext,
                     OfficialModelPolicy.limits(ModelKind.SWIPE_CTC, BuildConfig.VERSION_CODE),
                     publicKey,
                 )
-                val active = runCatching {
-                    context.assets.open(SWIPE_ARCHIVE_ASSET).use(registry::activate)
-                }.getOrElse { registry.activeModel() }
-                active?.let { InstalledNeuralModelLoader.openSwipe(registry) }
+                val preferences = privateContext.getSharedPreferences(MODEL_STATE_PREFERENCES, Context.MODE_PRIVATE)
+                val active = registry.activeModel()
+                var activatedBundledModel = false
+                if (OfficialModelPolicy.shouldActivateBundledSwipe(
+                        preferences.getInt(BUNDLED_SWIPE_VERSION, 0),
+                        BuildConfig.VERSION_CODE,
+                        active != null,
+                    )) {
+                    runCatching {
+                        context.assets.open(SWIPE_ARCHIVE_ASSET).use(registry::activate)
+                    }.onSuccess {
+                        activatedBundledModel = true
+                        preferences.edit().putInt(BUNDLED_SWIPE_VERSION, BuildConfig.VERSION_CODE).commit()
+                    }
+                }
+                var opened = InstalledNeuralModelLoader.openSwipe(registry)
+                if (opened.component == null && activatedBundledModel) {
+                    registry.rollbackActive()
+                    opened = InstalledNeuralModelLoader.openSwipe(registry)
+                }
+                opened
             }.getOrNull()
             loaded?.component?.let { model ->
                 synchronized(monitor) {
@@ -156,7 +201,7 @@ internal object InstalledModelRuntime {
         if (!synchronized(monitor) { contextReady }) {
             val loaded = runCatching {
                 val registry = ModelRegistry(
-                    context,
+                    privateContext,
                     OfficialModelPolicy.limits(ModelKind.CONTEXT_RESCORER, BuildConfig.VERSION_CODE),
                     publicKey,
                 )
@@ -174,8 +219,136 @@ internal object InstalledModelRuntime {
         }
     }
 
+    private fun installFromUriBlocking(context: Context, uri: Uri): SignedModelImportResult {
+        if (!BuildConfig.LIBREBOARD_ONNX_RUNTIME_PACKAGED || !BuildConfig.LIBREBOARD_SIGNED_MODELS_PACKAGED) {
+            return SignedModelImportResult.Unavailable
+        }
+        val privateContext = CredentialEncryptedStorage.contextOrNull(context)
+            ?: return SignedModelImportResult.Locked
+        val publicKey = loadProjectKey(context) ?: return SignedModelImportResult.Unavailable
+        val staged = try {
+            stageArchive(privateContext, context, uri)
+        } catch (failure: Exception) {
+            Log.w(TAG, "Could not stage a local model archive", failure)
+            return SignedModelImportResult.Rejected
+        } ?: return SignedModelImportResult.Unavailable
+
+        var activatedRegistry: ModelRegistry? = null
+        return try {
+            val manifest = readManifest(staged)
+            val registry = ModelRegistry(
+                privateContext,
+                OfficialModelPolicy.limits(manifest.modelKind, BuildConfig.VERSION_CODE),
+                publicKey,
+            )
+            staged.inputStream().buffered().use(registry::activate)
+            activatedRegistry = registry
+            val result = when (manifest.modelKind) {
+                ModelKind.SWIPE_CTC -> installImportedSwipe(registry)
+                ModelKind.CONTEXT_RESCORER -> installImportedContext(registry)
+            }
+            if (result is SignedModelImportResult.Installed && result.modelKind == ModelKind.SWIPE_CTC) {
+                privateContext.getSharedPreferences(MODEL_STATE_PREFERENCES, Context.MODE_PRIVATE)
+                    .edit()
+                    .putInt(BUNDLED_SWIPE_VERSION, BuildConfig.VERSION_CODE)
+                    .commit()
+            }
+            result
+        } catch (failure: Exception) {
+            activatedRegistry?.rollbackActive()
+            Log.w(TAG, "Rejected a local model archive", failure)
+            SignedModelImportResult.Rejected
+        } finally {
+            if (!staged.delete()) Log.w(TAG, "Could not delete the staged local model archive")
+        }
+    }
+
+    private fun installImportedSwipe(registry: ModelRegistry): SignedModelImportResult {
+        val loaded = InstalledNeuralModelLoader.openSwipe(registry).component
+            ?: run {
+                registry.rollbackActive()
+                return SignedModelImportResult.Rejected
+            }
+        val lexicon = synchronized(monitor) {
+            swipeModel = loaded
+            swipeLexicon
+        }
+        if (lexicon != null) LiveTypingEngine.installSwipe(loaded, lexicon)
+        return SignedModelImportResult.Installed(ModelKind.SWIPE_CTC)
+    }
+
+    private fun installImportedContext(registry: ModelRegistry): SignedModelImportResult {
+        val loaded = InstalledNeuralModelLoader.openContext(registry).component
+            ?: run {
+                registry.rollbackActive()
+                return SignedModelImportResult.Rejected
+            }
+        LiveTypingEngine.installContext(loaded)
+        synchronized(monitor) { contextReady = true }
+        return SignedModelImportResult.Installed(ModelKind.CONTEXT_RESCORER)
+    }
+
+    private fun stageArchive(privateContext: Context, sourceContext: Context, uri: Uri): File? {
+        val staged = File.createTempFile("model-import-", ".lbmodel", privateContext.cacheDir)
+        try {
+            val input = sourceContext.contentResolver.openInputStream(uri) ?: run {
+                staged.delete()
+                return null
+            }
+            input.use { source ->
+                FileOutputStream(staged).use { output ->
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    var total = 0L
+                    while (true) {
+                        val count = source.read(buffer)
+                        if (count < 0) break
+                        total += count
+                        require(total <= MAXIMUM_MODEL_ARCHIVE_BYTES) { "Model archive is too large" }
+                        output.write(buffer, 0, count)
+                    }
+                    require(total > 0) { "Model archive is empty" }
+                    output.fd.sync()
+                }
+            }
+            return staged
+        } catch (failure: Exception) {
+            staged.delete()
+            throw failure
+        }
+    }
+
+    private fun readManifest(archiveFile: File): ModelManifest = ZipFile(archiveFile).use { archive ->
+        val entry = requireNotNull(archive.getEntry(MODEL_MANIFEST_ENTRY)) { "Missing model manifest" }
+        require(!entry.isDirectory && entry.size in 1..MAXIMUM_MODEL_MANIFEST_BYTES.toLong()) {
+            "Model manifest is empty or too large"
+        }
+        val bytes = archive.getInputStream(entry).use { input ->
+            val output = java.io.ByteArrayOutputStream(entry.size.toInt())
+            val buffer = ByteArray(8192)
+            var total = 0
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                total += count
+                require(total <= MAXIMUM_MODEL_MANIFEST_BYTES) { "Model manifest is too large" }
+                output.write(buffer, 0, count)
+            }
+            output.toByteArray()
+        }
+        Json.decodeFromString(bytes.decodeToString())
+    }
+
+    private fun loadProjectKey(context: Context): PublicKey? = runCatching {
+        context.assets.open(PUBLIC_KEY_ASSET).use(OfficialModelPolicy::readPublicKey)
+    }.getOrNull()
+
     private const val TAG = "InstalledModelRuntime"
     private const val PUBLIC_KEY_ASSET = "models/libreboard-model-signing-public.der"
     private const val SWIPE_ARCHIVE_ASSET = "models/swipe-latin-v1.lbmodel"
+    private const val MODEL_STATE_PREFERENCES = "installed-model-runtime"
+    private const val BUNDLED_SWIPE_VERSION = "bundled-swipe-version"
+    private const val MODEL_MANIFEST_ENTRY = "manifest.json"
+    private const val MAXIMUM_MODEL_ARCHIVE_BYTES = 28L * 1024L * 1024L
+    private const val MAXIMUM_MODEL_MANIFEST_BYTES = 256 * 1024
     private const val RETRY_INTERVAL_MILLIS = 60_000L
 }

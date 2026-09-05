@@ -27,6 +27,8 @@ import helium314.keyboard.latin.permissions.PermissionsUtil
 import helium314.keyboard.latin.settings.Defaults
 import helium314.keyboard.latin.settings.Settings
 import helium314.keyboard.latin.engine.personal.LearnedDataWiper
+import helium314.keyboard.latin.engine.runtime.InstalledModelRuntime
+import helium314.keyboard.latin.engine.runtime.SignedModelImportResult
 import helium314.keyboard.latin.utils.ExecutorUtils
 import helium314.keyboard.latin.utils.JniUtils
 import helium314.keyboard.latin.utils.Log
@@ -87,6 +89,7 @@ fun TextCorrectionScreen(
         if (suggestionsVisible) Settings.PREF_SHOW_SUGGESTIONS else null,
         if (suggestionsEnabled) Settings.PREF_ALWAYS_SHOW_SUGGESTIONS else null,
         if (suggestionsEnabled || autocorrectEnabled) Settings.PREF_NEURAL_STRENGTH else null,
+        SettingsWithoutKey.IMPORT_SIGNED_MODEL,
         if (suggestionsEnabled) Settings.PREF_CENTER_SUGGESTION_TEXT_TO_ENTER else null,
         if (suggestionsEnabled || autocorrectEnabled) Settings.PREF_SUGGEST_EMOJIS else null,
         if (suggestionsEnabled || autocorrectEnabled) Settings.PREF_INLINE_EMOJI_SEARCH else null,
@@ -230,6 +233,39 @@ fun createCorrectionSettings(context: Context) = listOf(
             description = { value ->
                 if (value == 0f) stringResource(R.string.neural_strength_off)
                 else stringResource(R.string.neural_strength_percent, value.toInt())
+            },
+        )
+    },
+    Setting(
+        context,
+        SettingsWithoutKey.IMPORT_SIGNED_MODEL,
+        R.string.import_signed_model,
+        R.string.import_signed_model_summary,
+    ) { setting ->
+        val ctx = LocalContext.current
+        var importInProgress by remember { mutableStateOf(false) }
+        val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null && !importInProgress) {
+                importInProgress = true
+                InstalledModelRuntime.installFromUri(ctx, uri) { result ->
+                    Handler(Looper.getMainLooper()).post {
+                        importInProgress = false
+                        val message = when (result) {
+                            is SignedModelImportResult.Installed -> R.string.signed_model_imported
+                            SignedModelImportResult.Locked -> R.string.signed_model_unlock_required
+                            SignedModelImportResult.Unavailable -> R.string.signed_model_import_unavailable
+                            SignedModelImportResult.Rejected -> R.string.signed_model_import_rejected
+                        }
+                        Toast.makeText(ctx, message, Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+        Preference(
+            name = setting.title,
+            description = setting.description,
+            onClick = {
+                if (!importInProgress) launcher.launch(arrayOf("application/zip", "application/octet-stream"))
             },
         )
     },

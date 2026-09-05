@@ -3,6 +3,8 @@ package helium314.keyboard.latin.engine.runtime
 
 import helium314.keyboard.latin.engine.ModelKind
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.math.BigInteger
@@ -53,6 +55,13 @@ class OfficialModelPolicyTest {
         assertEquals(7, context.appVersionCode)
         assertEquals(EXPECTED_OPERATORS, context.allowedOperators)
         assertEquals(EXPECTED_OPERATORS, swipe.allowedOperators)
+    }
+
+    @Test
+    fun bundledSwipeActivatesOnlyWhenMissingOrTheAppVersionChanges() {
+        assertTrue(OfficialModelPolicy.shouldActivateBundledSwipe(1, 1, hasActiveModel = false))
+        assertTrue(OfficialModelPolicy.shouldActivateBundledSwipe(1, 2, hasActiveModel = true))
+        assertFalse(OfficialModelPolicy.shouldActivateBundledSwipe(2, 2, hasActiveModel = true))
     }
 
     private companion object {

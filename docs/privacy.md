@@ -37,6 +37,10 @@ tests count every underlying surrounding-text call and require zero reads for ea
   the `NO_LEARNING` field policy, so query text is neither persisted nor exposed to suggestion,
   context, capture, or personalization paths.
 - Private stores return unavailable before first unlock; the static keyboard still types.
+- Manual `.lbmodel` imports use the system document picker, copy through a bounded temporary file in
+  credential-encrypted cache, and accept only project-signed data matching the fixed model and ONNX
+  operator contracts. Runtime-incompatible imports restore the preceding active model. URI contents,
+  model files, and inference results are never sent to another app or network service.
 - `android:allowBackup` is false. Explicit SAF export currently excludes clipboard by design.
 - Backup archives have strict entry-count, per-entry, and total expanded-size limits. Restore rejects
   traversal, absolute paths, duplicate targets, malformed typed settings, and personal data without

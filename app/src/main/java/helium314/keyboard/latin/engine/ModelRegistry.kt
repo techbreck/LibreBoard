@@ -101,6 +101,17 @@ class ModelRegistry(
         return null
     }
 
+    /** Rejects a newly activated model after runtime-contract validation and restores its predecessor. */
+    @Synchronized
+    internal fun rollbackActive(): ActiveModel? {
+        val active = File(root, ACTIVE)
+        val previous = File(root, PREVIOUS)
+        if (active.exists()) require(active.deleteRecursively()) { "Could not remove rejected model" }
+        if (!previous.exists()) return null
+        require(previous.renameTo(active)) { "Could not restore previous model" }
+        return validatedModel(active)
+    }
+
     private fun validatedModel(directory: File): ActiveModel? {
         val manifestFile = File(directory, MANIFEST)
         val modelFile = File(directory, MODEL)

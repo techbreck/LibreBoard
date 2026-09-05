@@ -152,6 +152,12 @@
     <string name="neural_strength_summary">Controls how strongly a verified local model affects ranking; zero disables neural scoring</string>
     <string name="neural_strength_off">Off</string>
     <string name="neural_strength_percent">%1$d%%</string>
+    <string name="import_signed_model">Import signed local model</string>
+    <string name="import_signed_model_summary">Install an official .lbmodel file from device storage; executable plugins and downloads are never accepted</string>
+    <string name="signed_model_imported">Signed local model installed</string>
+    <string name="signed_model_unlock_required">Unlock the device before importing a model</string>
+    <string name="signed_model_import_unavailable">Model import is unavailable in this core-only build</string>
+    <string name="signed_model_import_rejected">The model was rejected; the previous working model remains active</string>
     <!-- Option to enable auto correction for shortcuts (will correct shortcut to the actual word) -->
     <string name="auto_correct_shortcuts">Auto-correct shortcuts</string>
     <!-- Description for auto_correct_shortcuts -->
