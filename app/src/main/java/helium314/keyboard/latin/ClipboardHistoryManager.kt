@@ -27,6 +27,7 @@ import helium314.keyboard.latin.common.ColorType
 import helium314.keyboard.latin.common.Constants
 import helium314.keyboard.latin.common.isValidNumber
 import helium314.keyboard.latin.database.ClipboardDao
+import helium314.keyboard.latin.engine.FieldPolicyResolver
 import helium314.keyboard.latin.databinding.ClipboardSuggestionBinding
 import helium314.keyboard.latin.settings.Defaults
 import helium314.keyboard.latin.settings.Settings
@@ -72,6 +73,7 @@ class ClipboardHistoryManager(
     //  care about other clip items than first?
     private fun fetchPrimaryClip() {
         if (tempPrimaryClip) return // avoid updating history
+        if (!mayCaptureClipboard()) return
         val clipData = clipboardManager.primaryClip ?: return
         if (clipData.itemCount == 0) return
         val clipItem = clipData.getItemAt(0) ?: return
@@ -185,6 +187,8 @@ class ClipboardHistoryManager(
 
         // get the content, or return null
         if (!latinIME.mSettings.current.mSuggestClipboardContent) return null
+        if (!FieldPolicyResolver.resolve(editorInfo).allowsSuggestions) return null
+        if (latinIME.mSettings.current.mIncognitoModeEnabled) return null
         if (dontShowCurrentSuggestion) return null
         if (parent == null) return null
         val clipData = clipboardManager.primaryClip ?: return null
@@ -258,6 +262,11 @@ class ClipboardHistoryManager(
             latinIME.mHandler.postResumeSuggestions(false)
         }
         csv.isGone = true
+    }
+
+    private fun mayCaptureClipboard(): Boolean {
+        if (latinIME.mSettings.current.mIncognitoModeEnabled) return false
+        return FieldPolicyResolver.resolve(latinIME.currentInputEditorInfo).allowsClipboardCapture
     }
 
     companion object {

@@ -1,0 +1,312 @@
+#!/usr/bin/env python3
+"""Evaluate session-separated LibreBoard tap/swipe predictions against the Phase 0 gates.
+
+The harness consumes JSONL produced by Android instrumentation or an offline decoder. It never
+contains a model implementation and never treats missing measurements as zero or as a pass.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import pathlib
+import sys
+import unicodedata
+from collections import Counter, defaultdict
+from dataclasses import dataclass
+from typing import Any, Iterable
+
+
+SCHEMA_VERSION = 1
+TAP_SYSTEMS = ("heliboard", "fused", "fused_personal", "fused_neural")
+SWIPE_SYSTEMS = ("geometric", "ctc", "fused_swipe")
+ALL_SYSTEMS = TAP_SYSTEMS + SWIPE_SYSTEMS
+TAP_CATEGORIES = ("tap_error", "valid_word", "spacing", "lexical")
+MINIMUM_COUNTS = {
+    "tap_error": 3_000,
+    "valid_word": 1_000,
+    "spacing": 500,
+    "lexical": 500,
+    "swipe": 5_000,
+}
+
+
+class EvaluationError(ValueError):
+    pass
+
+
+@dataclass(frozen=True)
+class Example:
+    identifier: str
+    session_id: str
+    split: str
+    category: str
+    target: str
+    raw: str
+    predictions: dict[str, tuple[str, ...]]
+    latency_ms: dict[str, float]
+    strata: frozenset[str]
+    should_correct: bool | None
+
+
+def normalized(value: str) -> str:
+    return unicodedata.normalize("NFKC", value).casefold()
+
+
+def parse_example(raw: dict[str, Any], line_number: int) -> Example:
+    location = f"line {line_number}"
+    if raw.get("schemaVersion") != SCHEMA_VERSION:
+        raise EvaluationError(f"{location}: unsupported schemaVersion")
+    required_strings = ("id", "sessionId", "split", "category", "target")
+    for field in required_strings:
+        if not isinstance(raw.get(field), str) or not raw[field]:
+            raise EvaluationError(f"{location}: {field} must be a non-empty string")
+    if raw["split"] not in {"train", "validation", "test"}:
+        raise EvaluationError(f"{location}: unsupported split")
+    if raw["category"] not in {*TAP_CATEGORIES, "swipe"}:
+        raise EvaluationError(f"{location}: unsupported category")
+    if not isinstance(raw.get("raw"), str):
+        raise EvaluationError(f"{location}: raw must be a string")
+
+    systems = SWIPE_SYSTEMS if raw["category"] == "swipe" else TAP_SYSTEMS
+    predictions_raw = raw.get("predictions")
+    latency_raw = raw.get("latencyMs")
+    if raw["split"] == "test":
+        if not isinstance(predictions_raw, dict) or not isinstance(latency_raw, dict):
+            raise EvaluationError(f"{location}: test examples require predictions and latencyMs")
+        missing = [system for system in systems if system not in predictions_raw or system not in latency_raw]
+        if missing:
+            raise EvaluationError(f"{location}: missing systems: {', '.join(missing)}")
+    predictions: dict[str, tuple[str, ...]] = {}
+    for system, values in (predictions_raw or {}).items():
+        if system not in ALL_SYSTEMS or not isinstance(values, list) or not values or len(values) > 32:
+            raise EvaluationError(f"{location}: invalid prediction list for {system}")
+        if any(not isinstance(value, str) or not value for value in values):
+            raise EvaluationError(f"{location}: predictions must be non-empty strings")
+        predictions[system] = tuple(values)
+    latency: dict[str, float] = {}
+    for system, value in (latency_raw or {}).items():
+        if system not in ALL_SYSTEMS or isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise EvaluationError(f"{location}: invalid latency for {system}")
+        if not math.isfinite(value) or value < 0 or value > 60_000:
+            raise EvaluationError(f"{location}: out-of-range latency for {system}")
+        latency[system] = float(value)
+
+    strata_raw = raw.get("strata", [])
+    if not isinstance(strata_raw, list) or any(not isinstance(value, str) or not value for value in strata_raw):
+        raise EvaluationError(f"{location}: strata must be strings")
+    should_correct = raw.get("shouldCorrect")
+    if raw["category"] == "valid_word" and not isinstance(should_correct, bool):
+        raise EvaluationError(f"{location}: valid_word examples require shouldCorrect")
+    if should_correct is not None and not isinstance(should_correct, bool):
+        raise EvaluationError(f"{location}: shouldCorrect must be boolean")
+
+    return Example(
+        identifier=raw["id"],
+        session_id=raw["sessionId"],
+        split=raw["split"],
+        category=raw["category"],
+        target=raw["target"],
+        raw=raw["raw"],
+        predictions=predictions,
+        latency_ms=latency,
+        strata=frozenset(strata_raw),
+        should_correct=should_correct,
+    )
+
+
+def read_jsonl(path: pathlib.Path) -> list[Example]:
+    examples: list[Example] = []
+    with path.open(encoding="utf-8") as stream:
+        for line_number, line in enumerate(stream, 1):
+            if line.strip():
+                try:
+                    value = json.loads(line)
+                except json.JSONDecodeError as failure:
+                    raise EvaluationError(f"line {line_number}: invalid JSON: {failure.msg}") from failure
+                if not isinstance(value, dict):
+                    raise EvaluationError(f"line {line_number}: example must be an object")
+                examples.append(parse_example(value, line_number))
+    if not examples:
+        raise EvaluationError("dataset is empty")
+    return examples
+
+
+def percentile(values: list[float], quantile: float) -> float:
+    if not values:
+        raise EvaluationError("required latency samples are missing")
+    ordered = sorted(values)
+    index = max(0, math.ceil(quantile * len(ordered)) - 1)
+    return ordered[index]
+
+
+def accuracy(examples: Iterable[Example], system: str, rank: int = 1) -> float:
+    rows = list(examples)
+    if not rows:
+        raise EvaluationError(f"no examples for {system} accuracy")
+    hits = sum(
+        normalized(row.target) in {normalized(value) for value in row.predictions[system][:rank]}
+        for row in rows
+    )
+    return hits / len(rows)
+
+
+def relative_error_reduction(baseline_accuracy: float, new_accuracy: float) -> float:
+    baseline_error = 1.0 - baseline_accuracy
+    if baseline_error <= 0:
+        return 0.0 if new_accuracy >= baseline_accuracy else -math.inf
+    return (baseline_error - (1.0 - new_accuracy)) / baseline_error
+
+
+def false_correction_rate(examples: Iterable[Example], system: str) -> float:
+    rows = [row for row in examples if row.should_correct is False]
+    if not rows:
+        raise EvaluationError("valid-word keep cases are missing")
+    false_corrections = sum(normalized(row.predictions[system][0]) != normalized(row.raw) for row in rows)
+    return false_corrections / len(rows)
+
+
+def check_dataset(examples: list[Example], enforce_minimum_counts: bool) -> tuple[list[Example], dict[str, int]]:
+    ids = Counter(example.identifier for example in examples)
+    duplicates = sorted(identifier for identifier, count in ids.items() if count > 1)
+    if duplicates:
+        raise EvaluationError(f"duplicate example ids: {', '.join(duplicates[:5])}")
+    session_splits: dict[str, set[str]] = defaultdict(set)
+    for example in examples:
+        session_splits[example.session_id].add(example.split)
+    leaked = sorted(session for session, splits in session_splits.items() if len(splits) > 1)
+    if leaked:
+        raise EvaluationError(f"sessions cross dataset splits: {', '.join(leaked[:5])}")
+
+    test = [example for example in examples if example.split == "test"]
+    counts = Counter(example.category for example in test)
+    if enforce_minimum_counts:
+        missing = [f"{category}={counts[category]}<{minimum}" for category, minimum in MINIMUM_COUNTS.items()
+                   if counts[category] < minimum]
+        if missing:
+            raise EvaluationError("held-out dataset minimums not met: " + ", ".join(missing))
+    swipe = [example for example in test if example.category == "swipe"]
+    for stratum in ("short", "return_trip"):
+        if not any(stratum in example.strata for example in swipe):
+            raise EvaluationError(f"swipe stratum is missing: {stratum}")
+    return test, dict(sorted(counts.items()))
+
+
+def evaluate(
+    examples: list[Example],
+    metadata: dict[str, Any],
+    *,
+    enforce_minimum_counts: bool = True,
+) -> dict[str, Any]:
+    test, counts = check_dataset(examples, enforce_minimum_counts)
+    if metadata.get("schemaVersion") != SCHEMA_VERSION:
+        raise EvaluationError("metadata has unsupported schemaVersion")
+    peak_memory = metadata.get("peakAddedNeuralMemoryMiB")
+    if isinstance(peak_memory, bool) or not isinstance(peak_memory, (int, float)) or peak_memory < 0:
+        raise EvaluationError("metadata requires non-negative peakAddedNeuralMemoryMiB")
+
+    tap_error = [row for row in test if row.category == "tap_error"]
+    valid_word = [row for row in test if row.category == "valid_word"]
+    swipe = [row for row in test if row.category == "swipe"]
+    tap_all = [row for row in test if row.category in TAP_CATEGORIES]
+    metrics: dict[str, Any] = {"counts": counts, "systems": {}}
+    for system in TAP_SYSTEMS:
+        relevant = tap_all
+        metrics["systems"][system] = {
+            "top1": accuracy(relevant, system),
+            "top3": accuracy(relevant, system, 3),
+            "latencyMs": {
+                "p50": percentile([row.latency_ms[system] for row in relevant], 0.50),
+                "p95": percentile([row.latency_ms[system] for row in relevant], 0.95),
+                "p99": percentile([row.latency_ms[system] for row in relevant], 0.99),
+            },
+        }
+    for system in SWIPE_SYSTEMS:
+        metrics["systems"][system] = {
+            "top1": accuracy(swipe, system),
+            "top3": accuracy(swipe, system, 3),
+            "latencyMs": {
+                "p50": percentile([row.latency_ms[system] for row in swipe], 0.50),
+                "p95": percentile([row.latency_ms[system] for row in swipe], 0.95),
+                "p99": percentile([row.latency_ms[system] for row in swipe], 0.99),
+            },
+        }
+
+    heliboard_tap = accuracy(tap_error, "heliboard")
+    fused_tap = accuracy(tap_error, "fused")
+    fused_valid = accuracy(valid_word, "fused")
+    neural_valid = accuracy(valid_word, "fused_neural")
+    geometric_swipe = accuracy(swipe, "geometric")
+    final_swipe = accuracy(swipe, "fused_swipe")
+    metrics["gates"] = {
+        "tapRelativeErrorReduction": relative_error_reduction(heliboard_tap, fused_tap),
+        "neuralValidWordRelativeErrorReduction": relative_error_reduction(fused_valid, neural_valid),
+        "neuralValidWordAbsoluteGain": neural_valid - fused_valid,
+        "falseCorrectionIncrease": false_correction_rate(valid_word, "fused_neural")
+            - false_correction_rate(valid_word, "fused"),
+        "swipeGeometricRelativeErrorReduction": relative_error_reduction(geometric_swipe, final_swipe),
+        "swipeShortTop3": accuracy([row for row in swipe if "short" in row.strata], "fused_swipe", 3),
+        "swipeReturnTripTop3": accuracy([row for row in swipe if "return_trip" in row.strata], "fused_swipe", 3),
+        "peakAddedNeuralMemoryMiB": float(peak_memory),
+    }
+    gates = metrics["gates"]
+    checks = {
+        "tap_relative_error_reduction": gates["tapRelativeErrorReduction"] >= 0.20,
+        "neural_valid_word_relative_error_reduction": gates["neuralValidWordRelativeErrorReduction"] >= 0.15,
+        "neural_valid_word_absolute_gain": gates["neuralValidWordAbsoluteGain"] >= 0.05,
+        "false_correction_ceiling": gates["falseCorrectionIncrease"] <= 0.005,
+        "swipe_top1": metrics["systems"]["fused_swipe"]["top1"] >= 0.90,
+        "swipe_top3": metrics["systems"]["fused_swipe"]["top3"] >= 0.95,
+        "swipe_short_top3": gates["swipeShortTop3"] >= 0.90,
+        "swipe_return_trip_top3": gates["swipeReturnTripTop3"] >= 0.90,
+        "swipe_geometric_relative_error_reduction": gates["swipeGeometricRelativeErrorReduction"] >= 0.20,
+        "tap_p95_latency": metrics["systems"]["fused_neural"]["latencyMs"]["p95"] <= 80.0,
+        "swipe_p95_latency": metrics["systems"]["fused_swipe"]["latencyMs"]["p95"] <= 200.0,
+        "peak_neural_memory": peak_memory <= 64.0,
+    }
+    metrics["checks"] = checks
+    metrics["passed"] = all(checks.values())
+    return metrics
+
+
+def render(metrics: dict[str, Any]) -> str:
+    lines = ["LibreBoard Phase 0 evaluation", ""]
+    for system, values in metrics["systems"].items():
+        latency = values["latencyMs"]
+        lines.append(
+            f"{system:16} top1={values['top1']:.3%} top3={values['top3']:.3%} "
+            f"p95={latency['p95']:.1f}ms"
+        )
+    lines.append("")
+    lines.extend(f"{'PASS' if passed else 'FAIL'} {name}" for name, passed in metrics["checks"].items())
+    lines.append("")
+    lines.append("OVERALL PASS" if metrics["passed"] else "OVERALL FAIL")
+    return "\n".join(lines)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("dataset", type=pathlib.Path, help="session-separated JSONL predictions")
+    parser.add_argument("--metadata", required=True, type=pathlib.Path, help="measurement metadata JSON")
+    parser.add_argument("--report", type=pathlib.Path, help="write the complete JSON report")
+    parser.add_argument("--allow-small-dataset", action="store_true", help="test the harness without release-size data")
+    args = parser.parse_args()
+    try:
+        examples = read_jsonl(args.dataset)
+        metadata = json.loads(args.metadata.read_text(encoding="utf-8"))
+        if not isinstance(metadata, dict):
+            raise EvaluationError("metadata must be an object")
+        metrics = evaluate(examples, metadata, enforce_minimum_counts=not args.allow_small_dataset)
+    except (OSError, json.JSONDecodeError, EvaluationError) as failure:
+        print(f"ERROR: {failure}", file=sys.stderr)
+        return 2
+    if args.report:
+        args.report.parent.mkdir(parents=True, exist_ok=True)
+        args.report.write_text(json.dumps(metrics, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(render(metrics))
+    return 0 if metrics["passed"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

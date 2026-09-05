@@ -147,8 +147,6 @@
     <string name="show_hints_summary">Afișare sugestii la apăsarea lungă</string>
     <string name="button_restore">Restaurare</string>
     <string name="secondary_locale">Tastare multilingvă</string>
-    <string name="load_gesture_library">Încarcă biblioteca de tastare prin gesturi</string>
-    <string name="load_gesture_library_summary">Furnizează o bibliotecă nativă pentru a activa tastarea prin gesturi</string>
     <string name="show_popup_keys_more">Adaugă variante comune</string>
     <string name="show_popup_keys_all">Adaugă toate variantele disponibile</string>
     <string name="url_detection_title">Detectare URL</string>
@@ -173,9 +171,6 @@
     <string name="show_popup_hints_summary">Afișează sugestii dacă apăsarea lungă a unei taste declanșează funcționalități suplimentare</string>
     <string name="prefs_long_press_keyboard_to_change_lang">Schimbă metoda de introducere cu tasta spațiu</string>
     <string name="prefs_narrow_key_gaps">Goluri înguste ale tastelor</string>
-    <string name="load_gesture_library_message">Vei avea nevoie de biblioteca pentru „%s”. Bibliotecile incompatibile se pot bloca atunci când utilizezi tastarea prin gesturi.
-\n
-\nAtenție: încărcarea codului extern poate reprezenta un risc de securitate. Utilizează doar o bibliotecă dintr-o sursă în care ai încredere.</string>
     <string name="toolbar_keys">Selectează tastele barei de instrumente</string>
     <string name="show_popup_hints">Afișează sugestii funcționale</string>
     <string name="hint_source">Selectează sursa indicilor</string>
@@ -254,9 +249,6 @@
     <string name="settings_screen_about">Despre</string>
     <string name="version">Versiune</string>
     <string name="select_color_accent">Accent</string>
-    <string name="checksum_mismatch_message">Fișier de bibliotecă necunoscut. Ești sigur că l-ai luat dintr-o sursă de încredere și este pentru „%s”?</string>
-    <string name="load_gesture_library_button_load">Încarcă biblioteca</string>
-    <string name="load_gesture_library_button_delete">Șterge biblioteca</string>
     <string name="autospace_after_punctuation">Spațiu automat după punctuație</string>
     <string name="autospace_after_punctuation_summary">Se introduce automat spațiu după semnul de punctuație atunci când introduci un cuvânt nou</string>
     <string name="show_popup_keys_title">Afișează mai multe litere cu semne diacritice în pop-up</string>
@@ -391,8 +383,6 @@
     <string name="prefs_language_swipe_distance">Distanța de deplasare pentru comutarea limbii</string>
     <string name="get_colors_message">Poți găsi și împărtăși culori în %s.</string>
     <string name="discussion_section_link">secțiunea de discuții</string>
-    <string name="prefs_always_show_suggestions_except_web_text">Nu afișa întotdeauna sugestii pentru câmpurile de editare web</string>
-    <string name="prefs_always_show_suggestions_except_web_text_summary">Câmpurile de editare web (mai ales în browser-e) sunt o cauză foarte frecventă pentru problemele cu setarea de afișare a sugestiilor întotdeauna</string>
     <string name="timestamp_format_title">Format pentru tasta Timestamp</string>
     <string name="show_tld_popup_keys">Afișează tastele pop-up TLD</string>
     <string name="backspace_reverts_autocorrect">Backspace anulează autocorectarea</string>

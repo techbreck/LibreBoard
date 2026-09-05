@@ -113,7 +113,6 @@
     <string name="layout_phone" tools:keep="@string/layout_phone">Tiliɣri</string>
     <string name="settings_category_additional_keys">Tiqeffalin nniḍen</string>
     <string name="auto_correction_threshold_mode_off">Sens</string>
-    <string name="gesture_data_privacy">Tabaḍnit</string>
     <string name="search_field_placeholder">Nadi</string>
     <string name="version_text">Lqem wis %s</string>
     <string name="user_dict_settings_add_shortcut_hint">Anegzum axetṛan</string>
@@ -130,9 +129,6 @@
     <string name="key_code">Angal n tqeffalt</string>
     <string name="space_swipe_hide_keyboard_entry">Ffer anasiw</string>
     <string name="subtype_khipro_bn">%s (Khipro)</string>
-    <string name="gesture_data_info">D acu-t wa?</string>
-    <string name="gesture_data_next">Zgel awal-a</string>
-    <string name="gesture_data_words_selected">%s n wawalen</string>
     <string name="split" tools:keep="@string/split">Anasiw yebḍan</string>
     <string name="setup_welcome_title">Ansuf ar %s</string>
     <string name="setup_step2_title">Beddel ar %s</string>
@@ -141,8 +137,6 @@
     <string name="auto_user_color">Afran awurman n yini</string>
     <string name="about_github_link">Wali-t deg Github</string>
     <string name="about_wiki_link">Adduf ɣer Wiki</string>
-    <string name="ask_later">Steqsi-iyi-d ticki</string>
-    <string name="gesture_data_take_me_there">Awi-iyi ɣer din</string>
     <string name="add_new_dictionary_title">Rnu amawal seg ufaylu</string>
     <string name="replace_dictionary">Semselsi amawal</string>
     <string name="internal_dictionary_summary">Amawal amatu adigan</string>
@@ -166,9 +160,4 @@
     <string name="hidden_features_title">Aglam n tmahilin yeffren</string>
     <string name="customize_toolbar_key_codes">Sagen angalen n tqeffalin n tfeggagt n yifecka</string>
     <string name="emoji_search_title">Anadi n yimujiten</string>
-    <string name="gesture_data_copy_mail">Nɣel tansa n yimayl</string>
-    <string name="gesture_data_please_switch_keyboard">Ttxil beddel ɣer %s</string>
-    <string name="gesture_data_send_mail">Azen isefka s yimayl</string>
-    <string name="gesture_data_share_all">Bdu %s n wawalen</string>
-    <string name="gesture_data_delete_dialog_all">Kkes %s n wawalen</string>
 </resources>

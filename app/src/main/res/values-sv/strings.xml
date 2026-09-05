@@ -150,8 +150,6 @@
     <string name="version">Version</string>
     <string name="button_backup">Säkerhetskopiera</string>
     <string name="button_restore">Återställ</string>
-    <string name="load_gesture_library">Ladda svepskrivningsbibliotek</string>
-    <string name="load_gesture_library_summary">Tillhandahåll ett ursprungligt bibliotek för att aktivera svepskrivning</string>
     <string name="show_popup_keys_normal">Visa varianter definierade i tangentbordsspråk</string>
     <string name="show_popup_keys_more">Lägg till vanliga varianter</string>
     <string name="show_popup_keys_all">Lägg till alla tillgängliga varianter</string>

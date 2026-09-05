@@ -1,0 +1,29 @@
+# Phase 0 measurement schema
+
+`tools/evaluate_engine.py` is the release-gate evaluator. It accepts one JSON object per line with
+these fields:
+
+- `schemaVersion`: `1`.
+- `id`: stable, unique example ID.
+- `sessionId`: collection session; a session may occur in exactly one split.
+- `split`: `train`, `validation`, or `test`.
+- `category`: `tap_error`, `valid_word`, `spacing`, `lexical`, or `swipe`.
+- `target` and `raw`: expected and observed text.
+- `predictions`: ranked strings for every applicable system, capped at 32.
+- `latencyMs`: end-to-end measurement for every applicable system.
+- `strata`: swipe labels including `short` or `return_trip` where applicable.
+- `shouldCorrect`: required for `valid_word`; false labels measure false corrections.
+
+Tap systems are `heliboard`, `fused`, `fused_personal`, and `fused_neural`. Swipe systems are
+`geometric`, `ctc`, and `fused_swipe`. Metadata is a JSON object containing `schemaVersion: 1` and
+the measured `peakAddedNeuralMemoryMiB`.
+
+```sh
+python3 tools/evaluate_engine.py measurements.jsonl \
+  --metadata measurement-metadata.json \
+  --report build/reports/phase-0.json
+```
+
+The normal command enforces the release-size dataset minimums. `--allow-small-dataset` exists only
+for developing the evaluator and cannot produce release evidence. A report passes only when every
+quality, false-correction, latency, memory, and swipe-stratum gate from the product plan passes.

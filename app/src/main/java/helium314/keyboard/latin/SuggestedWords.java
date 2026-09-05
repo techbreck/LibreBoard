@@ -102,7 +102,9 @@ public class SuggestedWords {
         if (isPrediction()) {
             return size();
         }
-        return size() - /* typed word */ 1;
+        // LibreBoard keeps literal tap input visible in the strip. Batch input still uses the
+        // first candidate as a pseudo-typed word and therefore retains the legacy count.
+        return getTypedWordInfoOrNull() != null ? size() : size() - 1;
     }
 
     /**
@@ -267,7 +269,6 @@ public class SuggestedWords {
         // the application (including keyboard-computed ones, so this is almost always null)
         public final CompletionInfo mApplicationSpecifiedCompletionInfo;
         public final int mScore;
-        public int mOriginalScore; // relevant only for background data gathering, todo: remove when gathering period is over
         public final int mKindAndFlags;
         public final int mCodePointCount;
         public final Dictionary mSourceDict;

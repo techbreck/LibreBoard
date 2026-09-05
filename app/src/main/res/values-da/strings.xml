@@ -151,8 +151,6 @@
     <string name="button_restore">Gendan</string>
     <string name="secondary_locale">Flersproget skrivning</string>
     <string name="gesture_floating_preview_static">Flydende forhåndsvisning</string>
-    <string name="load_gesture_library_button_load">Indlæs bibliotek</string>
-    <string name="load_gesture_library_button_delete">Slet bibliotek</string>
     <string name="hint_source">Vælg hint-kilde</string>
     <string name="down" tools:keep="@string/down">Ned</string>
     <string name="layout_symbols" tools:keep="@string/layout_symbols">Symboler</string>

@@ -5,6 +5,7 @@ import android.content.ClipDescription
 import android.content.ContentValues
 import android.content.Context
 import android.content.SharedPreferences
+import android.content.pm.ProviderInfo
 import android.net.Uri
 import android.os.SystemClock
 import android.webkit.MimeTypeMap
@@ -14,6 +15,7 @@ import helium314.keyboard.latin.ClipboardHistoryEntry
 import helium314.keyboard.latin.common.FileUtils
 import helium314.keyboard.latin.settings.Defaults
 import helium314.keyboard.latin.settings.Settings
+import helium314.keyboard.latin.privacy.CredentialEncryptedStorage
 import helium314.keyboard.latin.utils.ChecksumCalculator
 import helium314.keyboard.latin.utils.Log
 import helium314.keyboard.latin.utils.prefs
@@ -75,7 +77,9 @@ class ClipboardDao private constructor(private val db: Database) {
         clearOldClips()
         val extension = if (description.mimeTypeCount == 0) ""
             else ".${MimeTypeMap.getSingleton().getExtensionFromMimeType(description.getMimeType(0))}"
-        val tempFile = File(context.filesDir, "temp_clip")
+        // clipFilesDir is explicitly credential encrypted; the application default context is
+        // device protected so it must never be used for private clipboard payloads.
+        val tempFile = File(clipFilesDir, "temp_clip")
         tempFile.delete()
         runCatching { FileUtils.copyContentUriToNewFile(uri, context, tempFile) }.onFailure { return@synchronized }
 
@@ -278,7 +282,8 @@ class ClipboardDao private constructor(private val db: Database) {
             if (instance == null)
                 try {
                     instance = ClipboardDao(Database.getInstance(context))
-                    clipFilesDir = File(context.filesDir, "clipboard")
+                    val privateContext = CredentialEncryptedStorage.contextOrNull(context) ?: return null
+                    clipFilesDir = File(privateContext.filesDir, "clipboard")
                     clipFilesDir.mkdirs()
                     instance?.cleanupFiles(context.prefs())
                 } catch (e: Throwable) {
@@ -299,4 +304,10 @@ class ClipboardDao private constructor(private val db: Database) {
     }
 }
 
-class ClipboardContentProvider : FileProvider()
+class ClipboardContentProvider : FileProvider() {
+    override fun attachInfo(context: Context, info: ProviderInfo) {
+        // The application context is credential protected and this provider is unavailable until
+        // unlock. Direct-Boot assets opt into device-protected storage elsewhere.
+        super.attachInfo(context, info)
+    }
+}

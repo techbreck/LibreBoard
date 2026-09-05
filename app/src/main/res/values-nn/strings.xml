@@ -61,8 +61,6 @@
     <string name="button_backup">Tryggingskopi</string>
     <string name="button_restore">Gjenopprett</string>
     <string name="backup_restored">Tryggingskopi er gjenoppretta</string>
-    <string name="load_gesture_library_button_load">Last sveipebibliotek</string>
-    <string name="load_gesture_library_button_delete">Slett sveipebibliotek</string>
     <string name="autospace_after_punctuation">Mellomrom etter punktum</string>
     <string name="autospace_after_gesture_typing">Mellomrom etter sveipeskriving</string>
     <string name="shift_removes_autospace">Ikkje automatisk mellomrom ved å trykkja shift</string>

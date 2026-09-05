@@ -18,15 +18,14 @@ import helium314.keyboard.latin.define.DebugFlags
 import helium314.keyboard.latin.define.DecoderSpecificConstants.SHOULD_AUTO_CORRECT_USING_NON_WHITE_LISTED_SUGGESTION
 import helium314.keyboard.latin.define.DecoderSpecificConstants.SHOULD_REMOVE_PREVIOUSLY_REJECTED_SUGGESTION
 import helium314.keyboard.latin.dictionary.Dictionary
+import helium314.keyboard.latin.engine.integration.HeliBoardGeometricFallback
+import helium314.keyboard.latin.engine.personal.PersonalizationRuntime
 import helium314.keyboard.latin.settings.Settings
 import helium314.keyboard.latin.settings.SettingsValuesForSuggestion
 import helium314.keyboard.latin.suggestions.SuggestionStripView
 import helium314.keyboard.latin.utils.AutoCorrectionUtils
 import helium314.keyboard.latin.utils.Log
-import helium314.keyboard.latin.utils.BackgroundGatheringCache
 import helium314.keyboard.latin.utils.SuggestionResults
-import helium314.keyboard.latin.utils.WordData
-import helium314.keyboard.latin.utils.useBackgroundGathering
 import java.util.Locale
 import kotlin.math.max
 import kotlin.math.min
@@ -221,6 +220,16 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
             hasAutoCorrection = false
         } else {
             val firstSuggestion = firstSuggestionInContainer ?: suggestionResults.first()
+            val correctionLanguage = firstSuggestion.mSourceDict.mLocale?.toLanguageTag()
+                ?: mDictionaryFacilitator.mainLocale.toLanguageTag()
+            if (PersonalizationRuntime.isCorrectionSuppressed(
+                    Settings.getCurrentContext(),
+                    typedWordString,
+                    firstSuggestion.mWord,
+                    correctionLanguage,
+                )) {
+                return true to false
+            }
             if (suggestionResults.mFirstSuggestionExceedsConfidenceThreshold && firstOccurrenceOfTypedWordInSuggestions != 0) {
                 // mFirstSuggestionExceedsConfidenceThreshold is always set to false, so currently this branch is useless
                 return true to true
@@ -277,6 +286,18 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
             wordComposer.composedDataSnapshot, ngramContext, keyboard,
             settingsValuesForSuggestion, SESSION_ID_GESTURE, inputStyle
         )
+        // HeliBoard's open native dictionary contains no gesture policy. LibreBoard always runs a
+        // data-only geometric fallback by converting the live path to a nearest-key trace and then
+        // asking the retained AOSP typing matcher for spatial corrections. Neural CTC candidates
+        // are unioned at this same boundary when an approved model is available.
+        HeliBoardGeometricFallback.toTypingComposedData(wordComposer.composedDataSnapshot.mInputPointers, keyboard)
+            ?.let { fallbackData ->
+                val fallback = mDictionaryFacilitator.getSuggestionResults(
+                    fallbackData, ngramContext, keyboard, settingsValuesForSuggestion,
+                    SESSION_ID_GESTURE, inputStyle
+                )
+                suggestionResults.addAll(fallback)
+            }
 
         // For transforming words that don't come from a dictionary, because it's our best bet
         val locale = mDictionaryFacilitator.mainLocale
@@ -332,12 +353,6 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
             getSuggestionsInfoListWithDebugInfo(suggestionResults.first().mWord, suggestionsContainer)
         } else {
             suggestionsContainer
-        }
-
-        if (useBackgroundGathering && inputStyle == SuggestedWords.INPUT_STYLE_TAIL_BATCH) {
-            val wordData = WordData(null, suggestionResults, wordComposer.composedDataSnapshot,
-                ngramContext, keyboard, inputStyle, false, pseudoTypedWordInfo)
-            BackgroundGatheringCache.addWord(wordData)
         }
 
         val autocorrectCapitalization = addCapitalizedSuggestion && Settings.getValues().mAutoCorrectCapitalizedSuggestion && isCorrectionEnabled && !wordComposer.isCursorFrontOrMiddleOfComposingWord

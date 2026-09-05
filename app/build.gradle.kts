@@ -12,11 +12,11 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "helium314.keyboard"
-        minSdk = 21
+        applicationId = "org.libreboard.keyboard"
+        minSdk = 26
         targetSdk = 36
-        versionCode = 4101
-        versionName = "4.1"
+        versionCode = 1
+        versionName = "0.1.0-alpha01"
         ndk {
             abiFilters.clear()
             abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64"))
@@ -26,12 +26,6 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = true
-            isShrinkResources = false
-            isDebuggable = false
-            isJniDebuggable = false
-        }
-        create("nouserlib") { // same as release, but does not allow the user to provide a library
             isMinifyEnabled = true
             isShrinkResources = false
             isDebuggable = false
@@ -67,7 +61,7 @@ android {
             }
             variant.outputs.forEach { output ->
                 if (output is com.android.build.api.variant.impl.VariantOutputImpl) {
-                    output.outputFileName = "HeliBoard_${defaultConfig.versionName}-${variant.buildType}.apk"
+                    output.outputFileName = "LibreBoard_${defaultConfig.versionName}-${variant.buildType}.apk"
                 }
             }
         }

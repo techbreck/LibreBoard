@@ -20,7 +20,7 @@ import helium314.keyboard.keyboard.KeyboardSwitcher
 import helium314.keyboard.keyboard.emoji.SupportedEmojis
 import helium314.keyboard.latin.R
 import helium314.keyboard.latin.common.FileUtils
-import helium314.keyboard.latin.database.Database
+import helium314.keyboard.latin.engine.personal.PersonalizationRuntime
 import helium314.keyboard.latin.settings.Settings
 import helium314.keyboard.latin.utils.DeviceProtectedUtils
 import helium314.keyboard.latin.utils.ExecutorUtils
@@ -137,20 +137,20 @@ private fun backupLauncher(onError: (String) -> Unit): ManagedActivityResultLaun
                         fileStream.close()
                         zipStream.closeEntry()
                     }
-                    val dbFile = ctx.getDatabasePath(Database.NAME)
-                    if (dbFile.exists()) {
-                        val fileStream = FileInputStream(dbFile).buffered()
-                        zipStream.putNextEntry(ZipEntry(Database.NAME))
-                        fileStream.copyTo(zipStream, 1024)
-                        fileStream.close()
-                        zipStream.closeEntry()
-                    }
+                    zipStream.putNextEntry(ZipEntry(BACKUP_MANIFEST_FILE_NAME))
+                    zipStream.write(BACKUP_MANIFEST.encodeToByteArray())
+                    zipStream.closeEntry()
                     zipStream.putNextEntry(ZipEntry(PREFS_FILE_NAME))
                     settingsToJsonStream(ctx.prefs().all, zipStream)
                     zipStream.closeEntry()
                     zipStream.putNextEntry(ZipEntry(PROTECTED_PREFS_FILE_NAME))
                     settingsToJsonStream(ctx.protectedPrefs().all, zipStream)
                     zipStream.closeEntry()
+                    PersonalizationRuntime.export(ctx)?.let { personalData ->
+                        zipStream.putNextEntry(ZipEntry(PERSONAL_DATA_FILE_NAME))
+                        zipStream.write(personalData)
+                        zipStream.closeEntry()
+                    }
                     zipStream.close()
                 }
             } catch (t: Throwable) {
@@ -170,17 +170,26 @@ private fun restoreLauncher(onError: (String) -> Unit): ManagedActivityResultLau
     return filePicker { uri ->
         val wait = CountDownLatch(1)
         ExecutorUtils.getBackgroundExecutor(ExecutorUtils.KEYBOARD).execute {
-            val restoredDb = ctx.getDatabasePath(Database.NAME + "_restored")
             val oldPrefs = ctx.prefs().all.toMap()
             val oldProtectedPrefs = ctx.protectedPrefs().all.toMap()
+            val oldPersonalData = PersonalizationRuntime.export(ctx)
             val filesDir = ctx.filesDir!!
             val deviceProtectedFilesDir = DeviceProtectedUtils.getFilesDir(ctx)
-            val filesDir2 = File(filesDir.absolutePath + "2")
-            val deviceProtectedFilesDir2 = File(deviceProtectedFilesDir.absolutePath + "2")
-            filesDir.renameTo(filesDir2)
-            deviceProtectedFilesDir2.renameTo(deviceProtectedFilesDir2)
+            val restoreSuffix = ".restore-${System.nanoTime()}"
+            val filesDir2 = File(filesDir.absolutePath + restoreSuffix)
+            val deviceProtectedFilesDir2 = File(deviceProtectedFilesDir.absolutePath + restoreSuffix)
+            var filesMoved = false
+            var deviceProtectedFilesMoved = false
             try {
+                require(filesDir.renameTo(filesDir2)) { "could not stage credential-protected files" }
+                filesMoved = true
+                require(deviceProtectedFilesDir.renameTo(deviceProtectedFilesDir2)) {
+                    "could not stage device-protected files"
+                }
+                deviceProtectedFilesMoved = true
                 var anyMatch = false
+                var foundManifest = false
+                var restoredPersonalData: ByteArray? = null
                 ctx.getActivity()?.contentResolver?.openInputStream(uri)?.use { inputStream ->
                     ZipInputStream(inputStream).use { zip ->
                         var entry: ZipEntry? = zip.nextEntry
@@ -192,28 +201,38 @@ private fun restoreLauncher(onError: (String) -> Unit): ManagedActivityResultLau
                                 if (backupFilePatterns.any { adjustedName.matches(it) }) {
                                     if (!restoreEntryToDir(zip, deviceProtectedFilesDir, adjustedName)) {
                                         Log.w("AdvancedScreen", "skipping unsafe backup entry $adjustedName")
+                                    } else {
+                                        anyMatch = true
                                     }
                                 }
-                                anyMatch = true
                             } else if (backupFilePatterns.any { entry.name.matches(it) }) {
                                 if (!restoreEntryToDir(zip, filesDir, entry.name)) {
                                     Log.w("AdvancedScreen", "skipping unsafe backup entry ${entry.name}")
+                                } else {
+                                    anyMatch = true
                                 }
+                            } else if (entry.name == BACKUP_MANIFEST_FILE_NAME) {
+                                require(readBounded(zip, 4096).decodeToString() == BACKUP_MANIFEST) {
+                                    "unsupported backup format"
+                                }
+                                foundManifest = true
                                 anyMatch = true
-                            } else if (entry.name == Database.NAME) {
-                                anyMatch = true
-                                FileUtils.copyStreamToNewFile(zip, restoredDb)
                             } else if (entry.name == PREFS_FILE_NAME) {
-                                val prefLines = String(zip.readBytes()).split("\n")
+                                val prefLines = readBounded(zip, MAX_PREFERENCES_BYTES).decodeToString().split("\n")
                                 val prefs = ctx.prefs()
                                 prefs.edit { clear() }
+                                require(readJsonLinesToSettings(prefLines, prefs)) { "invalid settings payload" }
                                 anyMatch = true
-                                readJsonLinesToSettings(prefLines, prefs)
                             } else if (entry.name == PROTECTED_PREFS_FILE_NAME) {
-                                val prefLines = String(zip.readBytes()).split("\n")
+                                val prefLines = readBounded(zip, MAX_PREFERENCES_BYTES).decodeToString().split("\n")
                                 val protectedPrefs = ctx.protectedPrefs()
                                 protectedPrefs.edit { clear() }
-                                readJsonLinesToSettings(prefLines, protectedPrefs)
+                                require(readJsonLinesToSettings(prefLines, protectedPrefs)) {
+                                    "invalid protected settings payload"
+                                }
+                                anyMatch = true
+                            } else if (entry.name == PERSONAL_DATA_FILE_NAME) {
+                                restoredPersonalData = readBounded(zip, MAX_PERSONAL_DATA_BYTES)
                                 anyMatch = true
                             }
                             zip.closeEntry()
@@ -223,18 +242,36 @@ private fun restoreLauncher(onError: (String) -> Unit): ManagedActivityResultLau
                 }
                 if (!anyMatch)
                     throw Exception("nothing to restore in the given file")
+                // Legacy HeliBoard archives may omit the LibreBoard manifest, but only a
+                // versioned LibreBoard archive may replace the new personal/rejection store.
+                if (restoredPersonalData != null) {
+                    require(foundManifest) { "personal data requires a versioned LibreBoard backup" }
+                    PersonalizationRuntime.restore(ctx, restoredPersonalData)
+                }
 
-                Database.copyFromDb(restoredDb, ctx)
+                // Clipboard is deliberately excluded. Preserve its CE payload files while the
+                // selected settings/layout files replace their old versions.
+                val oldClipboardDir = File(filesDir2, "clipboard")
+                if (oldClipboardDir.exists()) {
+                    val clipboardDir = File(filesDir, "clipboard")
+                    clipboardDir.deleteRecursively()
+                    oldClipboardDir.renameTo(clipboardDir)
+                }
                 filesDir2.deleteRecursively()
                 deviceProtectedFilesDir2.deleteRecursively()
                 if (Looper.myLooper() == null)
                     Looper.prepare()
                 Toast.makeText(ctx, ctx.getString(R.string.backup_restored), Toast.LENGTH_LONG).show()
             } catch (t: Throwable) {
-                filesDir.deleteRecursively()
-                filesDir2.renameTo(filesDir)
-                deviceProtectedFilesDir.deleteRecursively()
-                deviceProtectedFilesDir2.renameTo(deviceProtectedFilesDir)
+                if (filesMoved) {
+                    filesDir.deleteRecursively()
+                    filesDir2.renameTo(filesDir)
+                }
+                if (deviceProtectedFilesMoved) {
+                    deviceProtectedFilesDir.deleteRecursively()
+                    deviceProtectedFilesDir2.renameTo(deviceProtectedFilesDir)
+                }
+                oldPersonalData?.let { PersonalizationRuntime.restore(ctx, it) }
                 ctx.prefs().edit {
                     clear()
                     oldPrefs.forEach { (key, value) ->
@@ -339,6 +376,11 @@ private fun restoreEntryToDir(zip: ZipInputStream, baseDir: File, entryName: Str
 
 private const val PREFS_FILE_NAME = "preferences.json"
 private const val PROTECTED_PREFS_FILE_NAME = "protected_preferences.json"
+private const val PERSONAL_DATA_FILE_NAME = "personalization.json"
+private const val BACKUP_MANIFEST_FILE_NAME = "libreboard-backup.json"
+private const val BACKUP_MANIFEST = "{\"schemaVersion\":1,\"clipboardIncluded\":false}"
+private const val MAX_PREFERENCES_BYTES = 2 * 1024 * 1024
+private const val MAX_PERSONAL_DATA_BYTES = 16 * 1024 * 1024
 
 private val backupFilePatterns by lazy { listOf(
     "blacklists${File.separator}.*\\.txt".toRegex(),
@@ -348,5 +390,18 @@ private val backupFilePatterns by lazy { listOf(
     "custom_background_image.*".toRegex(),
     "custom_font".toRegex(),
     "custom_emoji_font".toRegex(),
-    "clipboard/.*".toRegex(),
 ) }
+
+private fun readBounded(input: ZipInputStream, maximumBytes: Int): ByteArray {
+    val result = java.io.ByteArrayOutputStream(minOf(maximumBytes, 8192))
+    val buffer = ByteArray(8192)
+    var total = 0
+    while (true) {
+        val count = input.read(buffer)
+        if (count < 0) break
+        total += count
+        require(total <= maximumBytes) { "backup entry is too large" }
+        result.write(buffer, 0, count)
+    }
+    return result.toByteArray()
+}

@@ -95,6 +95,11 @@ LOCAL_LDFLAGS += -ldl
 # Avoid issues with reproducible builds, see https://gitlab.com/fdroid/rfp/-/issues/2662
 LOCAL_LDFLAGS += -Wl,--build-id=none
 
+# Make every ABI loadable on Android devices configured with 16 KiB pages. NDK r28 enables this
+# by default for 64-bit targets, but the explicit maximum keeps 32-bit release artifacts aligned
+# as well and lets the packaged-APK verifier enforce one rule for every ELF load segment.
+LOCAL_LDFLAGS += -Wl,-z,max-page-size=16384
+
 include $(BUILD_SHARED_LIBRARY)
 #################### Clean up the tmp vars
 include $(LOCAL_PATH)/CleanupNativeFileList.mk

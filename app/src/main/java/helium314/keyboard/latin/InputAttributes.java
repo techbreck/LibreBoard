@@ -6,12 +6,13 @@
 
 package helium314.keyboard.latin;
 
-import android.os.Build;
 import android.text.InputType;
 import android.view.inputmethod.EditorInfo;
 
 import helium314.keyboard.latin.common.StringUtilsKt;
 import helium314.keyboard.compat.AppWorkarounds;
+import helium314.keyboard.latin.engine.FieldPolicy;
+import helium314.keyboard.latin.engine.FieldPolicyResolver;
 import helium314.keyboard.latin.utils.Log;
 import helium314.keyboard.latin.utils.InputTypeUtils;
 
@@ -38,6 +39,8 @@ public final class InputAttributes {
     final public boolean mShouldInsertSpacesAutomatically;
     final public boolean mShouldShowVoiceInputKey;
     final public boolean mNoLearning;
+    @NonNull
+    final public FieldPolicy mFieldPolicy;
     /**
      * Whether the floating gesture preview should be disabled. If true, this should override the
      * corresponding keyboard settings preference, always suppressing the floating preview text.
@@ -55,6 +58,8 @@ public final class InputAttributes {
         mPackageNameForPrivateImeOptions = packageNameForPrivateImeOptions;
         mTargetApplicationPackageName = null != editorInfo ? editorInfo.packageName : null;
         mInputType = AppWorkarounds.INSTANCE.adjustInputType(null != editorInfo ? editorInfo.inputType : 0, mTargetApplicationPackageName);
+        mFieldPolicy = FieldPolicyResolver.INSTANCE.resolve(editorInfo, false);
+        mNoLearning = !mFieldPolicy.getAllowsPersistence();
         final int inputClass = mInputType & InputType.TYPE_MASK_CLASS;
         mIsPasswordField = InputTypeUtils.isPasswordInputType(mInputType)
                 || InputTypeUtils.isVisiblePasswordInputType(mInputType);
@@ -73,7 +78,9 @@ public final class InputAttributes {
                 Log.w(TAG, String.format("Unexpected input class: inputType=0x%08x"
                         + " imeOptions=0x%08x", mInputType, editorInfo.imeOptions));
             }
-            mShouldShowSuggestions = false;
+            // TYPE_NULL is used by terminal applications. LibreBoard may calculate a keyboard-local
+            // swipe preview there, but must never create composing spans in the editor.
+            mShouldShowSuggestions = mFieldPolicy.getAllowsSuggestions();
             mMayOverrideShowingSuggestions = false;
             mInputTypeShouldAutoCorrect = false;
             mApplicationSpecifiedCompletionOn = false;
@@ -81,7 +88,6 @@ public final class InputAttributes {
             mShouldShowVoiceInputKey = false;
             mDisableGestureFloatingPreviewText = false;
             mIsGeneralTextInput = false;
-            mNoLearning = false;
             return;
         }
 
@@ -93,8 +99,9 @@ public final class InputAttributes {
 
         // TODO: Have a helper method in InputTypeUtils
         // Make sure that passwords are not displayed in {@link SuggestionStripView}.
-        mShouldShowSuggestions = !mIsPasswordField && !flagNoSuggestions;
-        mMayOverrideShowingSuggestions = !mIsPasswordField;
+        mShouldShowSuggestions = mFieldPolicy.getAllowsSuggestions();
+        // The opt-in override applies only to TYPE_TEXT_FLAG_NO_SUGGESTIONS.
+        mMayOverrideShowingSuggestions = mFieldPolicy == FieldPolicy.NO_SUGGESTIONS;
 
         mShouldInsertSpacesAutomatically = InputTypeUtils.isAutoSpaceFriendlyType(mInputType);
 
@@ -103,7 +110,7 @@ public final class InputAttributes {
                 || hasNoMicrophoneKeyOption()
                 || !RichInputMethodManager.isInitialized() // avoid crash when only using spell checker
                 || !RichInputMethodManager.getInstance().isShortcutImeReady();
-        mShouldShowVoiceInputKey = !noMicrophone;
+        mShouldShowVoiceInputKey = !noMicrophone && mFieldPolicy == FieldPolicy.NORMAL;
 
         mDisableGestureFloatingPreviewText = InputAttributes.inPrivateImeOptions(
                 mPackageNameForPrivateImeOptions, NO_FLOATING_GESTURE_PREVIEW, editorInfo);
@@ -111,15 +118,16 @@ public final class InputAttributes {
         // autocorrect if explicitly wanted, but also for most multi-line input types (like AOSP keyboard)
         // originally, URI and email were always excluded from autocorrect (in Suggest.java), but this is
         //  and unexpected place, and if the input field explicitly requests autocorrect we should follow the flag
-        mInputTypeShouldAutoCorrect = flagAutoCorrect || (
+        mInputTypeShouldAutoCorrect = mFieldPolicy.getAllowsAutoCorrection() && (flagAutoCorrect || (
                 flagMultiLine
                 && variation != InputType.TYPE_TEXT_VARIATION_WEB_EDIT_TEXT
                 && variation != InputType.TYPE_TEXT_VARIATION_URI
                 && !InputTypeUtils.isEmailVariation(variation)
                 && !flagNoSuggestions
-        );
+        ));
 
-        mApplicationSpecifiedCompletionOn = flagAutoComplete && isFullscreenMode;
+        mApplicationSpecifiedCompletionOn = mFieldPolicy.getAllowsSuggestions()
+                && flagAutoComplete && isFullscreenMode;
 
         // If we come here, inputClass is always TYPE_CLASS_TEXT
         mIsGeneralTextInput = InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS != variation
@@ -129,12 +137,6 @@ public final class InputAttributes {
                 && InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD != variation
                 && InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS != variation
                 && InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD != variation;
-
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-            mNoLearning = (editorInfo.imeOptions & EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING) != 0;
-        else
-            mNoLearning = false;
     }
 
     public boolean isTypeNull() {

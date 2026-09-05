@@ -116,8 +116,6 @@
     <string name="spell_checker_service_name">Stafsetningarleiðrétting HeliBoard</string>
     <string name="ime_settings">Stillingar HeliBoard</string>
     <string name="button_backup">Öryggisafrit</string>
-    <string name="load_gesture_library_button_load">Hlaða inn orðasafni</string>
-    <string name="load_gesture_library_button_delete">Eyða orðasafni</string>
     <string name="layout_emoji_bottom_row" tools:keep="@string/layout_emoji_bottom_row">Tjáningartákn í neðstu röð</string>
     <string name="dictionary_settings_category">Orðasöfn</string>
     <string name="internal_dictionary_summary">Innra aðalorðasafn</string>
@@ -242,7 +240,6 @@
     <string name="gesture_floating_preview_static_summary">Sjá tillögu að orði á meðan bendingu stendur</string>
     <string name="gesture_trail_fadeout_duration">Líftími bendingaslóðar</string>
     <string name="gesture_fast_typing_cooldown_instant">Alltaf byrja strax</string>
-    <string name="load_gesture_library">Hlaða inn aðgerðasafni bendingainnsláttar</string>
     <string name="secondary_locale">Fjöltyngdur innsláttur</string>
     <string name="localized_number_row">Staðfæra talnaröð</string>
     <string name="show_hints">Birta ábendingar á lyklum</string>
@@ -340,8 +337,6 @@
     <string name="prefs_long_press_keyboard_to_change_lang">Skipta um innsláttaraðferð með bilslá</string>
     <string name="prefs_long_press_symbol_for_numpad">Ýttu lengi á táknalykil til að fá talnaborð</string>
     <string name="center_suggestion_text_to_enter_summary">Við að ýta á bilslá eða greinarmerki verður tillagan í miðjunni sett inn</string>
-    <string name="checksum_mismatch_message">Óþekkt orðasafnsskrá. Ertu viss um að þú hafi fengið hana frá áreiðanlegum aðila og að hún sé fyrir \'%s\'?</string>
-    <string name="load_gesture_library_summary">Gefðu upp innfellt aðgerðasafn til að virkja innslátt með bendingum</string>
     <string name="backup_restore_message">Vista eða hlaða inn úr skrá. Aðvörun: endurheimta mun yfirskrifa fyrirliggjandi gögn</string>
     <string name="layout_clip_bottom_row" tools:keep="@string/layout_clip_bottom_row">Neðsta röð klippispjalds</string>
     <string name="auto_hide_toolbar_summary">Fela verkfærastikuna þegar tillögur eru í boði</string>
@@ -370,7 +365,6 @@
     <string name="popup_order">Veldu röðun sprettlykla</string>
     <string name="pinned_toolbar_keys">Veldu fasta lykla á verkfærastiku</string>
     <string name="show_popup_hints">Birta ábendingar á aðgerðalyklum</string>
-    <string name="load_gesture_library_message">Þú munt þurfa aðgerðasafnið fyrir \'%s\'. Ósamhæfð aðgerðasöfn gætu hrunið þegar notaður er innsláttur með bendingum. \n\nAðvörun: Öryggisáhætta getur fylgt því að hlaða inn utanaðkomandi kóða. Notaðu einungis aðgerðasöfn frá aðilum sem þú treystir.</string>
     <string name="var_toolbar_direction_summary">Öfug stefna þegar hægri-til-vinstri undirgerð lyklaborðs er valin</string>
     <string name="split" tools:keep="@string/split">Skipt lyklaborð</string>
     <string name="gesture_fast_typing_cooldown">Tafir á hröðum innslætti</string>
@@ -452,62 +446,11 @@
     <string name="folded">Samanbrotið</string>
     <string name="emoji_search_title">Leita að tákni</string>
     <string name="search_field_placeholder">Leita</string>
-    <string name="ask_later">Spyrja síðar</string>
     <string name="spell_check_suggestions">Birta tillögur um stafsetningu</string>
-    <string name="gesture_data_screen">Söfnun bendingagagna</string>
-    <string name="gesture_data_info">Hvað er þetta?</string>
-    <string name="gesture_data_privacy">Friðhelgi</string>
-    <string name="gesture_data_get_data">Deila bendingagagnaskrá</string>
-    <string name="gesture_data_delete_data">Hreinsa bendingagögn</string>
-    <string name="gesture_data_send_mail">Senda gögn með tölvupósti</string>
-    <string name="gesture_data_copy_mail">Afrita tölvupóstfang</string>
-    <string name="gesture_data_please_type">Tilgreindu tegund bendingar:</string>
-    <string name="gesture_data_please_switch_keyboard">Skiptu yfir í %s</string>
-    <string name="gesture_data_next">Sleppa orði</string>
-    <string name="gesture_data_review_screen_title">Yfirfara og deila bendingagögnum</string>
-    <string name="gesture_data_words_selected">%s orð</string>
-    <string name="gesture_data_date_range">Tímabil</string>
-    <string name="gesture_data_much_data">Þú ert með mikið af óinnsendum gögnum. Sendu þau inn og fjarlægðu síðan gömlu gögnin.</string>
-    <string name="gesture_data_how_to_use">Hvernig á að nota</string>
-    <string name="gesture_data_active">Virk gagnasöfnun</string>
-    <string name="gesture_data_active_start">Hefja virka gagnasöfnun</string>
-    <string name="gesture_data_active_stop">Stöðva virka gagnasöfnun</string>
-    <string name="gesture_data_share_all">Deila öllum %s orðum</string>
-    <string name="gesture_data_delete_dialog_all">Eyða öllum %s orðum</string>
-    <string name="gesture_data_delete_dialog_submitted">Eyða %s innsendum orðum</string>
-    <string name="gesture_data_many_not_shared_words">Þú ert með fleiri en %s orð sem bíða eftir að vera send inn</string>
-    <string name="gesture_data_take_me_there">Förum þangað</string>
-    <string name="background_gesture_data_links">Upplýsingar um gagnasöfnun í bakgrunni:</string>
-    <string name="gesture_data_links">Upplýsingar um virka gagnasöfnun:</string>
-    <string name="gesture_data_background_gathering_switch">Nota gagnasöfnun í bakgrunni</string>
-    <string name="gesture_data_background_gathering_allowed_apps">Leyfð forrit: %s</string>
-    <string name="gesture_data_background_gathering_manual_save">Henda sjálfgefið</string>
-    <string name="gesture_data_background_gathering_manual_save_summary">Gögn eru vistuð handvirkt með lyklinum á verkfærastikunni</string>
-    <string name="gesture_data_background_gathering_info">Ítarlegri upplýsingar</string>
-    <string name="gesture_data_background_gathering_indicator">Vísbending um söfnun gagna</string>
-    <string name="gesture_data_background_gathering_control">Hvernig á að stýra því hvað sé vistað</string>
-    <string name="gesture_data_background_apps_button">Sýsla með leyfð forrit</string>
-    <string name="gesture_data_background_apps">Veldu forrit til að hafa með í gagnasöfnun í bakgrunni</string>
-    <string name="gesture_data_background_apps_include_default">Hafa sjálfgefið með forrit</string>
-    <string name="gesture_data_background_excluded_words_button">Sýsla með útilokuð orð</string>
-    <string name="gesture_data_background_dictionary">Orðasafn: %s</string>
-    <string name="gesture_data_background_position">Staðsetning: %s</string>
-    <string name="gesture_data_background_exclude_words">Undanskilja orð frá gagnasöfnun í bakgrunni</string>
-    <string name="gesture_data_long_press_select_hint">Ýttu lengi til að velja</string>
-    <string name="background_gathering" tools:keep="@string/background_gathering">Gagnasöfnun í bakgrunni</string>
-    <string name="gesture_data_show_active">Sýna virkt söfnuð gögn</string>
-    <string name="gesture_data_show_background">Sýna bakgrunnsgögn</string>
-    <string name="gesture_data_include_shared">Hafa með þegar innsend gögn</string>
-    <string name="gesture_data_shared">sent inn</string>
-    <string name="gesture_data_saving">Vista… %s%%</string>
-    <string name="gesture_data_add_key">Bæta við lykli á verkfærastiku</string>
-    <string name="gesture_data_swipe_o_scope">Verkfæri til að skoða bendingagögn: &lt;a href=%s&gt;Swipe-O-Scope&lt;/a&gt;</string>
     <string name="suggest_emojis_summary">Nota emoji-táknasafn í venjulegum tillögum</string>
     <string name="inline_emoji_search">Leit innan texta að emoji-táknum</string>
     <string name="emoji_dictionary_required">Orðasafn með emoji-táknum er nauðsynlegt til að þessi eiginleiki virki. Orðasöfn á .dict sniði er hægt að sækja %s.</string>
     <string name="show_emoji_descriptions">Birta lýsingu á tákni við að ýta lengi</string>
-    <string name="prefs_always_show_suggestions_except_web_text">Ekki birta alltaf tillögur fyrir innfyllingarreiti á vefsíðum</string>
-    <string name="prefs_always_show_suggestions_except_web_text_summary">Innfyllingarreitir á vefsíðum (finnast oftast í vöfrum) eru algeng ástæða vandamála þegar stillt er á að birta alltaf tillögur</string>
     <string name="auto_correct_capitalized_suggestions">Sjálfvirk leiðrétting á tillögum í hástöfum</string>
     <string name="timestamp_format_title">Snið fyrir tímamerkislykil</string>
     <string name="popup_order_and_hint_source">Röðun sprettlykla og uppruni ábendinga</string>
@@ -517,10 +460,4 @@
     <string name="get_layouts_message">Þú getur fundið nýjar framsetningar og deilt þínum á %s.</string>
     <string name="discussion_section_link">umræðusvæðinu</string>
     <string name="toolbar_only_with_hw_keyboard">Einungis birta verkfærastiku með raunverulegu lyklaborð</string>
-    <string name="gesture_data_next_save">Náði %s. Gakktu úr skugga um að þú hafir gert rétta bendingu</string>
-    <string name="gesture_data_active_count">%1$s orð í þessari setu, %2$s orð alls (%3$s þegar send inn eða eytt)</string>
-    <string name="gesture_data_ends_at">Söfnun bendingagagna mun ljúka %s. Sendu inn gögnin þín fyrir þann tíma.</string>
-    <string name="gesture_data_ended">Söfnun bendingagagna lauk %s. Þú getur deilt gögnunum þínum, en ekki bætt við neinu nýju.</string>
-    <string name="gesture_data_share_new">Deila %s orðum sem ekki hafa verið send inn áður</string>
-    <string name="gesture_data_delete_dialog">Þú ert með %1$s ný orð og %2$s orð sem áður hefur verið deilt.</string>
 </resources>

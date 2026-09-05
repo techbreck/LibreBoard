@@ -150,11 +150,6 @@
     <string name="button_restore">Pulihkan</string>
     <string name="down" tools:keep="@string/down">Bawah</string>
     <string name="secondary_locale">Pengetikan multibahasa</string>
-    <string name="load_gesture_library">Muat pustaka pengetikan gestur</string>
-    <string name="load_gesture_library_summary">Tambahkan pustaka asli untuk mengaktifkan pengetikan dengan gestur</string>
-    <string name="checksum_mismatch_message">Berkas pustaka yang tak dikenal. Apakah Anda yakin telah mendapatkan pustaka ini dari sumber tepercaya dan untuk \'%s\'?</string>
-    <string name="load_gesture_library_button_load">Muat pustaka</string>
-    <string name="load_gesture_library_button_delete">Hapus pustaka</string>
     <string name="show_popup_keys_title">Tampilkan lebih banyak huruf dengan diakritik pada layar sembulan</string>
     <string name="show_popup_keys_normal">Tampilkan varian yang ditentukan dalam bahasa keyboard</string>
     <string name="show_popup_keys_more">Tambahkan varian umum</string>
@@ -195,9 +190,6 @@
     <string name="button_title_add_custom_layout">Tambahkan tata letak kustom</string>
     <string name="split_spacer_scale">Jarak pisah</string>
     <string name="prefs_always_show_suggestions_summary">Abaikan permintaan aplikasi lain untuk menonaktifkan saran (dapat menimbulkan masalah)</string>
-    <string name="load_gesture_library_message">Anda membutuhkan pustaka untuk \'%s\'. Pustaka yang tidak cocok mungkin bisa mengeluarkan Anda dari aplikasi secara tiba-tiba saat menggunakan pengetikan gestur.
-\n
-\nPeringatan: memuat kode eksternal dapat menimbulkan resiko keamanan. Gunakan pustaka yang hanya Anda percaya.</string>
     <string name="url_detection_summary">Mencoba untuk mendeteksi URL dan sejenisnya sebagai kata tunggal</string>
     <string name="show_popup_hints">Tampilkan petunjuk fungsional</string>
     <string name="message_add_custom_layout">Pilih file dalam format yang kompatibel. Informasi tentang format tersedia %s.</string>
@@ -400,8 +392,6 @@
     <string name="split" tools:keep="@string/split">Keyboard terpisah</string>
     <string name="get_colors_message">Anda dapat menemukan dan berbagi warna di %s.</string>
     <string name="layout_number_row_basic" tools:keep="@string/layout_number_row_basic">Baris nomor (dasar)</string>
-    <string name="prefs_always_show_suggestions_except_web_text_summary">Bidang edit web (kebanyakan ditemukan di browser) adalah penyebab yang sangat umum untuk masalah dengan pengaturan saran yang selalu ditampilkan</string>
-    <string name="prefs_always_show_suggestions_except_web_text">Jangan selalu menampilkan saran untuk bidang edit web</string>
     <string name="settings_category_space">Spasi</string>
     <string name="shift_removes_autospace">Tidak ada spasi otomatis saat menekan shift</string>
     <string name="shift_removes_autospace_summary">Shift menghapus spasi otomatis yang tertunda</string>
@@ -450,6 +440,5 @@
     <string name="landscape">Lanskap</string>
     <string name="emoji_search_title">Cari emoji</string>
     <string name="search_field_placeholder">Cari</string>
-    <string name="ask_later">Tanya saya nanti</string>
     <string name="spell_check_suggestions">Tampilkan saran pengecekan ejaan</string>
 </resources>

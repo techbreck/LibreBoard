@@ -56,8 +56,6 @@
     <string name="prefs_show_suggestions_summary">Diskwedhes geryow profys dres ow jynnskrifa</string>
     <string name="prefs_always_show_suggestions">Diskwedhes profyans pub prys</string>
     <string name="prefs_always_show_suggestions_summary">Skonya aswon a govynnow dhyworth appys aral rag disgallosegi profyansow (a yll kawsya kudynnow)</string>
-    <string name="prefs_always_show_suggestions_except_web_text">Na diskwedhes profyansow pub prys rag ynworransow warlinen</string>
-    <string name="prefs_always_show_suggestions_except_web_text_summary">Ynworransow warlinen (kavas yn peurellow dre vras) yw kaws fest kemmyn a kudynnow gans an settyans \"Diskwedhes profyansow pub prys\"</string>
     <string name="prefs_block_potentially_offensive_title">Lettya geryow divlas</string>
     <string name="prefs_block_potentially_offensive_summary">Na profya geryow divlas yn halladow</string>
     <string name="autocorrect">Ewnans awtomatek</string>

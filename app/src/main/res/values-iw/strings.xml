@@ -171,15 +171,9 @@
     <string name="more_autocorrect_summary">תיקון שגיאות אוטומטי גם כאשר אינו נדרש במפורש ע\"י שדה הקלט</string>
     <string name="center_suggestion_text_to_enter_summary">כאשר יוקש רווח או סימן פיסוק, תוזן ההצעה האמצעית</string>
     <string name="backup_restore_title">גיבוי ושחזור</string>
-    <string name="checksum_mismatch_message">קובץ ספריה בלתי ידוע. האם אתם בטוחים שקיבלתם אותו ממקור מהימן ושהוא מיועד ל\'%s\'?</string>
     <string name="backup_restore_message">שמירה לקובץ או טעינה מקובץ. אזהרה: שחזור נתונים יחליף את הנתונים הקיימים</string>
-    <string name="load_gesture_library_summary">נדרש לבחור ספריה תואמת כדי לאפשר הקלדה במחוות</string>
-    <string name="load_gesture_library_message">נדרשת הספריה המתאימה ל\'%s\'. ספריות שאינן תואמות עלולות לקרוס בשימוש בהקלדה במחוות.
-\n
-\nאזהרה: טעינת קוד חיצוני עלולה להוות סיכון אבטחה. השתמשו רק בספריה ממקור שאתם בוטחים בו.</string>
     <string name="show_popup_keys_all">הוספת כל הניבים הזמינים</string>
     <string name="url_detection_summary">נסיון לאיתור כתובות URL ודומות כמילה יחידה</string>
-    <string name="load_gesture_library_button_delete">מחיקת ספריה</string>
     <string name="language_and_layouts_title">שפות ופריסות</string>
     <string name="toolbar_keys">בחירת כפתורי סרגל הכלים</string>
     <string name="prefs_narrow_key_gaps">מרווחי צרים בין המקשים</string>
@@ -241,8 +235,6 @@
     <string name="show_vertical_space_swipe">מחוות החלקה אנכית על מקש הרווח</string>
     <string name="button_restore">שחזור</string>
     <string name="secondary_locale">הקלדה מרובת-שפות</string>
-    <string name="load_gesture_library">טעינת ספריית הקלדה במחוות</string>
-    <string name="load_gesture_library_button_load">טעינת ספריה</string>
     <string name="switch_language">מעבר שפות</string>
     <string name="restore_error">שגיאה בשחזור מהגיבוי: %s</string>
     <string name="show_popup_keys_title">הצגת תווים נוספים עם סימני הבחן (דיאקריטיים) בחלונית הקופצת</string>
@@ -393,8 +385,6 @@
     <string name="show_tld_popup_keys">הצגת חלון צץ של סיומות אינטרנט</string>
     <string name="show_tld_popup_keys_summary">החלפת חלון צץ של מקש נקודה ברשימת סיומות אינטרנט נפוצות בעת הקלדת כתובות אינטרנט ודוא\"ל</string>
     <string name="after_numpad_and_space">לאחר לחיצת Enter או רווח לאחר מקשים אחרים במקלדת המספרים</string>
-    <string name="prefs_always_show_suggestions_except_web_text">לא תמיד להציג הצעות לשדות עריכה ב-Web</string>
-    <string name="prefs_always_show_suggestions_except_web_text_summary">שדות עריכה ב-Web (בדר\"כ יוצגו בדפדפן) הם גורם נפוץ מאד לבעיות בהגדרה \'הצגת הצעות תמיד\'</string>
     <string name="layout_number_row_basic" tools:keep="@string/layout_number_row_basic">שורת המספרים (פריסת בסיס)</string>
     <string name="settings_category_space">רווח</string>
     <string name="autospace_after_suggestion">הוספת רווח אוטומטית אחרי בחירת הצעה</string>
@@ -443,50 +433,10 @@
     <string name="layout_functional_keys_khipro" tools:keep="@string/layout_functional_keys">פקדים פונקציונליים (Khipro)</string>
     <string name="emoji_search_title">חיפוש אמוג׳י</string>
     <string name="search_field_placeholder">חיפוש</string>
-    <string name="gesture_data_screen">איסוף נתוני מחוות</string>
-    <string name="gesture_data_description">ברוך בואך אל מסך איסוף נתוני המחוות!&lt;br/&gt;&lt;br/&gt; זהו חלק מפרויקט &lt;a href=https://nlnet.nl/project/GestureTyping&gt; ממומן-NLnet&lt;/a&gt; החותר ליצור ספריית הקלדה במחוות בקוד פתוח מלא שתוכל להחליף את הספרייה של Google שהיא בקוד סגור.&lt;br/&gt; התוצר מתוכנן להוות חלופה פשוטה למקלדות מבוססות-AOSP, אך גם ניתנת לשימוש במקלדות אחרות, כדוגמת FlorisBoard.&lt;br/&gt;&lt;br/&gt; לצורך פיתוח הספרייה מאד עוזר שתהיה זמינות של נתוני שימוש במחוות בשפות שונות וע\"י משתמשים שונים.&lt;br/&gt; ע\"י איסוף והגשה של נתוני הקלדה במחוות באפשרותך לתרום למאגר פתוח של נתוני מחוות שישמש בפיתוח הספרייה. ערכת הנתונים תפורסם בהתאם לרישיון CC BY-SA 4.0 זמן מה לאחר סיום שלב איסוף הנתונים ב-%s. לאחר שביצעת איסוף של הנתונים, באפשרותך להגיש אותם באמצעות סמל השיתוף בתחתית מסך זה.</string>
-    <string name="gesture_data_info">מה זה?</string>
-    <string name="gesture_data_copy_mail">העתקת כתובת הדוא\"ל</string>
-    <string name="gesture_data_mail_use">שימו לב שכתובת הדוא\"ל נועדה למסירות נתונים, ייתכן שלא תקבלו תגובות מהירות או עקביות.</string>
-    <string name="gesture_data_please_type">נא להקליד במחווה:</string>
-    <string name="gesture_data_next_save">התקבל %s. ליחצו אם אתם בטוחים שהחוויתם נכון</string>
-    <string name="gesture_data_next">דילוג מילה</string>
-    <string name="gesture_data_active_count">%1$s מילים במופע הנוכחי, %2$s מילים בסה\"כ (%3$s כבר נמסרו או נמחקו)</string>
-    <string name="gesture_data_review_screen_title">סקירה ושיתוף של נתוני המחוות</string>
-    <string name="gesture_data_words_selected">%s מילים</string>
-    <string name="gesture_data_date_range">טווח תאריכים</string>
-    <string name="gesture_data_much_data">יש לכם הרבה נתונים שלא נמסרו. אנא מיסרו אותם ומחקו את הנתונים הישנים.</string>
-    <string name="gesture_data_how_to_use">איך להשתמש</string>
-    <string name="gesture_data_description_modes">כעת קיים רק מצב האיסוף הפעיל, בו מוצגת לך מילה מוגדרת שנדרש להקליד בהקלדה ע\"י מחוות.\n בהמשך יתווסף מצב של איסוף סביל, בו יהיה באפשרותך לספק דוגמיות מהשימוש הרגיל שלך בהקלדה ע\"י מחוות מיישומים אחרים. בשל רגישותה של גישה זו, האפשרות תהיה מבחירה, ניתנת להגדרה, ותכלול תצוגה לסקירה של הנתונים שיוגשו מטעמך.</string>
-    <string name="gesture_data_description_privacy">פרטיות\n\nהנתונים שיוגשו מטעמך כוללים מילת יעד, פריסת המקלדת ומידותיה, המחווה (זמנים וקואורדינטות), הצעות מהספרייה הנוכחית, Hash של המילונים שבשימוש, גרסת היישום, מצב איסוף הנתונים, האם הספרייה המשמשת להקלדה ע\"י מחוות היא ספריית ברירת-המחדל של Google, ומזהה לכל מחווה.\n הנתונים שיוגשו יוסרו לאחר הורדתם מתיבת הדואר של ProtonMail שבה הם נשמרים בהקדם האפשרי. לאחר ששלב האיסוף של נתוני הקלדה במחוות הסתיים, המאגר המצטבר של הנתונים שהוגשו ע\"י כל המשתמשים יפורסם תחת רישיון Creative Commons BY-SA 4.0.\n\n במסגרת החתירה לשמירה על פרטיותך, לא יצויין שמך במפורש כמחבר. הקרדיט שלך יוצג כ\"תורמי פרויקט נתוני המחוות של HeliBoard\". לא יתאפשר לקשור את הנתונים שיוגשו על-ידך במסך זה לזהות שלך. עם זאת, עשוי להיות אפשרי לקבוע אילו מחוות בוצעו ע\"י אותו משתמש. הדבר מתאפשר לדוגמה עפ\"י פריסת מקלדת מותאמת, מימדי המקלדת, השפה, או סגנון הקלדה אישי.</string>
-    <string name="gesture_data_privacy">פרטיות</string>
-    <string name="gesture_data_get_data">שיתוף קובץ נתוני ההקלדה במחוות</string>
-    <string name="gesture_data_delete_data">הסרת נתוני ההקלדה במחוות</string>
-    <string name="gesture_data_send_mail">שליחת הנתונים באמצעות דוא\"ל</string>
-    <string name="gesture_data_share_new">שתפו %s מילים שלא שותפו בעבר</string>
-    <string name="gesture_data_delete_dialog">יש לך נתונים עבור %1$s מילים חדשות ו-%2$s מילים שכבר שותפו.</string>
-    <string name="gesture_data_delete_dialog_all">מחיקת כל %s המילים</string>
-    <string name="gesture_data_delete_dialog_confirm">בטוחים? הפעולה תמחק %s מילים. וודאו שהנתונים ששיתפתם נמסרו!</string>
-    <string name="gesture_data_delete_dialog_submitted">מחיקת %s מילים שנמסרו</string>
-    <string name="gesture_data_many_not_shared_words">יש לך יותר מ-%s מילים שממתינות למסירה</string>
-    <string name="ask_later">לשאול אותי מאוחר יותר</string>
     <string name="timestamp_description">באפשרותך להוסיף את מקש חתימת-הזמן לשימוש בפריסה מותאמת עם מקש \'timestamp\', או קוד מקש -10043</string>
     <string name="prefs_bottom_row_scale">קנה-מידה של השורה התחתונה</string>
-    <string name="gesture_data_active_description">ליחצו על \"התחלת איסוף פעיל\", ניתן להחליף את המילון, והתחילו להקליד במחוות את המילה המוצגת.&lt;br/&gt; אם המחווה שלך תואמת למילה, הנתונים נשמרים והמילה הבאה תוצג. אחרת באפשרותך לנסות שוב, לפסוח על המילה, או לאשר שהמחווה שביצעת תקינה.&lt;br/&gt; ניתן להשתמש רק במילונים המובנים ביישום או בכאלה שזמינים ב-&lt;a href=%s&gt;dictionaries repository&lt;/a&gt;, לא יהיה שימוש במילים אחרות.</string>
-    <string name="gesture_data_active_start">התחלת איסוף פעיל</string>
-    <string name="gesture_data_active_stop">עצירת האיסוף הפעיל</string>
-    <string name="gesture_data_ends_at">שלב איסוף נתוני המחוות יסתיים ב-%s. אנא שילחו את הנתונים שלכם לפני מועד זה.</string>
-    <string name="gesture_data_ended">שלב איסוף נתוני המחוות הסתיים ב-%s. באפשרותך לשתף את הנתונים הקיימים, אך לא להוסיף חדשים.</string>
-    <string name="gesture_data_share_all">שיתוף כל %s המילים</string>
-    <string name="gesture_data_email_body">חשוב:\n\n היי לך!\nלתזכורת, הנתונים הללו ישותפו ציבורית תחת רישיון CC BY-SA 4.0, ושמך לא יצויין ברשימת יוצרי הנתונים כדי לשמור על פרטיותך.\n\nתודה על שיתוף הזכויות לנתונים שלך איתנו. נעשה בהם שימוש טוב!\n\nיודגש ששינויים בניסוח הודעה זו לא משנים את השימוש שנעשה בעזרת הנתונים שלך. זה איננו חוזה שעובר שינוי, זו רק תזכורת ידידותית!\n אם ברצונך לשלוח לנו מסר ביחד עם הנתונים שלך, נא לכתוב אותו מתחת לקו כאן.\n ---------------------------------------------</string>
-    <string name="gesture_data_promotion_message">היי לך!\n מאחר והתקנת את ספריית ההקלדה במחוות, עשוי לעניין אותך גם המיזם של HeliBoard ליצירת ספריית הקלדה במחוות פתוחה במלואה. באפשרותך לסייע ע\"י נידוב נתוני הקלדה במחוות. למידע נוסף ניתן לבקר במסך איסוף נתוני ההקלדה במחוות.</string>
-    <string name="gesture_data_reminder_message">היי לך!\n בעבר השתמשת באיסוף נתוני המחוות, אך לא הוספת נתונים מזה זמן מה. האם ברצונך לנדב נתונים שוב?</string>
-    <string name="gesture_data_take_me_there">מעבר למסך כעת</string>
-    <string name="gesture_data_links">מידע על איסוף נתוני שימוש במחוות:</string>
-    <string name="gesture_data_share_limit">כדי למנוע חריגה ממגבלות הגודל, רק %s המילים הראשונות ייכללו בייצוא הנתונים</string>
     <string name="toolbar_swipe_down_to_hide">החלקה להסתרת המקלדת</string>
     <string name="toolbar_swipe_down_to_hide_summary">החלקה למטה על סרגל הכלים לסגירת המקלדת</string>
-    <string name="gesture_data_please_switch_keyboard">נא לעבור אל %s</string>
     <string name="folded">מקופל</string>
     <string name="touchpad_sensitivity">רגישות משטח המגע</string>
     <string name="custom_punctuation_suggestions">הגדרת הצעות הפיסוק</string>
@@ -500,31 +450,6 @@
     <string name="prefs_key_gap_scale">קנה-המידה של המרווח בין המקשים</string>
     <string name="floating" tools:keep="@string/floating">מקלדת צפה</string>
     <string name="subtype_generic_4row">%s (4-שורות)</string>
-    <string name="gesture_data_swipe_o_scope">כלי לתצוגת נתוני מחוות: &lt;a href=%s&gt;Swipe-O-Scope&lt;/a&gt;</string>
-    <string name="gesture_data_no_known_dict">איסוף ברקע מתעד רק מילים ממילונים מובנים או אלה שקיימים במילוני &lt;a href=%s&gt;dictionaries repository&lt;/a&gt;. לא מופעל אצלך כרגע מילון כזה.</string>
-    <string name="gesture_data_add_key">הוספת פקד סרגל כלים</string>
-    <string name="gesture_data_first_enable_dialog">ברוך בואך לאיסוף נתונים ברקע!&lt;br&gt; האם ברצונך להוסיף את פקד &lt;i&gt;%1$s&lt;/i&gt; לסרגל הכלים? באפשרותך להשתמש בו לשליטה באיסוף הנתונים, לקריאה נוספת על כך ניתן ללחוץ על כפתור &lt;i&gt;%2$s&lt;/i&gt;. &lt;br&gt;&lt;br&gt; כברירת-מחדל, איסוף ברקע מושבת עבור כל היישומים. באפשרותך לשנות זאת %3$s.</string>
-    <string name="gesture_data_saving">שמירה… %s%%</string>
-    <string name="gesture_data_shared">הוגש</string>
-    <string name="gesture_data_include_shared">לכלול נתונים שכבר הוגשו</string>
-    <string name="gesture_data_show_background">הצגת נתוני הרקע</string>
-    <string name="gesture_data_show_active">הצגת הנתונים שנאספו באופן פעיל</string>
-    <string name="background_gathering" tools:keep="@string/background_gathering">איסוף נתונים ברקע</string>
-    <string name="gesture_data_long_press_select_hint">לחיצה ממושכת לבחירה</string>
-    <string name="gesture_data_background_exclude_words">החרגת מילה מהאיסוף ברקע</string>
-    <string name="gesture_data_background_position">מיקום: %s</string>
-    <string name="gesture_data_background_dictionary">מילון: %s</string>
-    <string name="gesture_data_background_excluded_words_button">ניהול מילים שהוחרגו</string>
-    <string name="gesture_data_background_apps_include_default">לכלול יישומים כברירת-מחדל</string>
-    <string name="gesture_data_background_apps">בחירת יישומים שייכללו באיסוף נתונים ברקע</string>
-    <string name="gesture_data_background_apps_button">ניהול היישומים שהותרו</string>
-    <string name="gesture_data_background_gathering_review_message">באמצעות מסך&lt;i&gt;%1$s&lt;/i&gt; באפשרותך לבחון ולסנן את הנתונים שנאספו, למחוק נתונים רגישים מדי לטעמך, ולשתף נתונים. פקדי המחיקה והשיתוף יפעלו על הנתונים המסוננים, או על הבחירה אם השתמשת בלחיצה ממושכת לבחירת מילים. (לתשומתלבך, הסמל ה\"רגיל\" של שיתוף מחוץ למסך ה&lt;i&gt;%1$s&lt;/i&gt; ישתף רק את הנתונים שבאיסוף הפעיל.)&lt;br&gt; הסדר של הנתונים המשותפים אקראי, כך שלא ניתן להסיק יותר מהמילים הפרטניות.&lt;br&gt; אם ברצונך לצפות בנתונים המלאים שנאספו למחווה כלשהי, באפשרותך לשתף אותם בקובץ, ולהטעין את הקובץ ב- &lt;a href=%2$s&gt;Swipe-O-Scope&lt;a&gt;.</string>
-    <string name="gesture_data_background_gathering_control_message">ללא תלות בהגדרות, איסוף ברקע של נתונים מושבת בעת שימוש במצב פרטיות. הוא מושבת גם לשדות קלט המסומנים כרגישים (סיסמאות, דוא\"ל, או כאשר שדה הקלט מבקש שהמקלדת לא תלמד את המילים). רק מילים שבמילון הראשי (מובנה או ממאגר המילונים &lt;a href=%5$s&gt;&lt;/a&gt;) יתועדו. &lt;br&gt;&lt;br&gt; Using &lt;i&gt;%1$s&lt;/i&gt; באפשרותך לבחור באילו יישומים ברצונך לאפשר איסוף ברקע של נתונים. הגדרת ברירת המחדל משביתה את כל היישומים, עם אפשרות בחירה להתיר פרטנית ליישום. לחילופין באפשרותך להפעיל איסוף ברקע לכל היישומים, ולהשביתו פרטנית ליישומים נבחרים. אפשרות זו נוחה יותר, אבל תאפשר אוטומטית איסוף נתונים מיישומים חדשים שמותקנים. הדבר עשוי לגרום לאיסוף נתונים בלתי צפויים. &lt;br&gt;&lt;br&gt; עם &lt;i&gt;%2$s&lt;/i&gt; באפשרותך להחריג מילים רגישות מוגדרות. בעת החווית מילה שהוחרגה, סמל החיווי עדיין יוצג כמלא (\"נתונים ממתינים לשמירה\"), אך הנתונים יושמטו כאשר באופן רגיל היתה מתבצעת שמירה. כל מילה מוחרגת שנשמרה עוד לפני החרגתה, תושמט בעת ייצוא הנתונים.&lt;br&gt; שימו לב שאיסוף ברקע יצבור רק מילים שכבר קיימות במילון הראשי, כך שהמילים היחידות שתרצו כנראה להחריג הן מילים נפוצות שעשויות לזהות אותך אישית, כגון: שמך, שם הרחוב, שם היישוב, שם המדינה, וכו\'. &lt;br&gt;&lt;br&gt; כאשר &lt;i&gt;%3$s&lt;/i&gt; מופעל, הנתונים נשמרים רק אם תבחרו לבצע זאת ידנית באמצעות פקד סרגל הכלים &lt;i&gt;%4$s&lt;/i&gt; (ראו למטה). אם הנתונים לא נשמרו, הנתונים שבהמתנה יימחקו בעת מעבר שדה מלל או סגירת המקלדת.&lt;br&gt; החרגת יישומים ומילים עדיין תקפות במצב זה. &lt;br&gt;&lt;br&gt; פקד סרגל הכלים &lt;i&gt;%4$s&lt;/i&gt; ניתן לשימוש לניהול צבירת הנתונים. תוצאת הלחיצה תלויה במצב הפעיל: כאשר איסוף ברקע מושבת, הוא יופעל.&lt;br&gt; לחיצה ממושכת תשבית את האיסוף למשך חמש דקות.&lt;br&gt; באפשרותך להפעיל מחדש איסוף נתונים ברקע מוקדם יותרע\"י לחיצה רגילה.&lt;br&gt; כאשר &lt;i&gt;%3$s&lt;/i&gt; מופעל, הנתונים שבהמתנה יישמרו.&lt;br&gt; אחרת, הנתונים שבהמתנה יושמטו.&lt;br&gt;</string>
-    <string name="gesture_data_background_gathering_info">מידע נוסף</string>
-    <string name="gesture_data_background_gathering_info_message">הפעלת איסוף נתונים ברקע מאפשרת ל-Heliboard לתעד שימוש בהקלדה במחוות ביישומים אחרים. המידע שימושי מאד לפרויקט ההקלדה במחוות מאחר והוא עשוי להפיק כמות ניכרת של נתונים, גם אם הוא באיכות נמוכה מזו של איסוף פעיל. איסוף נתונים ברקע אינו תחליף לאיסוף פעיל של נתונים, אלא נועד להוות תוספת, מאחר ואיכות הנתונים חשובה מכמותם.\n\n לאיסוף ברקע יש פוטנציאל גדול לצבור מידע שייחשב בעיניך פרטי מכדי לשתף, גם כאשר יפורסם בעילום שם. מסיבה זו ברצוננו להבהיר מתי נתוני שימוש המחוות הקלדה נצברים באופן פעיל וכיצד באפשרותך להשפיע על כך.\n\n באפשרותך למצוא סרטון הסבר מורחב אודות איסוף נתונים ברקע במקטע הקישורים בחלקו הימני התחתון של מסך זה.</string>
-    <string name="gesture_data_background_gathering_indicator">חיווי צבירת נתונים</string>
-    <string name="gesture_data_background_gathering_indicator_message">בכל פעם שנתוני מחוות עשויים להיצבר, יוצג סמל חיווי בתחתית המקלדת משמאל. כאשר העיגול מלא, לכל הפחות מחווה אחת תועדה וממתינה לשמירתה. הנתונים נשמרים ע\"י פקד בסרגל הכלים (ראו &lt;i&gt;%1$s&lt;/i&gt;) או אוטומטית (כאשר &lt;i&gt;%2$s&lt;/i&gt; מושבת). שמירה אוטומטית מתבצעת בדר\"כ בעת מעבר בין שדות מלל או סגירת המקלדת, אך עשויה להתבצע גם אם שדה מלל משתנה מסיבה אחרת. בעת שמירת הנתונים, החיווי יוצג בירוק לזמן קצר.</string>
-    <string name="gesture_data_background_gathering_control">איך לנהל איזה מידע נשמר</string>
     <string name="auto_correct_capitalized_suggestions">תיקון אוטומטי של הצעות עם רישיות</string>
     <string name="auto_correct_capitalized_suggestions_description">לאחר לחיצה על shift להצעות עם רישיות, תיקון אוטומטי יופעל</string>
     <string name="clipboard_history_files">הוספת תמונות וקבצים אחרים להיסטוריית הלוח</string>
@@ -535,13 +460,6 @@
     <string name="prefs_hint_font_scale">קנה-מידה של גופן הרמז לפקדים</string>
     <string name="about_community_links">קישורים של הקהילה</string>
     <string name="about_community_links_description">ערכות נושא, עורך הפריסות, דיונים, …</string>
-    <string name="gesture_data_share_duplicate">באפשרותכם לשתף בשנית נתונים שכבר הוגשו, אם אינכם בטוחים שהתקבל באופן תקין. אנחנו נאתר ונסיר כפילויות בעת עיבוד הנתונים.</string>
-    <string name="gesture_data_active">צבירה פעילה</string>
-    <string name="background_gesture_data_links">מידע אודות צבירה ברקע:</string>
-    <string name="gesture_data_background_gathering_switch">שימוש בצבירת נתונים ברקע</string>
-    <string name="gesture_data_background_gathering_allowed_apps">יישומים מורשים: %s</string>
-    <string name="gesture_data_background_gathering_manual_save">שמיטה כברירת-מחדל</string>
-    <string name="gesture_data_background_gathering_manual_save_summary">הנתונים יישמרו ידנית באמצעות פקד סרגל הכלים</string>
     <string name="subtype_tok">טוקי פונה</string>
     <string name="space_swipe_toggle_dpad_entry">מעבר למקשי הכיוון (D-pad)</string>
     <string name="layout_dpad" tools:keep="@string/layout_dpad">מקשי כיוון (D-pad)</string>

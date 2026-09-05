@@ -157,9 +157,6 @@
     <string name="backup_restored">Nüsxə bərpa edildi</string>
     <string name="secondary_locale">Çoxdilli yazma</string>
     <string name="locales_with_dict">Lüğəti olan dillər</string>
-    <string name="load_gesture_library">Hərəkətlə yazma kitabxanasını yüklə</string>
-    <string name="load_gesture_library_button_load">Kitabxananı yüklə</string>
-    <string name="load_gesture_library_button_delete">Kitabxananı sil</string>
     <string name="autospace_after_punctuation">Durğu işarəsindən sonra avtomatik boşluq</string>
     <string name="autospace_after_punctuation_summary">Yeni söz yazarkən durğu işarəsindən sonra avtomatik boşluq daxil edir</string>
     <string name="autospace_after_suggestion">Təklifi götürdükdən sonra avtomatik boşluq</string>

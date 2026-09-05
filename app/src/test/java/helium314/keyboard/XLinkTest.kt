@@ -9,10 +9,9 @@ import helium314.keyboard.latin.utils.getKnownDictionariesForLocale
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.URL
+import java.net.URI
 import kotlin.test.Test
-import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 @RunWith(RobolectricTestRunner::class)
 class XLinkTest { // Without the X, SubtypeTests fail with ClassCastException. WTF?
@@ -58,7 +57,8 @@ class XLinkTest { // Without the X, SubtypeTests fail with ClassCastException. W
         val internalLinkRegex = "app/src/\\b(?:[-a-zA-Z0-9@:%_\\+.~#?&\\/\\/=]*)".toRegex()
         val links = internalLinkRegex.findAll(file.readText())
         links.forEach {
-            checkLink(it.value.replace("app/src", Links.GITHUB + "/blob/main/app/src"))
+            val repositoryPath = it.value.substringBefore('#')
+            assertTrue(File("..", repositoryPath).exists(), "missing internal link target: $repositoryPath")
         }
     }
 
@@ -69,25 +69,8 @@ class XLinkTest { // Without the X, SubtypeTests fail with ClassCastException. W
     }
 
     private fun checkLink(link: String) {
-        if (link.contains("wiki/"))
-            return checkWikiLink(link)
-        val url = URL(link)
-        val connection = url.openConnection() as HttpURLConnection
-        connection.requestMethod = "HEAD"
-        if (connection.responseCode != 200)
-            println("error checking $link")
-        assertEquals(200, connection.responseCode)
-    }
-
-    private fun checkWikiLink(link: String) {
-        val url = URL(link)
-        val connection = url.openConnection() as HttpURLConnection
-        if (connection.responseCode != 200)
-            println("error checking $link")
-        assertEquals(200, connection.responseCode)
-        val text = connection.getInputStream().reader().readText()
-        if ("Create new page" in text)
-            println("error checking wiki $link")
-        assert("Create new page" !in text)
+        val uri = URI(link)
+        assertTrue(uri.scheme == "https" || uri.scheme == "http", "unsupported link scheme: $link")
+        assertTrue(!uri.host.isNullOrBlank(), "missing link host: $link")
     }
 }

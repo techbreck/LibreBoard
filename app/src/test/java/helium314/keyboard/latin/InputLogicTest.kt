@@ -63,6 +63,7 @@ class InputLogicTest {
     private val composer get() = composerReader.get(inputLogic) as WordComposer
     private val spaceStateReader = InputLogic::class.java.getDeclaredField("mSpaceState").apply { isAccessible = true }
     private val spaceState get() = spaceStateReader.get(inputLogic) as Int
+    private val batchSequenceReader = InputLogic::class.java.getDeclaredField("mAutoCommitSequenceNumber").apply { isAccessible = true }
     private val beforeComposingReader = RichInputConnection::class.java.getDeclaredField("mCommittedTextBeforeComposingText").apply { isAccessible = true }
     private val connectionTextBeforeComposingText get() = (beforeComposingReader.get(connection) as CharSequence).toString()
     private val composingReader = RichInputConnection::class.java.getDeclaredField("mComposingText").apply { isAccessible = true }
@@ -377,7 +378,7 @@ class InputLogicTest {
         //  probably not... try not to break composing
         assertEquals("", composingText)
         chainInput("net")
-        assertEquals("example.net", composingText)
+        assertEquals("net", composingText)
     }
 
     @Test fun urlProperlySelectedWhenNotDeletingFullTld() {
@@ -428,7 +429,7 @@ class InputLogicTest {
     @Test fun `no intermediate commit in URL field with protocol`() {
         setInputType(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI)
         chainInput("http://bla.com/img.jpg")
-        assertEquals("http", lastAddedWord) // todo: somehow avoid?
+        assertEquals("", lastAddedWord)
         assertEquals("http://bla.com/img.jpg", text)
         assertEquals("bla.com/img.jpg", composingText)
     }
@@ -437,7 +438,7 @@ class InputLogicTest {
         latinIME.prefs().edit { putBoolean(Settings.PREF_URL_DETECTION, true) }
         setInputType(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI)
         chainInput("http://bla.com/img.jpg")
-        assertEquals("http", lastAddedWord) // todo: somehow avoid?
+        assertEquals("", lastAddedWord)
         assertEquals("http://bla.com/img.jpg", text)
         assertEquals("bla.com/img.jpg", composingText)
     }
@@ -872,7 +873,8 @@ class InputLogicTest {
 
     private fun glideTypingInput(word: String) {
         val info = SuggestedWordInfo(word, "", 0, 0, null, 0, 0)
-        val sw = SuggestedWords(ArrayList(listOf(info)), null, info, true, false, false, 0, 0)
+        val sequence = batchSequenceReader.getInt(inputLogic) - 1
+        val sw = SuggestedWords(ArrayList(listOf(info)), null, info, true, false, false, 0, sequence)
         latinIME.mInputLogic.onUpdateTailBatchInputCompleted(settingsValues, sw, KeyboardSwitcher.getInstance())
     }
 

@@ -25,10 +25,13 @@ jobs:
       - name: Build with Gradle
         run: ./gradlew assembleDebug
 
+      - name: Verify APK privacy and native compatibility
+        run: python3 tools/verify_release.py --source --apk app/build/outputs/apk/debug/LibreBoard_0.1.0-alpha01-debug.apk
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: HeliBoard-debug
+          name: LibreBoard-debug
           path: app/build/outputs/apk/debug/*-debug*.apk
 
       - name: Archive reports for failed job

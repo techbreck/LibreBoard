@@ -59,11 +59,10 @@ import helium314.keyboard.latin.settings.SpacingAndPunctuations;
 import helium314.keyboard.latin.suggestions.SuggestionStripViewAccessor;
 import helium314.keyboard.latin.utils.AsyncResultHolder;
 import helium314.keyboard.latin.utils.DictionaryInfoUtils;
-import helium314.keyboard.latin.utils.GestureDataGatheringKt;
 import helium314.keyboard.latin.utils.InputTypeUtils;
 import helium314.keyboard.latin.utils.IntentUtils;
 import helium314.keyboard.latin.utils.Log;
-import helium314.keyboard.latin.utils.BackgroundGatheringCache;
+import helium314.keyboard.latin.engine.personal.PersonalizationRuntime;
 import helium314.keyboard.latin.utils.RecapitalizeMode;
 import helium314.keyboard.latin.utils.RecapitalizeStatus;
 import helium314.keyboard.latin.utils.ScriptUtils;
@@ -96,14 +95,9 @@ public final class InputLogic {
     private int mSpaceState;
     // Never null
     public SuggestedWords mSuggestedWords = SuggestedWords.getEmptyInstance();
-    public Suggest mSuggest; // non-final for active gesture data gathering, revert when data gathering phase is done (end of 2026 latest)
-    public DictionaryFacilitator mDictionaryFacilitator; // non-final for active gesture data gathering, revert when data gathering phase is done (end of 2026 latest)
+    public final Suggest mSuggest;
+    public final DictionaryFacilitator mDictionaryFacilitator;
     private SingleDictionaryFacilitator mEmojiDictionaryFacilitator;
-    public void setFacilitator(DictionaryFacilitator facilitator) { // only for active gesture data gathering, remove when data gathering phase is done (end of 2026 latest)
-        if (mDictionaryFacilitator == facilitator) return;
-        mDictionaryFacilitator = facilitator;
-        mSuggest = new Suggest(mDictionaryFacilitator);
-    }
 
     public LastComposedWord mLastComposedWord = LastComposedWord.NOT_A_COMPOSED_WORD;
     // This has package visibility so it can be accessed from InputLogicHandler.
@@ -160,6 +154,7 @@ public final class InputLogic {
      * @param settingsValues the current settings values
      */
     public void startInput(final String combiningSpec, final SettingsValues settingsValues) {
+        PersonalizationRuntime.clearSession();
         mEnteredText = null;
         mWordBeingCorrectedByCursor = null;
         mConnection.onStartInput();
@@ -180,6 +175,7 @@ public final class InputLogic {
         // editorInfo.initialSelStart is not the actual cursor position, so we try using some heuristics to find the correct position.
         mConnection.tryFixIncorrectCursorPosition();
         cancelDoubleSpacePeriodCountdown();
+        ++mAutoCommitSequenceNumber;
         mInputLogicHandler.reset();
         mConnection.requestCursorUpdates(true, true);
         setInlineEmojiSearchAction(false);
@@ -221,8 +217,33 @@ public final class InputLogic {
             StatsUtils.onWordCommitUserTyped(mWordComposer.getTypedWord(), mWordComposer.isBatchMode());
         }
         resetComposingState(true);
+        ++mAutoCommitSequenceNumber;
         mInputLogicHandler.reset();
+        PersonalizationRuntime.clearSession();
         mSpaceState = SpaceState.NONE;
+    }
+
+    /** Apply an explicit user incognito transition immediately, without waiting for preference UI refresh. */
+    public void onIncognitoModeChanged(final boolean enabled) {
+        ++mAutoCommitSequenceNumber;
+        mInputLogicHandler.reset();
+        mSuggest.clearNextWordSuggestionsCache();
+        PersonalizationRuntime.clearSession();
+        if (enabled) {
+            mConnection.beginBatchEdit();
+            if (mWordComposer.isComposingWord()) {
+                // Preserve what the user can see, but do not retain it as an active composition.
+                mConnection.finishComposingText();
+            }
+            resetComposingState(true);
+            mConnection.clearTextCachesForPrivacy();
+            mConnection.endBatchEdit();
+            mSuggestionStripViewAccessor.setSuggestions(SuggestedWords.getEmptyInstance());
+        } else {
+            mConnection.resetCachesUponCursorMoveAndReturnSuccess(
+                    mConnection.getExpectedSelectionStart(), mConnection.getExpectedSelectionEnd(),
+                    false /* shouldFinishComposition */);
+        }
     }
 
     /**
@@ -241,13 +262,8 @@ public final class InputLogic {
                 SystemClock.uptimeMillis(), mSpaceState,
                 getActualCapsMode(settingsValues, keyboardCapsMode));
         mConnection.beginBatchEdit();
-        if (GestureDataGatheringKt.useBackgroundGathering && mConnection.hasSelection())
-            BackgroundGatheringCache.INSTANCE.onEditSelection(mConnection.getSelectedText(0), mConnection.getTextBeforeCursor(40, 0), mConnection.getTextAfterCursor(40, 0));
         if (mWordComposer.isComposingWord()) {
             if (mWordComposer.isCursorFrontOrMiddleOfComposingWord()) {
-                if (GestureDataGatheringKt.useBackgroundGathering)
-                    BackgroundGatheringCache.INSTANCE.onEditWord(mWordComposer.getTypedWord());
-
                 // stop composing, otherwise the text will end up at the end of the current word
                 mConnection.finishComposingText();
                 resetComposingState(false);
@@ -303,14 +319,6 @@ public final class InputLogic {
             Event event = Event.createPunctuationSuggestionPickedEvent(suggestionInfo);
             return onCodeInput(settingsValues, event, keyboardCapsMode, currentKeyboardScript, handler);
         }
-        if (GestureDataGatheringKt.useBackgroundGathering) {
-            if (mWordComposer.isBatchMode())
-                // should only happen selecting different suggestion for gesture typed word
-                BackgroundGatheringCache.INSTANCE.onPickSuggestionAfterGesturing(suggestionInfo, mWordComposer.getTypedWord());
-            else
-                BackgroundGatheringCache.INSTANCE.onPickSuggestion(suggestionInfo, mWordComposer.getTypedWord());
-        }
-
         Event event = Event.createSuggestionPickedEvent(suggestionInfo);
         InputTransaction inputTransaction = new InputTransaction(settingsValues, event,
             SystemClock.uptimeMillis(), mSpaceState, keyboardCapsMode);
@@ -396,10 +404,9 @@ public final class InputLogic {
             // note that arrow keys are not considered, because for them isBelatedExpectedUpdate returns false
             return expectCursorMove;
         }
-
-        // if all text is gone, we treat it like onStartInput
-        if (GestureDataGatheringKt.useBackgroundGathering && newSelStart == 0 && newSelEnd == 0 && !mConnection.hasTextAfterCursor())
-            BackgroundGatheringCache.saveOrClear(mLatinIME);
+        // A non-reconciled selection change invalidates the confirmed-commit prefix. Never form
+        // personal n-grams from editor text that LibreBoard did not itself observe being committed.
+        PersonalizationRuntime.clearSession();
 
         // TODO: the following is probably better done in resetEntireInputState().
         // it should only happen when the cursor moved, and the very purpose of the
@@ -444,7 +451,7 @@ public final class InputLogic {
             // the cursor away.
             if (!TextUtils.isEmpty(mWordBeingCorrectedByCursor)) {
                 performAdditionToUserHistoryDictionary(settingsValues, mWordBeingCorrectedByCursor,
-                        NgramContext.EMPTY_PREV_WORDS_INFO);
+                        NgramContext.EMPTY_PREV_WORDS_INFO, LastComposedWord.COMMIT_TYPE_USER_TYPED_WORD, null);
             }
         } else {
             // resetEntireInputState calls resetCachesUponCursorMove, but forcing the
@@ -486,11 +493,6 @@ public final class InputLogic {
             CapsMode keyboardCapsMode, String currentKeyboardScript, LatinIME.UIHandler handler) {
         mWordBeingCorrectedByCursor = null;
         mJustRevertedACommit = false;
-
-        if (GestureDataGatheringKt.useBackgroundGathering && mConnection.hasSelection())
-            BackgroundGatheringCache.INSTANCE.onEditSelection(mConnection.getSelectedText(0), mConnection.getTextBeforeCursor(40, 0), mConnection.getTextAfterCursor(40, 0));
-        if (GestureDataGatheringKt.useBackgroundGathering && mWordComposer.isComposingWord() && mWordComposer.isCursorFrontOrMiddleOfComposingWord())
-            BackgroundGatheringCache.INSTANCE.onEditWord(mWordComposer.getTypedWord());
 
         Event processedEvent = mWordComposer.processEvent(event);
         InputTransaction inputTransaction = new InputTransaction(settingsValues,
@@ -548,15 +550,10 @@ public final class InputLogic {
     public void onStartBatchInput(final SettingsValues settingsValues,
             final KeyboardSwitcher keyboardSwitcher, final LatinIME.UIHandler handler) {
         mWordBeingCorrectedByCursor = null;
-        mInputLogicHandler.onStartBatchInput();
         handler.showGesturePreviewAndSetSuggestions(SuggestedWords.getEmptyBatchInstance(), false);
         handler.cancelUpdateSuggestionStrip();
         ++mAutoCommitSequenceNumber;
-
-        if (GestureDataGatheringKt.useBackgroundGathering && mConnection.hasSelection())
-            BackgroundGatheringCache.INSTANCE.onEditSelection(mConnection.getSelectedText(0), mConnection.getTextBeforeCursor(40, 0), mConnection.getTextAfterCursor(40, 0));
-        if (GestureDataGatheringKt.useBackgroundGathering && mWordComposer.isComposingWord() && mWordComposer.isCursorFrontOrMiddleOfComposingWord())
-            BackgroundGatheringCache.INSTANCE.onEditWord(mWordComposer.getTypedWord());
+        mInputLogicHandler.onStartBatchInput(mAutoCommitSequenceNumber);
 
         mConnection.beginBatchEdit();
         if (mWordComposer.isComposingWord()) {
@@ -854,8 +851,6 @@ public final class InputLogic {
                 }
                 break;
             case KeyCode.UNDO:
-                if (GestureDataGatheringKt.useBackgroundGathering)
-                    BackgroundGatheringCache.INSTANCE.onUndo(mWordComposer.isComposingWord() ? mWordComposer.getTypedWord() : mLastComposedWord.mCommittedWord);
                 sendDownUpKeyEventWithMetaState(KeyEvent.KEYCODE_Z, KeyEvent.META_CTRL_ON);
                 break;
             case KeyCode.REDO:
@@ -1081,8 +1076,11 @@ public final class InputLogic {
         // We only start composing if this is a word code point. Essentially that means it's a
         // a letter or a word connector.
                 && settingsValues.isWordCodePoint(codePoint)
-        // We never go into composing state if suggestions are not requested.
-                && settingsValues.needsToLookupSuggestions() &&
+        // Terminal and sensitive policies must never create editor-side composing spans.
+                && settingsValues.mInputAttributes.mFieldPolicy.getAllowsComposing()
+        // Restricted policies may still compose the raw word for editor correctness, but the
+        // suggestion pipeline and context reads remain disabled independently.
+                &&
         // In languages with spaces, we only start composing a word when we are not already
         // in the middle or at the end of a word. In languages without spaces, the above conditions are sufficient.
         // NOTE: If the InputConnection is slow, we skip the text-after-cursor check since it
@@ -1297,8 +1295,6 @@ public final class InputLogic {
         if (mWordComposer.isComposingWord()) {
             if (mWordComposer.isBatchMode()) {
                 final String rejectedSuggestion = mWordComposer.getTypedWord();
-                if (GestureDataGatheringKt.useBackgroundGathering)
-                    BackgroundGatheringCache.INSTANCE.onRejectedSuggestion(rejectedSuggestion);
                 mWordComposer.reset();
                 mWordComposer.setRejectedBatchModeSuggestion(rejectedSuggestion);
                 if (!TextUtils.isEmpty(rejectedSuggestion)) {
@@ -1306,8 +1302,6 @@ public final class InputLogic {
                 }
                 StatsUtils.onBackspaceWordDelete(rejectedSuggestion.length());
             } else {
-                if (GestureDataGatheringKt.useBackgroundGathering)
-                    BackgroundGatheringCache.INSTANCE.removeLast(mWordComposer.getTypedWord());
                 mWordComposer.applyProcessedEvent(event);
                 StatsUtils.onBackspacePressed(1);
             }
@@ -1698,7 +1692,8 @@ public final class InputLogic {
     }
 
     private void performAdditionToUserHistoryDictionary(final SettingsValues settingsValues,
-            final String suggestion, @NonNull final NgramContext ngramContext) {
+            final String suggestion, @NonNull final NgramContext ngramContext,
+            final int commitType, final String correctionRaw) {
         // For addition to user history we want suggestions (even if just for autocorrect) or a gestured word.
         // That's to avoid unintended additions in some sensitive fields, or fields that
         // expect to receive non-words.
@@ -1723,6 +1718,10 @@ public final class InputLogic {
         final int timeStampInSeconds = (int)TimeUnit.MILLISECONDS.toSeconds(System.currentTimeMillis());
         mDictionaryFacilitator.addToUserHistory(word, wasAutoCapitalized, ngramContext,
                 timeStampInSeconds, settingsValues.mBlockPotentiallyOffensive);
+        PersonalizationRuntime.observeCommit(mLatinIME, getCurrentInputEditorInfo(), false, word,
+                settingsValues.mLocale.toLanguageTag(),
+                commitType == LastComposedWord.COMMIT_TYPE_MANUAL_PICK,
+                correctionRaw);
     }
 
     private void addToHistoryIfEmoji(final String text, final SettingsValues settingsValues) {
@@ -1938,6 +1937,12 @@ public final class InputLogic {
         final CharSequence originallyTypedWord = mLastComposedWord.mTypedWord;
         final CharSequence committedWord = mLastComposedWord.mCommittedWord;
         final String committedWordString = committedWord.toString();
+        if (originallyTypedWord != null) {
+            PersonalizationRuntime.observeRejection(mLatinIME, getCurrentInputEditorInfo(),
+                    inputTransaction.getSettingsValues().mIncognitoModeEnabled,
+                    originallyTypedWord.toString(), committedWordString,
+                    inputTransaction.getSettingsValues().mLocale.toLanguageTag());
+        }
         final int cancelLength = committedWord.length();
         final String separatorString = mLastComposedWord.mSeparatorString;
         // If our separator is a space, we won't actually commit it,
@@ -2087,6 +2092,9 @@ public final class InputLogic {
      */
     public NgramContext getNgramContextFromNthPreviousWordForSuggestion(
             final SpacingAndPunctuations spacingAndPunctuations, final int nthPreviousWord) {
+        if (!Settings.getValues().mInputAttributes.mFieldPolicy.getAllowsContextRead()) {
+            return NgramContext.EMPTY_PREV_WORDS_INFO;
+        }
         if (spacingAndPunctuations.mCurrentLanguageHasSpaces) {
             // If we are typing in a language with spaces we can just look up the previous
             // word information from textview.
@@ -2328,6 +2336,9 @@ public final class InputLogic {
      */
     public void onUpdateTailBatchInputCompleted(final SettingsValues settingsValues,
             final SuggestedWords suggestedWords, final KeyboardSwitcher keyboardSwitcher) {
+        if (suggestedWords.mSequenceNumber != mAutoCommitSequenceNumber - 1) {
+            return;
+        }
         final String batchInputText = suggestedWords.isEmpty() ? null : suggestedWords.getWord(0);
         if (TextUtils.isEmpty(batchInputText)) {
             return;
@@ -2339,10 +2350,18 @@ public final class InputLogic {
         }
         mWordComposer.setBatchInputWord(batchInputText);
         enterInlineEmojiSearchIfNeeded(batchInputText.codePointAt(0), settingsValues);
-        setComposingTextInternal(batchInputText, 1);
+        if (settingsValues.mInputAttributes.mFieldPolicy.getAllowsComposing()) {
+            setComposingTextInternal(batchInputText, 1);
+        } else {
+            // TYPE_NULL/terminal editors are frequently incompatible with composing spans. A
+            // completed swipe is a single direct commit, after which no editor composition remains.
+            mConnection.commitText(batchInputText, 1);
+            mWordComposer.reset();
+        }
         mConnection.endBatchEdit();
         // Space state must be updated before calling updateShiftState
-        if (settingsValues.mAutospaceAfterGestureTyping)
+        if (settingsValues.mInputAttributes.mFieldPolicy.getAllowsComposing()
+                && settingsValues.mAutospaceAfterGestureTyping)
             mSpaceState = SpaceState.PHANTOM;
         keyboardSwitcher.requestUpdatingShiftState(getCurrentAutoCapsState(settingsValues), getCurrentRecapitalizeState());
 
@@ -2472,6 +2491,7 @@ public final class InputLogic {
             Log.d(TAG, "commitChosenWord() : NgramContext = " + ngramContext);
             startTimeMillis = SystemClock.elapsedRealtime();
         }
+        final String rawWordBeforeCommit = mWordComposer.getTypedWord();
         mConnection.commitText(chosenWordWithSuggestions, 1);
         if (DebugFlags.DEBUG_ENABLED) {
             long runTimeMillis = SystemClock.elapsedRealtime() - startTimeMillis;
@@ -2480,7 +2500,8 @@ public final class InputLogic {
             startTimeMillis = SystemClock.elapsedRealtime();
         }
         // Add the word to the user history dictionary
-        performAdditionToUserHistoryDictionary(settingsValues, chosenWord, ngramContext);
+        performAdditionToUserHistoryDictionary(settingsValues, chosenWord, ngramContext, commitType,
+                TextUtils.equals(rawWordBeforeCommit, chosenWord) ? null : rawWordBeforeCommit);
         if (DebugFlags.DEBUG_ENABLED) {
             long runTimeMillis = SystemClock.elapsedRealtime() - startTimeMillis;
             Log.d(TAG, "commitChosenWord() : " + runTimeMillis + " ms to run "
@@ -2700,10 +2721,6 @@ public final class InputLogic {
 
         if (isStartOfInlineEmojiSearch(codePoint, mConnection.getCodePointBeforeCursor(), mConnection.getCharBeforeBeforeCursor(),
                                        settingsValues)) {
-            if (mWordComposer.isBatchMode())
-                // when entering inline emoji search with glide typing, the action is not set when the word is added
-                // this means we don't detect inline search mode, so we remove to word now
-                BackgroundGatheringCache.INSTANCE.removeLast(mWordComposer.getTypedWord());
             setInlineEmojiSearchAction(true);
         }
     }

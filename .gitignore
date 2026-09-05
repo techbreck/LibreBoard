@@ -12,6 +12,8 @@ app/.cxx
 app/.attach_*
 fastlane/Appfile
 tools/*.txt
+__pycache__/
+*.py[cod]
 *.patch
 *.diff
 *.sh

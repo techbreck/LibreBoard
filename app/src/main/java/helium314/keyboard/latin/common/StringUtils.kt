@@ -10,7 +10,6 @@ import helium314.keyboard.latin.utils.SpacedTokens
 import helium314.keyboard.latin.utils.SpannableStringUtils
 import helium314.keyboard.latin.utils.TextRange
 import java.math.BigInteger
-import java.text.BreakIterator
 import java.util.Locale
 import kotlin.math.max
 import kotlin.text.indexOfFirst
@@ -245,66 +244,76 @@ fun mightBeEmoji(text: CharSequence): Boolean {
 
 fun isEmoji(c: Int): Boolean = mightBeEmoji(c) && isEmoji(newSingleCodePointString(c))
 
-/** returns whether the text is a single emoji */
-fun isEmoji(text: CharSequence): Boolean = text.toString().isSingleGrapheme && mightBeEmoji(text) && text.matches(singleEmojiRegex)
-
-// from https://github.com/chattymin/Pebble/blob/main/pebble/src/main/java/com/chattymin/pebble/LocalBreakIterator.kt, Apache-2.0 license
-// there is more potentially useful code like String.graphemeLength (should be graphemeCount though)
-private val LocalBreakIterator = ThreadLocal<BreakIterator>().apply {
-    // this is always Locale.ROOT, but (Android Studio) testing on all available key labels showed no difference by locale
-    // maybe this works better with android.icu.text.BreakIterator, but that one requires API24
-    set(BreakIterator.getCharacterInstance(Locale.ROOT))
-}
-
-private val localBreakIterator: BreakIterator = LocalBreakIterator.get() ?: initBreakIterator()
-
-private fun initBreakIterator() = BreakIterator.getCharacterInstance(Locale.ROOT).also {
-    LocalBreakIterator.set(it)
-}
+/** returns whether the text is a single emoji according to the committed Unicode grammar */
+fun isEmoji(text: CharSequence): Boolean = mightBeEmoji(text) && text.matches(singleEmojiRegex)
 
 val String.isSingleGrapheme: Boolean get() {
     if (isEmpty()) return false
-    if (length == 1) return true
-
-    runCatching {
-        val iterator = localBreakIterator
-        iterator.setText(this)
-        iterator.next()
-        if (iterator.next() != BreakIterator.DONE) return false
-        // we have a single grapheme, but " 🏼" is detected as single grapheme which we don't want
-        return if ('\uD83C' !in this) true // does not contain skin tone
-        else singleEmojiRegex.matches(this) // single grapheme only if it's a single emoji
-    }
-    // got IllegalArgumentException: Invalid index on iterator.next()
-    return false
+    return graphemeBoundaries(this).size == 2
 }
 
 val String.lastGrapheme: String get() {
     if (length <= 1) return this
-
-    val iterator = localBreakIterator
-    iterator.setText(this)
-    val res = substring(iterator.preceding(length))
-    val tone = res.indexOfFirst { it == '\uD83C' }
-    return if (tone == -1 || singleEmojiRegex.matches(res)) res
-    else res.substring(tone) // " 🏼" is detected as single grapheme, but we don't want this
+    val boundaries = graphemeBoundaries(this)
+    return substring(boundaries[boundaries.lastIndex - 1])
 }
 
 /** translates a move of [steps] graphemes in [text] to character count */
 fun moveStepsToCharCount(text: CharSequence, steps: Int): Int {
     if (steps == 0) return 0
-    val iterator = localBreakIterator
-    iterator.setText(text.toString())
+    val boundaries = graphemeBoundaries(text.toString())
     if (steps > 0) {
-        repeat(steps) { iterator.next() }
-        return if (iterator.current() == BreakIterator.DONE) text.length
-        else iterator.current()
+        return boundaries.getOrElse(steps) { text.length }
     } else {
-        iterator.last()
-        repeat(-steps) { iterator.previous() }
-        return if (iterator.current() == BreakIterator.DONE) -text.length
-        else iterator.current() - text.length
+        val target = boundaries.lastIndex + steps
+        return if (target <= 0) -text.length else boundaries[target] - text.length
     }
+}
+
+/**
+ * Deterministic extended-grapheme boundaries for keyboard editing. Valid emoji sequences come from
+ * the generated project grammar, while ordinary text joins Unicode marks and ZWJ continuations.
+ * This avoids device/JDK ICU-version drift in backspace and cursor gestures.
+ */
+private fun graphemeBoundaries(text: String): List<Int> {
+    val boundaries = mutableListOf(0)
+    var offset = 0
+    while (offset < text.length) {
+        val emoji = singleEmojiRegex.find(text, offset)?.takeIf { it.range.first == offset }
+        if (emoji != null) {
+            offset = emoji.range.last + 1
+            boundaries += offset
+            continue
+        }
+
+        val baseCodePoint = text.codePointAt(offset)
+        offset += Character.charCount(baseCodePoint)
+        while (offset < text.length) {
+            val codePoint = text.codePointAt(offset)
+            if (isGraphemeExtension(codePoint)) {
+                offset += Character.charCount(codePoint)
+                continue
+            }
+            if (codePoint == 0x200D && baseCodePoint != 0x200D && !Character.isWhitespace(baseCodePoint)) {
+                offset += Character.charCount(codePoint)
+                if (offset < text.length) {
+                    offset += Character.charCount(text.codePointAt(offset))
+                }
+                continue
+            }
+            break
+        }
+        boundaries += offset
+    }
+    return boundaries
+}
+
+private fun isGraphemeExtension(codePoint: Int): Boolean = when (Character.getType(codePoint)) {
+    Character.NON_SPACING_MARK.toInt(),
+    Character.COMBINING_SPACING_MARK.toInt(),
+    Character.ENCLOSING_MARK.toInt(),
+    -> true
+    else -> codePoint in 0xFE00..0xFE0F || codePoint in 0xE0100..0xE01EF
 }
 
 fun String.splitOnWhitespace() = SpacedTokens(this).toList()

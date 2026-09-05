@@ -19,10 +19,12 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
             android:icon="@mipmap/ic_launcher"
             android:roundIcon="@mipmap/ic_launcher_round"
             android:supportsRtl="true"
-            android:allowBackup="true"
-            android:defaultToDeviceProtectedStorage="true"
+            android:allowBackup="false"
+            android:fullBackupContent="@xml/backup_rules"
+            android:dataExtractionRules="@xml/data_extraction_rules"
             android:directBootAware="true"
             android:enableOnBackInvokedCallback="true"
+            android:usesCleartextTraffic="false"
             android:localeConfig="@xml/locales_config"
             tools:remove="android:appComponentFactory"
             tools:targetApi="33">
@@ -104,13 +106,14 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
 
         <receiver android:name="DictionaryPackInstallBroadcastReceiver" android:exported="false">
             <intent-filter>
-                <action android:name="helium314.keyboard.dictionarypack.aosp.UNKNOWN_CLIENT" />
+                <action android:name="org.libreboard.keyboard.dictionarypack.aosp.UNKNOWN_CLIENT" />
             </intent-filter>
         </receiver>
 
         <!-- for pasting files from internal clipboard -->
         <provider android:name="helium314.keyboard.latin.database.ClipboardContentProvider"
-            android:authorities="@string/clipboard_provider_authority"
+            android:authorities="${applicationId}.clipprovider"
+            android:directBootAware="false"
             android:enabled="true"
             android:grantUriPermissions="true"
             android:exported="false">
@@ -119,16 +122,6 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
                 android:resource="@xml/clipboard_provider_path"/>
         </provider>
 
-        <!-- necessary for sending mail attachments, remove when data gathering phase is done (end of 2026 latest) -->
-        <provider android:name="helium314.keyboard.settings.screens.gesturedata.GestureFileProvider"
-            android:authorities="@string/gesture_data_provider_authority"
-            android:enabled="true"
-            android:grantUriPermissions="true"
-            android:exported="false">
-            <meta-data
-                android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/gesture_data_path"/>
-        </provider>
     </application>
 
     <queries>

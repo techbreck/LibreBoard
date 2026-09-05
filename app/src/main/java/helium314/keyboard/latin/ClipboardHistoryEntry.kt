@@ -15,6 +15,7 @@ import helium314.keyboard.latin.settings.Settings
 import helium314.keyboard.latin.utils.Log
 import androidx.core.view.inputmethod.InputContentInfoCompat
 import helium314.keyboard.latin.database.ClipboardDao
+import helium314.keyboard.latin.BuildConfig
 import java.io.File
 
 class ClipboardHistoryEntry(
@@ -38,7 +39,7 @@ class ClipboardHistoryEntry(
 
     fun getContentUri(context: Context) = filename?.let { FileProvider.getUriForFile(
         context,
-        context.getString(R.string.clipboard_provider_authority),
+        BuildConfig.APPLICATION_ID + ".clipprovider",
         File(ClipboardDao.clipFilesDir, it)
     ) }
 

@@ -132,8 +132,6 @@
     <string name="add_to_personal_dictionary_summary">ဝေါဟာရအသစ်များကို ကိုယ်ပိုင်အဘိဓာန်တွင် ထည့်သွင်းမှတ်တမ်းတင်မည်</string>
     <string name="prefs_always_show_suggestions">အကြံပြုချက်များကို အမြဲတမ်းပြပါ</string>
     <string name="prefs_always_show_suggestions_summary">အကြံပြုချက်များကိုပိတ်ထားရန် ဖုန်းထဲရှိ အခြားအပလီကေးရှင်းများ၏ တောင်းဆိုချက်များကို မသိကျိုးကျွန်ပြုပါ (ချွတ်ယွင်းမှုများပေါ်ပေါက်လာနိုင်သည်)</string>
-    <string name="prefs_always_show_suggestions_except_web_text">ဝက်ဘ်စာမျက်နှာများပေါ်ရှိ ပုံစံဖြည့်သွင်းသည့်နေရာများတွင် အကြုံပြုချက်များကို အမြဲမပြပါနှင့်</string>
-    <string name="prefs_always_show_suggestions_except_web_text_summary">ဝက်ဘ်စာမျက်နှာပေါ်ရှိ ပုံစံဖြည့်သွင်းရသည့်နေရာများသည် လက်ကွက်စနစ်၏ အမြဲတမ်းအကြံပြုချက်များပြသသည့်စနစ်ကို ချွတ်ယွင်းစေတတ်သည့်အကြောင်းတစ်ခုဖြစ်သည်</string>
     <string name="more_autocorrect">အလိုလျောက်သတ်ပုံပြင်ဆင်ခြင်း အပိုစနစ်</string>
     <string name="more_autocorrect_summary">ပုံစံဖြည့်သွင်းသည့်နေရာတွင် သတ်ပုံပြင်ဆင်ခြင်းစနစ်ကိုအသုံးပြုမည်</string>
     <string name="auto_correction_confidence">သတ်ပုံပြင်ဆင်ခြင်းစနစ်၏ မြန်နှုန်းနှင့်တိကျမှုကို ချိန်ညှိရန်</string>
@@ -185,12 +183,6 @@
     <string name="timestamp_format_title">အချိန်မှတ်ခလုတ်၏ လုပ်ငန်းဆောင်တာဆောင်ရွက်မှုပုံစံ</string>
     <string name="secondary_locale">ဘာသာစကားမျိုးစုံ စာရိုက်ခြင်း</string>
     <string name="locales_with_dict">အဘိဓာန်ပါဝင်သော ဘာသာစကားများ</string>
-    <string name="load_gesture_library">ပြင်ပမှ ပွတ်ဆွဲစာရေးခြင်း အထွေထွေစနစ်ကို ထည့်သွင်းခြင်း</string>
-    <string name="load_gesture_library_summary">ပြင်ပမှ ပွတ်ဆွဲစာရေးခြင်း သီးသန့်စနစ်ကို ထည့်သွင်းပါ</string>
-    <string name="load_gesture_library_message">သင်က ဤအထွေထွေစနစ်ကို \'%s\' အတွက် လိုအပ်ပါသည်။ ကိုက်ညီမှုမရှိသောအထွေထွေစနစ်များကြောင့် ပွတ်ဆွဲစာရေးနေစဉ် ချွတ်ယွင်းမှုများ ပေါ်ပေါက်နိုင်သည်။\n\nသတိ - ပြင်ပမှ အထွေထွေစနစ်များထည့်သွင်းခြင်းသည် လုံခြုံရေးအန္တရာယ်ရှိနိုင်သည်။ ထို့ကြောင့် သင်ယုံကြည်သည့် ရင်းမြစ်ထောက်ပံ့သူထံမှ အထွေထွေစနစ်ကိုသာ ထည့်သွင်းအသုံးပြုရန် တိုက်တွန်းသည်။</string>
-    <string name="checksum_mismatch_message">ဤထွေထွေစနစ်၏ အမျိုးအမည်ကို မစစ်ဆေးနိုင်ပါ။ ထိုဖိုင်ကို ယုံကြည်ရသောရင်းမြစ်ထောက်ပံ့သူထံမှ \'%s\' အတွက် အသုံးပြုရန် သင်ရယူခဲ့သည်မှာ သေချာပါသလား?</string>
-    <string name="load_gesture_library_button_load">အထွေထွေစနစ်ကို ထည့်သွင်းမည်</string>
-    <string name="load_gesture_library_button_delete">အထွေထွေစနစ်ကို ပယ်ဖျက်မည်</string>
     <string name="autospace_after_punctuation">ပုဒ်ဖြတ်ပုဒ်ရပ်ပြီးနောက် အလိုအလျောက်စာလုံးခြား တစ်နေရာစာထည့်သွင်းမည်</string>
     <string name="autospace_after_punctuation_summary">ဝေါဟာရအသစ်ရိုက်နှိပ်ပြီး ပုဒ်ဖြတ်ပုဒ်ရပ်ချပြီးနောက် အလိုအလျောက်စာလုံးခြားထည့်သွင်းမည်</string>
     <string name="autospace_after_suggestion">အကြံပြုချက်ကိုရွေးချယ်ပြီးနောက် အလိုအလျောက်စာလုံးခြားထည့်မည်</string>

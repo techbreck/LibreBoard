@@ -140,13 +140,7 @@
     <string name="timestamp_format_title">Format kekunci cap masa</string>
     <string name="secondary_locale">Penaipan pelbagai bahasa</string>
     <string name="locales_with_dict">Bahasa dengan kamus</string>
-    <string name="load_gesture_library">Muatkan pustaka penaipan gerak isyarat</string>
-    <string name="load_gesture_library_summary">Sediakan pustaka asli untuk mendayakan penaipan gerak isyarat</string>
     <string name="delete_swipe">Padam sapuan</string>
-    <string name="load_gesture_library_message">Anda memerlukan pustaka untuk \'%s\'. Pustaka yang tidak serasi mungkin akan ranap ketika menggunakan penaipan gerak isyarat. \n\nAmaran: kod luaran mungkin mempunyai risiko keselamatan. Hanya gunakan pustaka dari sumber yang anda percayai.</string>
-    <string name="checksum_mismatch_message">Fail pustaka tidak diketahui. Adakah anda pasti anda mendapatinya dari sumber yang dipercayai dan ianya untuk \'%s\'?</string>
-    <string name="load_gesture_library_button_load">Muatkan pustaka</string>
-    <string name="load_gesture_library_button_delete">Padam pustaka</string>
     <string name="autospace_after_punctuation">Masukkan ruang selepas tanda baca</string>
     <string name="autospace_after_punctuation_summary">Masukkan ruang secara automatik selepas tanda baca ketika menaip perkataan baru</string>
     <string name="autospace_after_suggestion">Masukkan ruang selepas memilih cadangan</string>

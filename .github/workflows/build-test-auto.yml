@@ -10,7 +10,9 @@ on:
 #      - 'app/**'
   pull_request:
     paths:
-      - 'app/src/main/java**'
+      - 'app/**'
+      - 'tools/**'
+      - '.github/workflows/build-test-auto.yml'
   workflow_dispatch:
 
 jobs:
@@ -34,6 +36,12 @@ jobs:
 
       - name: Build with Gradle
         run: ./gradlew testRunTestsUnitTest
+
+      - name: Test Phase 0 evaluation gate
+        run: python3 -m unittest discover -s tools/tests
+
+      - name: Enforce privacy and GrapheneOS source gates
+        run: python3 tools/verify_release.py --source
 
       - name: Archive reports for failed job
         uses: actions/upload-artifact@v4

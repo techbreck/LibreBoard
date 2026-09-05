@@ -23,6 +23,7 @@ class InputLogicHandler implements Handler.Callback {
     final InputLogic mInputLogic;
     private final Object mLock = new Object();
     private boolean mInBatchInput; // synchronized using {@link #mLock}.
+    private int mActiveBatchSequence = SuggestedWords.NOT_A_SEQUENCE_NUMBER;
 
     private static final int MSG_GET_SUGGESTED_WORDS = 1;
 
@@ -37,6 +38,10 @@ class InputLogicHandler implements Handler.Callback {
 
     public void reset() {
         mNonUIThreadHandler.removeCallbacksAndMessages(null);
+        synchronized (mLock) {
+            mInBatchInput = false;
+            mActiveBatchSequence = SuggestedWords.NOT_A_SEQUENCE_NUMBER;
+        }
     }
 
     /**
@@ -52,14 +57,17 @@ class InputLogicHandler implements Handler.Callback {
     }
 
     // Called on the UI thread by InputLogic.
-    public void onStartBatchInput() {
+    public void onStartBatchInput(final int sequenceNumber) {
         synchronized (mLock) {
             mInBatchInput = true;
+            mActiveBatchSequence = sequenceNumber;
         }
     }
 
     public boolean isInBatchInput() {
-        return mInBatchInput;
+        synchronized (mLock) {
+            return mInBatchInput;
+        }
     }
 
     /**
@@ -77,24 +85,26 @@ class InputLogicHandler implements Handler.Callback {
     private void updateBatchInput(final InputPointers batchPointers,
             final int sequenceNumber, final boolean isTailBatchInput) {
         synchronized (mLock) {
-            if (!mInBatchInput) {
+            if (!mInBatchInput || sequenceNumber != mActiveBatchSequence) {
                 // Batch input has ended or canceled while the message was being delivered.
                 return;
             }
             mInputLogic.mWordComposer.setBatchInputPointers(batchPointers);
             getSuggestedWords(() -> mInputLogic.getSuggestedWords(
                 isTailBatchInput ? SuggestedWords.INPUT_STYLE_TAIL_BATCH : SuggestedWords.INPUT_STYLE_UPDATE_BATCH, sequenceNumber,
-                suggestedWords -> showGestureSuggestionsWithPreviewVisuals(suggestedWords, isTailBatchInput))
+                suggestedWords -> showGestureSuggestionsWithPreviewVisuals(
+                        suggestedWords, isTailBatchInput, sequenceNumber))
             );
         }
     }
 
     private void showGestureSuggestionsWithPreviewVisuals(final SuggestedWords suggestedWordsForBatchInput,
-            final boolean isTailBatchInput) {
+            final boolean isTailBatchInput, final int sequenceNumber) {
         final SuggestedWords suggestedWordsToShowSuggestions;
         // We're now inside the callback. This always runs on the Non-UI thread,
         // no matter what thread updateBatchInput was originally called on.
-        if (suggestedWordsForBatchInput.isEmpty()) {
+        if (suggestedWordsForBatchInput.isEmpty()
+                && mInputLogic.mSuggestedWords.mSequenceNumber == sequenceNumber) {
             // Use old suggestions if we don't have any new ones.
             // Previous suggestions are found in InputLogic#mSuggestedWords.
             // Since these are the most recent ones and we just recomputed
@@ -103,9 +113,18 @@ class InputLogicHandler implements Handler.Callback {
         } else {
             suggestedWordsToShowSuggestions = suggestedWordsForBatchInput;
         }
+        synchronized (mLock) {
+            if (!mInBatchInput
+                    || sequenceNumber != mActiveBatchSequence) {
+                return;
+            }
+            if (isTailBatchInput) {
+                mInBatchInput = false;
+                mActiveBatchSequence = SuggestedWords.NOT_A_SEQUENCE_NUMBER;
+            }
+        }
         mLatinIMEHandler.showGesturePreviewAndSetSuggestions(suggestedWordsToShowSuggestions, isTailBatchInput);
         if (isTailBatchInput) {
-            mInBatchInput = false;
             // The following call schedules onEndBatchInputInternal
             // to be called on the UI thread.
             mLatinIMEHandler.showTailBatchInputResult(suggestedWordsToShowSuggestions);
@@ -137,6 +156,7 @@ class InputLogicHandler implements Handler.Callback {
     public void onCancelBatchInput() {
         synchronized (mLock) {
             mInBatchInput = false;
+            mActiveBatchSequence = SuggestedWords.NOT_A_SEQUENCE_NUMBER;
         }
     }
 

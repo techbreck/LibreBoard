@@ -2,6 +2,8 @@
 package helium314.keyboard.latin
 
 import androidx.core.content.edit
+import android.text.InputType
+import android.view.inputmethod.EditorInfo
 import helium314.keyboard.ShadowBinaryDictionaryUtils
 import helium314.keyboard.ShadowInputMethodManager2
 import helium314.keyboard.ShadowLocaleManagerCompat
@@ -58,6 +60,13 @@ class SuggestTest {
 
     @BeforeTest fun reset() {
         latinIME.prefs().edit { clear() }
+        // Service construction has no active editor and now fails closed by design. Suggestion
+        // tests explicitly install a normal text-field policy before changing correction prefs.
+        Settings.getInstance().loadSettings(
+            latinIME,
+            Locale.ENGLISH,
+            InputAttributes(EditorInfo().apply { inputType = InputType.TYPE_CLASS_TEXT }, false, latinIME.packageName),
+        )
         currentTypingLocale = Locale.ENGLISH
         tapTypingSuggestions = suggestionResults(emptyList())
         glideTypingSuggestions = suggestionResults(emptyList())

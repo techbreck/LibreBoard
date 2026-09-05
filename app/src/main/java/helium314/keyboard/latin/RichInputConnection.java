@@ -282,6 +282,16 @@ public final class RichInputConnection implements PrivateCommandPerformer {
         return true;
     }
 
+    /**
+     * Drop editor text retained by the IME without reading it again. This is used on an explicit
+     * incognito transition; normal cursor-cache refresh would immediately repopulate the context.
+     */
+    public void clearTextCachesForPrivacy() {
+        mCommittedTextBeforeComposingText.setLength(0);
+        mComposingText.setLength(0);
+        mTempObjectForCommitText.clear();
+    }
+
     private void reloadCursorPosition() {
         if (!isConnected()) return;
         final ExtractedText et = mIC.getExtractedText(new ExtractedTextRequest(), 0);
@@ -700,7 +710,8 @@ public final class RichInputConnection implements PrivateCommandPerformer {
             if (DebugFlags.DEBUG_ENABLED)
                 Log.d(TAG, "setting composing text of length "+text.length()); // don't log actual text
             mIC.setComposingText(text, newCursorPosition);
-            if (!Settings.getValues().mInputAttributes.mShouldShowSuggestions && text.length() > 0) {
+            if (!Settings.getValues().mInputAttributes.mFieldPolicy.getAllowsComposing()
+                    && text.length() > 0) {
                 // We have a field that disables suggestions, but still committed text is set.
                 // This might lead to weird bugs (e.g. https://github.com/HeliBorg/HeliBoard/issues/225), so better do
                 // a sanity check whether the wanted text has been set.

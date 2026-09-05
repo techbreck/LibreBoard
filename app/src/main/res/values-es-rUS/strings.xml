@@ -166,17 +166,9 @@
     <string name="show_vertical_space_swipe">Gesto vertical en la barra espaciadora</string>
     <string name="action_none">Ninguna</string>
     <string name="space_swipe_move_cursor_entry">Mover cursor</string>
-    <string name="load_gesture_library">Cargar biblioteca de escritura gestual</string>
-    <string name="load_gesture_library_summary">Proporcionar una biblioteca nativa para permitir la escritura gestual</string>
     <string name="switch_language">Intercambiar idioma</string>
     <string name="button_restore">Restaurar</string>
     <string name="secondary_locale">Escritura multilingüe</string>
-    <string name="load_gesture_library_message">Necesitarás la biblioteca para \'%s\'. Las bibliotecas incompatibles pueden bloquearse al utilizar la escritura gestual.
-\n
-\nAdvertencia: cargar código externo puede ser un riesgo para la seguridad. Utiliza únicamente una biblioteca de una fuente en la que confíes.</string>
-    <string name="checksum_mismatch_message">Archivo de biblioteca desconocido. ¿Está seguro de que lo ha obtenido de una fuente de confianza y que es para \'%s\'?</string>
-    <string name="load_gesture_library_button_load">Cargar librería</string>
-    <string name="load_gesture_library_button_delete">Eliminar librería</string>
     <string name="show_popup_keys_title">Mostrar más letras con diacríticos en la ventana emergente</string>
     <string name="show_popup_keys_normal">Mostrar las variantes definidas en los idiomas del teclado</string>
     <string name="show_popup_keys_more">Añadir variantes comunes</string>

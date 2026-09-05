@@ -165,8 +165,6 @@
     <string name="add_to_personal_dictionary_summary">기기의 개인 사전에 학습한 단어 저장</string>
     <string name="prefs_always_show_suggestions">항상 제안 표시</string>
     <string name="prefs_always_show_suggestions_summary">다른 앱의 제안 비활성화 요청 무시 (문제 발생 가능)</string>
-    <string name="prefs_always_show_suggestions_except_web_text_summary">(보통 브라우저 내에 있는) 웹 입력란에서 \'항상 제안 표시\' 관련 문제가 흔하게 발생합니다</string>
-    <string name="prefs_always_show_suggestions_except_web_text">웹 입력란에서는 \'항상 제안 표시\' 비활성화</string>
     <string name="more_autocorrect_summary">입력란에서 명시적으로 요청하지 않아도 자동 교정</string>
     <string name="more_autocorrect">추가 자동 교정</string>
     <string name="backspace_reverts_autocorrect">삭제 키로 자동 교정 되돌리기</string>
@@ -189,12 +187,6 @@
     <string name="backup_restored">백업 복원 완료</string>
     <string name="timestamp_format_title">타임스탬프 키 형식</string>
     <string name="secondary_locale">다국어 입력</string>
-    <string name="load_gesture_library">제스처 입력 라이브러리 불러오기</string>
-    <string name="load_gesture_library_summary">내장 라이브러리를 제공해 제스처 입력 활성화</string>
-    <string name="load_gesture_library_message">\'%s\' 라이브러리가 필요합니다. 미호환 라이브러리를 사용하면 제스처 입력 시 충돌할 수 있습니다. \n\n주의: 외부 코드를 불러오는 것은 보안 취약점이 될 수 있습니다. 신뢰할 수 있는 출처의 라이브러리만 사용하세요.</string>
-    <string name="checksum_mismatch_message">알 수 없는 라이브러리 파일입니다. 정말 신뢰할 수 있는 출처에서 받은 \'%s\' 라이브러리가 맞나요?</string>
-    <string name="load_gesture_library_button_load">라이브러리 불러오기</string>
-    <string name="load_gesture_library_button_delete">라이브러리 삭제</string>
     <string name="autospace_after_suggestion">제안 수락 후 자동 띄어쓰기</string>
     <string name="autospace_before_gesture_typing">제스처 입력 전 자동 띄어쓰기</string>
     <string name="autospace_after_gesture_typing">제스처 입력 후 자동 띄어쓰기</string>
@@ -267,7 +259,6 @@
     <string name="select_color_key_background">키 배경</string>
     <string name="select_color_functional_key_background">기능 키 배경</string>
     <string name="select_color_spacebar_background">스페이스바 배경</string>
-    <string name="gesture_data_background_gathering_info">더 많은 정보</string>
     <string name="prefs_narrow_key_gaps">키 간격 좁게</string>
     <string name="prefs_key_gap_scale">키 간격 크기</string>
     <string name="prefs_bottom_padding_scale">하단 공백 크기</string>
@@ -430,13 +421,6 @@
     <string name="folded">접힘</string>
     <string name="emoji_search_title">이모지 검색</string>
     <string name="search_field_placeholder">검색</string>
-    <string name="ask_later">나중에</string>
-    <string name="gesture_data_screen">제스처 데이터 수집</string>
-    <string name="gesture_data_privacy">개인정보</string>
-    <string name="gesture_data_get_data">제스처 데이터 파일 공유</string>
-    <string name="gesture_data_delete_data">제스처 데이터 지우기</string>
-    <string name="gesture_data_send_mail">이메일로 데이터 전송</string>
-    <string name="gesture_data_copy_mail">이메일 주소 복사</string>
     <string name="auto_correct_shortcuts">단축어 자동 교정</string>
     <string name="auto_correct_shortcuts_summary">켜면 자동 교정이 단축어를 단어로 대치</string>
     <string name="auto_correct_capitalized_suggestions">대문자화 제안 자동 교정</string>
@@ -467,7 +451,6 @@
     <string name="var_toolbar_direction">가변 도구 모음 방향</string>
     <string name="spell_check_suggestions">맞춤법 제안 표시</string>
     <string name="spell_check_suggestions_summary">빨간 밑줄이 있는 단어를 선택할 때 제안을 표시합니다. 앱을 기본 맞춤법 검사기로 설정해야 합니다.</string>
-    <string name="gesture_data_swipe_o_scope">제스처 데이터 시각화 도구: &lt;a href=%s&gt;Swipe-O-Scope&lt;/a&gt;</string>
     <string name="gesture_fast_typing_cooldown">빠른 입력 쿨다운</string>
     <string name="gesture_fast_typing_cooldown_instant">항상 즉시 시작</string>
     <string name="locales_with_dict">사전이 있는 언어</string>

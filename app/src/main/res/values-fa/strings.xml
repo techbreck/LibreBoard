@@ -158,8 +158,6 @@
     <string name="add_to_personal_dictionary_summary">استفاده از واژه‌نامه دستگاه برای ذخیره کلمات یادگیری‌شده</string>
     <string name="prefs_always_show_suggestions">نمایش همیشگی پیشنهادها</string>
     <string name="prefs_always_show_suggestions_summary">نادیده گرفتن درخواست سایر برنامه‌ها مبنی بر عدم نمایش پیشنهاد (ممکن است مشکل‌ساز شود)</string>
-    <string name="prefs_always_show_suggestions_except_web_text">پنهان کردن پیشنهادها در فیلدهای متنی وب</string>
-    <string name="prefs_always_show_suggestions_except_web_text_summary">فیلدهای متنی وب (غالباً در مرورگرها) دلیل اصلی مشکلات تنظیم «نمایش همیشگی پیشنهادها» هستند</string>
     <string name="more_autocorrect">تصحیح خودکار بیشتر</string>
     <string name="more_autocorrect_summary">تصحیح خودکار، حتی زمانی که فیلد متنی صراحتاً درخواست نکرده باشد</string>
     <string name="auto_correction_confidence">میزان سخت‌گیری تصحیح خودکار</string>
@@ -191,12 +189,6 @@
     <string name="timestamp_description">می‌توانید کلید برچسب زمانی را با استفاده از یک چیدمان سفارشی دارای کلید \'timestamp\' یا کد کلید 10043- اضافه کنید</string>
     <string name="secondary_locale">تایپ چندزبانه</string>
     <string name="locales_with_dict">زبان‌های دارای واژه‌نامه</string>
-    <string name="load_gesture_library">بارگیری کتابخانه تایپ اشاره‌ای</string>
-    <string name="load_gesture_library_summary">ارائه یک کتابخانه بومی جهت فعال‌سازی تایپ اشاره‌ای</string>
-    <string name="load_gesture_library_message">شما برای \'%s\' به این کتابخانه نیاز دارید. استفاده از کتابخانه‌های ناسازگار ممکن است موجب توقف کارکرد برنامه هنگام تایپ اشاره‌ای شود.\n\nهشدار: بارگیری کدهای خارجی می‌تواند یک ریسک امنیتی باشد. فقط از کتابخانه‌ای با منبع معتبر استفاده کنید.</string>
-    <string name="checksum_mismatch_message">فایل کتابخانه ناشناخته است. آیا مطمئنید آن را از یک منبع معتبر دریافت کرده‌اید و مخصوص \'%s\' است؟</string>
-    <string name="load_gesture_library_button_load">بارگیری کتابخانه</string>
-    <string name="load_gesture_library_button_delete">حذف کتابخانه</string>
     <string name="autospace_after_suggestion">فاصله خودکار پس از انتخاب یک پیشنهاد</string>
     <string name="autospace_before_gesture_typing">فاصله خودکار قبل از تایپ اشاره‌ای کلمه</string>
     <string name="autospace_after_gesture_typing">فاصله خودکار پس از تایپ اشاره‌ای کلمه</string>
@@ -458,48 +450,8 @@
     <string name="folded">تاشو بسته (Folded)</string>
     <string name="emoji_search_title">جستجوی ایموجی</string>
     <string name="search_field_placeholder">جستجو</string>
-    <string name="ask_later">بعداً بپرس</string>
     <string name="spell_check_suggestions">نمایش پیشنهادات بررسی املایی</string>
     <string name="spell_check_suggestions_summary">نمایش پیشنهادات هنگام انتخاب کلمه‌ای با زیرخط قرمز. نیازمند تنظیم برنامه به عنوان بررسی‌کننده املای پیش‌فرض است.</string>
-    <string name="gesture_data_screen">جمع‌آوری داده‌های تایپ اشاره‌ای</string>
-    <string name="gesture_data_description">به صفحه جمع‌آوری داده‌های تایپ اشاره‌ای خوش آمدید!&lt;br/&gt;&lt;br/&gt; این بخشی از یک &lt;a href=https://nlnet.nl/project/GestureTyping&gt;پروژه با بودجه NLnet&lt;/a&gt; است که برای تولید یک کتابخانه تایپ اشاره‌ای کاملاً متن‌باز و جایگزین کتابخانه متن‌بسته گوگل تلاش می‌کند.&lt;br/&gt; هدف این است که به عنوان جایگزینی ساده برای صفحه‌کلیدهای مبتنی بر AOSP و همچنین سایر صفحه‌کلیدها (مانند FlorisBoard) قابل استفاده باشد.&lt;br/&gt;&lt;br/&gt; برای توسعه این کتابخانه، داشتن داده‌های دقیق از اشارات کاربران مختلف به زبان‌های مختلف بسیار کمک‌کننده است.&lt;br/&gt; با جمع‌آوری و ارسال داده‌های تایپ اشاره‌ای، شما می‌توانید به این مجموعه داده باز کمک کنید. این مجموعه داده پس از پایان فاز جمع‌آوری در تاریخ %s تحت مجوز CC BY-SA 4.0 منتشر خواهد شد. پس از جمع‌آوری داده‌ها، می‌توانید از طریق آیکون اشتراک‌گذاری در پایین این صفحه، آن‌ها را ارسال کنید.</string>
-    <string name="gesture_data_info">این چیست؟</string>
-    <string name="gesture_data_description_modes">در حال حاضر فقط حالت «جمع‌آوری فعال» وجود دارد که کلمه مشخصی به شما نشان داده می‌شود و شما آن را با تایپ اشاره‌ای وارد می‌کنید.\n بعداً حالت «جمع‌آوری غیرفعال» نیز اضافه خواهد شد که می‌توانید نمونه‌هایی از تایپ اشاره‌ای عادی خود را در برنامه‌های دیگر ارائه دهید. به دلیل حساسیت این رویکرد، این ویژگی کاملاً اختیاری، قابل تنظیم و دارای یک صفحه بازبینی برای داده‌هایی است که قصد ارسالشان را دارید.</string>
-    <string name="gesture_data_description_privacy">حریم خصوصی\n\n داده‌هایی که ارسال می‌کنید شامل کلمه هدف، چیدمان و ابعاد صفحه‌کلید، مختصات و زمان‌های اشاره، پیشنهادات کتابخانه فعلی، هش واژه‌نامه‌های استفاده‌شده، نسخه برنامه، حالت جمع‌آوری داده، اینکه آیا کتابخانه «پیش‌فرض» گوگل استفاده شده است و یک شناسه اختصاصی برای هر اشاره می‌باشد.\n داده‌های ارسالی پس از دانلود از صندوق پستی ProtonMail به محض امکان حذف خواهند شد. پس از پایان مرحله جمع‌آوری داده‌ها، مجموعه داده‌های انباشته از همه کاربران تحت مجوز Creative Commons BY-SA 4.0 منتشر می‌شود.\n\n برای محافظت از حریم خصوصی شما، به عنوان نویسنده صراحتاً نام برده نخواهید شد و اعتبار شما با عنوان \"مشارکت‌کنندگان پروژه داده‌های اشاره‌ای HeliBoard\" ذکر می‌شود. نباید امکان ارتباط داده‌های تولید شده در این صفحه با هویت شما وجود داشته باشد. با این حال، ممکن است بتوان تعیین کرد که کدام اشارات توسط یک شخص انجام شده‌اند. این امر می‌تواند از طریق چیدمان سفارشی صفحه‌کلید، ابعاد آن، زبان یا سبک تایپ اشاره‌ای فردی مشخص شود.</string>
-    <string name="gesture_data_privacy">حریم خصوصی</string>
-    <string name="gesture_data_get_data">اشتراک‌گذاری فایل داده‌های اشاره‌ای</string>
-    <string name="gesture_data_delete_data">پاک کردن داده‌های اشاره‌ای</string>
-    <string name="gesture_data_send_mail">ارسال داده‌ها از طریق ایمیل</string>
-    <string name="gesture_data_copy_mail">کپی آدرس ایمیل</string>
-    <string name="gesture_data_mail_use">توجه داشته باشید که آدرس ایمیل برای ارسال داده‌ها در نظر گرفته شده است، ممکن است پاسخ‌های سریع یا مداومی دریافت نکنید.</string>
-    <string name="gesture_data_please_type">لطفاً با اشاره تایپ کنید:</string>
-    <string name="gesture_data_please_switch_keyboard">لطفاً به %s تغییر دهید</string>
-    <string name="gesture_data_next_save">دریافت شد \"%s\". اگر مطمئن هستید که درست اشاره کردید، کلیک کنید</string>
-    <string name="gesture_data_next">رد کردن کلمه</string>
-    <string name="gesture_data_active_count">%1$s کلمه در این جلسه، مجموعاً %2$s کلمه (%3$s کلمه قبلاً ارسال یا حذف شده است)</string>
-    <string name="gesture_data_review_screen_title">بازبینی و اشتراک‌گذاری داده‌های اشاره‌ای</string>
-    <string name="gesture_data_words_selected">%s کلمه</string>
-    <string name="gesture_data_date_range">محدوده تاریخ</string>
-    <string name="gesture_data_much_data">شما حجم زیادی از داده‌های ارسال‌نشده دارید. لطفاً آن‌ها را ارسال کرده و سپس داده‌های قدیمی را پاک کنید.</string>
-    <string name="gesture_data_how_to_use">نحوه استفاده</string>
-    <string name="gesture_data_active_description">روی «شروع جمع‌آوری فعال» ضربه بزنید، به‌دلخواه واژه‌نامه را تغییر دهید و شروع به تایپ اشاره‌ای کلمه نمایش‌داده‌شده کنید.&lt;br/&gt; اگر اشاره شما با کلمه مطابقت داشته باشد، داده‌ها ذخیره شده و کلمه بعدی نمایش داده می‌شود. در غیر این صورت می‌توانید دوباره تلاش کنید، کلمه را رد کنید یا صحت اشاره خود را تأیید کنید.&lt;br/&gt; فقط می‌توانید از واژه‌نامه‌های داخلی برنامه یا واژه‌نامه‌های موجود در &lt;a href=%s&gt;مخزن واژه‌نامه‌ها&lt;/a&gt; استفاده کنید، هیچ کلمه دیگری استفاده نخواهد شد.</string>
-    <string name="gesture_data_active_start">شروع جمع‌آوری فعال</string>
-    <string name="gesture_data_active_stop">توقف جمع‌آوری فعال</string>
-    <string name="gesture_data_ends_at">فاز جمع‌آوری داده‌های اشاره‌ای در تاریخ %s به پایان می‌رسد. لطفاً قبل از آن تاریخ داده‌های خود را ارسال کنید.</string>
-    <string name="gesture_data_ended">فاز جمع‌آوری داده‌های اشاره‌ای در تاریخ %s به پایان رسید. می‌توانید داده‌های موجود خود را به اشتراک بگذارید، اما مورد جدیدی اضافه نخواهد شد.</string>
-    <string name="gesture_data_share_all">اشتراک‌گذاری همه %s کلمه</string>
-    <string name="gesture_data_share_new">اشتراک‌گذاری %s کلمه ارسال‌نشده</string>
-    <string name="gesture_data_delete_dialog">شما دارای %1$s کلمه جدید و %2$s کلمه از پیش ارسال‌شده هستید.</string>
-    <string name="gesture_data_share_limit">برای جلوگیری از تجاوز از محدودیت حجم، تنها %s کلمه اول استخراج خواهد شد</string>
-    <string name="gesture_data_delete_dialog_all">حذف همه %s کلمه</string>
-    <string name="gesture_data_delete_dialog_confirm">آیا مطمئن هستید؟ این کار باعث حذف %s کلمه می‌شود. مطمئن شوید که داده‌هایتان با موفقیت ارسال شده است!</string>
-    <string name="gesture_data_delete_dialog_submitted">حذف %s کلمه ارسال‌شده</string>
-    <string name="gesture_data_many_not_shared_words">بیش از %s کلمه در انتظار ارسال هستند</string>
-    <string name="gesture_data_email_body">مهم:\n\n سلام!\n به‌عنوان یادآوری، این داده‌ها به‌صورت عمومی تحت مجوز CC BY-SA 4.0 به اشتراک گذاشته خواهند شد و برای محافظت از حریم خصوصی‌تان نامی از شما به‌عنوان نویسنده برده نمی‌شود.\n\n از اینکه حقوق داده‌های خود را با ما به اشتراک می‌گذارید سپاسگزاریم. ما به‌خوبی از آن‌ها استفاده خواهیم کرد!\n\n لطفاً توجه داشته باشید که تغییر متن این اطلاعیه، نحوه استفاده ما از داده‌های شما را تغییر نمی‌دهد. این یک قرارداد نیست که نیاز به اصلاح داشته باشد، فقط یک یادآوری دوستانه است!\n اگر می‌خواهید پیامی به همراه داده‌های خود برای ما بفرستید، آن را زیر این خط بنویسید.\n ---------------------------------------------</string>
-    <string name="gesture_data_promotion_message">سلام!\n از آنجا که کتابخانه تایپ اشاره‌ای را نصب کرده‌اید، ممکن است به پروژه HeliBoard برای ایجاد یک کتابخانه تایپ اشاره‌ای کاملاً متن‌باز علاقه‌مند باشید. می‌توانید با ارائه داده‌های تایپ اشاره‌ای به ما کمک کنید. برای اطلاعات بیشتر به صفحه جمع‌آوری داده‌های اشاره‌ای مراجعه کنید.</string>
-    <string name="gesture_data_reminder_message">سلام!\n شما قبلاً از ویژگی جمع‌آوری داده‌های اشاره‌ای استفاده کرده‌اید، اما مدتی است که داده‌ای اضافه نکرده‌اید. آیا مایل هستید دوباره مشارکت کنید؟</string>
-    <string name="gesture_data_take_me_there">مرا به آنجا ببر</string>
-    <string name="gesture_data_links">اطلاعات درباره جمع‌آوری داده‌های اشاره‌ای در:</string>
     <string name="auto_correct_capitalized_suggestions">تصحیح خودکار پیشنهادهای با حرف بزرگ</string>
     <string name="auto_correct_capitalized_suggestions_description">پس از فشردن کلید Shift برای بزرگ‌نویسی پیشنهادها، تصحیح خودکار اعمال می‌شود</string>
     <string name="clipboard_history_files">افزودن تصاویر و سایر فایل‌ها به تاریخچه کلیپ‌بورد</string>
@@ -514,36 +466,4 @@
     <string name="about_community_links">پیوندهای انجمن</string>
     <string name="about_community_links_description">پوسته‌ها، ویرایشگر چیدمان، گفتگوها و…</string>
     <string name="space_swipe_toggle_dpad_entry">تغییر به پد جهت‌نما (D-pad)</string>
-    <string name="gesture_data_share_duplicate">در صورتی که مطمئن نیستید داده‌های قبلاً ارسال‌شده به‌درستی دریافت شده‌اند، می‌توانید آن‌ها را دوباره به اشتراک بگذارید. ما هنگام پردازش داده‌ها، موارد تکراری را شناسایی و حذف می‌کنیم.</string>
-    <string name="gesture_data_active">جمع‌آوری فعال</string>
-    <string name="background_gesture_data_links">اطلاعات درباره جمع‌آوری در پس‌زمینه:</string>
-    <string name="gesture_data_background_gathering_switch">استفاده از جمع‌آوری داده‌ها در پس‌زمینه</string>
-    <string name="gesture_data_background_gathering_allowed_apps">برنامه‌های مجاز: %s</string>
-    <string name="gesture_data_background_gathering_manual_save">دور ریختن به‌صورت پیش‌فرض</string>
-    <string name="gesture_data_background_gathering_manual_save_summary">داده‌ها به‌صورت دستی از طریق کلید نوار ابزار ذخیره می‌شوند</string>
-    <string name="gesture_data_background_gathering_info">اطلاعات بیشتر</string>
-    <string name="gesture_data_background_gathering_info_message">فعال کردن جمع‌آوری داده‌ها در پس‌زمینه به HeliBoard اجازه می‌دهد اشاراتی را که در برنامه‌های دیگر تایپ می‌کنید ثبت کند. این کار برای پروژه تایپ اشاره‌ای بسیار مفید است، زیرا می‌تواند حجم قابل توجهی داده تولید کند، هرچند با کیفیتی پایین‌تر از جمع‌آوری فعال. جمع‌آوری داده‌ها در پس‌زمینه جایگزینی برای داده‌های جمع‌آوری فعال نیست، بلکه مکملی برای آن است، چرا که کیفیت داده‌ها مهم‌تر از کمیت آن‌هاست.\n\nجمع‌آوری در پس‌زمینه احتمال بالایی دارد داده‌هایی را جمع‌آوری کند که ممکن است آن‌ها را حتی در صورت انتشار ناشناس، برای اشتراک‌گذاری بیش از حد خصوصی بدانید. به همین دلیل می‌خواهیم روشن کنیم که چه زمانی داده‌های اشاره‌ای جمع‌آوری می‌شوند و چگونه می‌توانید بر آن تأثیر بگذارید.\n\nویدیویی با توضیحات بیشتر درباره جمع‌آوری داده‌ها در پس‌زمینه در بخش پیوندهای پایین این صفحه موجود است.</string>
-    <string name="gesture_data_background_gathering_indicator">نشانگر جمع‌آوری داده</string>
-    <string name="gesture_data_background_gathering_indicator_message">هر زمان که امکان ثبت داده‌های اشاره‌ای وجود داشته باشد، یک آیکون نشانگر در گوشه پایین صفحه‌کلید خواهید دید. وقتی دایره پر باشد، حداقل یک اشاره جمع‌آوری شده و در انتظار ذخیره است. داده‌ها یا از طریق کلید نوار ابزار (نگاه کنید به &lt;i&gt;%1$s&lt;/i&gt;) یا به‌صورت خودکار (وقتی &lt;i&gt;%2$s&lt;/i&gt; غیرفعال باشد) ذخیره می‌شوند. ذخیره خودکار معمولاً هنگام جابجایی بین فیلدهای متنی یا بستن صفحه‌کلید انجام می‌شود، اما ممکن است در صورت تغییر فیلد متنی به دلایل دیگر نیز رخ دهد. هنگام ذخیره شدن داده‌ها، نشانگر برای مدت کوتاهی سبز می‌شود.</string>
-    <string name="gesture_data_background_gathering_control">نحوه کنترل آنچه ذخیره می‌شود</string>
-    <string name="gesture_data_background_gathering_control_message">مستقل از تنظیمات، جمع‌آوری داده‌ها در پس‌زمینه هنگام استفاده از حالت ناشناس غیرفعال است. همچنین برای فیلدهای ورودی حساس (گذرواژه‌ها، ایمیل، یا هر زمان که فیلد ورودی از صفحه‌کلید بخواهد کلمات را یاد نگیرد) غیرفعال است. فقط کلماتی که در یک واژه‌نامه اصلی (داخلی یا از &lt;a href=%5$s&gt;مخزن واژه‌نامه‌ها&lt;/a&gt;) وجود دارند جمع‌آوری خواهند شد. &lt;br&gt;&lt;br&gt; با استفاده از &lt;i&gt;%1$s&lt;/i&gt; می‌توانید انتخاب کنید که در کدام برنامه‌ها جمع‌آوری داده در پس‌زمینه مجاز باشد. تنظیم پیش‌فرض همه برنامه‌ها را غیرفعال می‌کند و هر برنامه باید جداگانه فعال شود. در عوض می‌توانید همه برنامه‌ها را فعال کنید و برنامه‌ها را جداگانه مستثنا کنید. این کار راحت‌تر است، اما جمع‌آوری داده از برنامه‌های تازه نصب‌شده را به‌طور خودکار مجاز می‌کند و ممکن است داده‌هایی جمع‌آوری شود که انتظارش را نداشتید. &lt;br&gt;&lt;br&gt; با &lt;i&gt;%2$s&lt;/i&gt; می‌توانید کلمات حساس خاصی را مستثنا کنید. هنگام تایپ اشاره‌ای یک کلمه مستثناشده، آیکون نشانگر همچنان حالت پر («داده در انتظار ذخیره») را نشان می‌دهد، اما داده در زمانی که به‌طور معمول ذخیره می‌شد دور ریخته خواهد شد. کلمات مسدودشده‌ای که پیش از مسدود شدن ذخیره شده باشند، هنگام استخراج داده‌ها دور ریخته می‌شوند.&lt;br&gt; توجه داشته باشید که جمع‌آوری در پس‌زمینه فقط کلماتی را جمع‌آوری می‌کند که از قبل در یک واژه‌نامه اصلی وجود دارند؛ بنابراین احتمالاً تنها کلماتی که لازم است مسدود کنید، کلمات رایجی هستند که می‌توانند هویت شما را مشخص کنند، مانند: نام، خیابان، شهر، منطقه و غیره. &lt;br&gt;&lt;br&gt; وقتی &lt;i&gt;%3$s&lt;/i&gt; فعال باشد، داده‌ها فقط در صورتی ذخیره می‌شوند که خودتان به‌صورت دستی با کلید نوار ابزار &lt;i&gt;%4$s&lt;/i&gt; این کار را انجام دهید (در ادامه ببینید). اگر داده‌ها ذخیره نشوند، داده‌های در انتظار هنگام تغییر فیلد ورودی یا بستن صفحه‌کلید حذف خواهند شد.&lt;br&gt; استثنائات برنامه‌ها و کلمات در این حالت نیز اعمال می‌شوند. &lt;br&gt;&lt;br&gt; کلید نوار ابزار &lt;i&gt;%4$s&lt;/i&gt; برای کنترل جمع‌آوری داده‌ها قابل استفاده است. اثر فشردن آن به وضعیت فعلی بستگی دارد: وقتی جمع‌آوری در پس‌زمینه غیرفعال باشد، فعال می‌شود.&lt;br&gt; لمس طولانی، جمع‌آوری را برای پنج دقیقه غیرفعال می‌کند.&lt;br&gt; می‌توانید با یک فشردن عادی، جمع‌آوری در پس‌زمینه را زودتر دوباره فعال کنید.&lt;br&gt; وقتی &lt;i&gt;%3$s&lt;/i&gt; فعال باشد، داده‌های در انتظار ذخیره می‌شوند.&lt;br&gt; در غیر این صورت، داده‌های در انتظار دور ریخته می‌شوند.&lt;br&gt;</string>
-    <string name="gesture_data_background_gathering_review_message">با استفاده از صفحه &lt;i&gt;%1$s&lt;/i&gt; می‌توانید داده‌های جمع‌آوری‌شده را بررسی و فیلتر کنید، داده‌هایی را که بیش از حد حساس می‌دانید حذف کنید و داده‌ها را به اشتراک بگذارید. دکمه‌های حذف و اشتراک‌گذاری روی داده‌های فیلترشده، یا در صورت انتخاب کلمات با لمس طولانی، روی موارد انتخاب‌شده عمل می‌کنند. (توجه کنید که آیکون اشتراک‌گذاری «عادی» خارج از صفحه &lt;i&gt;%1$s&lt;/i&gt; فقط داده‌های جمع‌آوری فعال را به اشتراک می‌گذارد.)&lt;br&gt; ترتیب داده‌های اشتراک‌گذاری‌شده تصادفی می‌شود، بنابراین چیزی بیش از تک‌تک کلمات قابل استنتاج نیست.&lt;br&gt; اگر می‌خواهید داده‌های کامل ذخیره‌شده برای یک اشاره را ببینید، می‌توانید آن را در یک فایل به اشتراک بگذارید و فایل را در &lt;a href=%2$s&gt;Swipe-O-Scope&lt;a&gt; بارگیری کنید.</string>
-    <string name="gesture_data_background_apps_button">مدیریت برنامه‌های مجاز</string>
-    <string name="gesture_data_background_apps">انتخاب برنامه‌ها برای جمع‌آوری داده در پس‌زمینه</string>
-    <string name="gesture_data_background_apps_include_default">شامل کردن برنامه‌ها به‌صورت پیش‌فرض</string>
-    <string name="gesture_data_background_excluded_words_button">مدیریت کلمات مستثناشده</string>
-    <string name="gesture_data_background_dictionary">واژه‌نامه: %s</string>
-    <string name="gesture_data_background_position">موقعیت: %s</string>
-    <string name="gesture_data_background_exclude_words">مستثنا کردن کلمه از جمع‌آوری در پس‌زمینه</string>
-    <string name="gesture_data_long_press_select_hint">برای انتخاب، لمس طولانی کنید</string>
-    <string name="background_gathering" tools:keep="@string/background_gathering">جمع‌آوری داده در پس‌زمینه</string>
-    <string name="gesture_data_show_active">نمایش داده‌های جمع‌آوری فعال</string>
-    <string name="gesture_data_show_background">نمایش داده‌های پس‌زمینه</string>
-    <string name="gesture_data_include_shared">شامل کردن داده‌های قبلاً ارسال‌شده</string>
-    <string name="gesture_data_shared">ارسال‌شده</string>
-    <string name="gesture_data_saving">در حال ذخیره… %s%%</string>
-    <string name="gesture_data_first_enable_dialog">به جمع‌آوری داده‌ها در پس‌زمینه خوش آمدید!&lt;br&gt; آیا مایلید کلید &lt;i&gt;%1$s&lt;/i&gt; به نوار ابزار اضافه شود؟ می‌توانید از آن برای کنترل جمع‌آوری داده‌ها استفاده کنید؛ اطلاعات بیشتر را با دکمه &lt;i&gt;%2$s&lt;/i&gt; بخوانید. &lt;br&gt;&lt;br&gt; به‌صورت پیش‌فرض، جمع‌آوری در پس‌زمینه برای همه برنامه‌ها غیرفعال است. یعنی تا زمانی که برنامه‌های مجاز را انتخاب نکنید، چیزی جمع‌آوری نخواهد شد. می‌توانید آن را %3$s تغییر دهید.</string>
-    <string name="gesture_data_add_key">افزودن کلید نوار ابزار</string>
-    <string name="gesture_data_no_known_dict">جمع‌آوری در پس‌زمینه فقط کلماتی را جمع‌آوری می‌کند که از واژه‌نامه‌های داخلی برنامه یا واژه‌نامه‌های موجود در &lt;a href=%s&gt;مخزن واژه‌نامه‌ها&lt;/a&gt; می‌آیند. در حال حاضر هیچ واژه‌نامه‌ای از این نوع فعال ندارید.</string>
-    <string name="gesture_data_swipe_o_scope">ابزار مصورسازی داده‌های اشاره‌ای: &lt;a href=%s&gt;Swipe-O-Scope&lt;/a&gt;</string>
 </resources>

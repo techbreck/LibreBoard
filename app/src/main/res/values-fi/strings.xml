@@ -109,8 +109,6 @@
     <string name="theme_name_dark" tools:keep="@string/theme_name_dark">Tumma</string>
     <string name="theme_colors">Värit</string>
     <string name="restore_error">Virhe varmuuskopiota palauttaessa: %s</string>
-    <string name="load_gesture_library_button_load">Lataa kirjasto</string>
-    <string name="load_gesture_library_button_delete">Poista kirjasto</string>
     <string name="button_restore">Palauta</string>
     <string name="language_and_layouts_title">Kielet ja asettelut</string>
     <string name="incognito">Pakota yksityinen tila</string>
@@ -192,8 +190,6 @@
     <string name="backup_error">Varmuuskopioinnin virhe: %s</string>
     <string name="button_backup">Varmuuskopioi</string>
     <string name="secondary_locale">Kirjoitus useilla kielillä</string>
-    <string name="load_gesture_library">Lataa elekirjoittamisen kirjasto</string>
-    <string name="load_gesture_library_summary">Tarjoa natiivi kirjasto ottaaksesi elekirjoittamisen käyttöön</string>
     <string name="popup_keys_layout" tools:keep="@string/popup_keys_layout">Asettelu</string>
     <string name="popup_keys_symbols" tools:keep="@string/popup_keys_symbols">Symbolit</string>
     <string name="dictionary_load_error">Virhe ladatessa sanakirjatiedostoa</string>
@@ -281,11 +277,9 @@
     <string name="auto_correct_shortcuts_summary">Kun käytössä, pikanäppäimet voidaan laajentaa autocorrectilla</string>
     <string name="gesture_trail_fadeout_duration">Elepolun elinkaari</string>
     <string name="enable_clipboard_history_summary">Jos se ei ole käytössä, leikepöydän näppäin liittää leikepöydän sisällön, jos sellaista on</string>
-    <string name="load_gesture_library_message">Tarvitset kirjaston kohteelle \'%s\'. Yhteensopimattomat kirjastot voivat kaatua piirtokirjoitusta käytettäessä.\n\nVaroitus: ulkoisen koodin lataaminen voi olla turvallisuusriski. Käytä kirjastoa vain sellaisesta lähteestä, johon luotat.</string>
     <string name="autospace_after_punctuation">Automaattinen välilyönti välimerkkien jälkeen</string>
     <string name="show_popup_keys_all">Lisää kaikki saatavilla olevat muunnelmat</string>
     <string name="delete_swipe">Poista pyyhkäisy</string>
-    <string name="checksum_mismatch_message">Tuntematon kirjastotiedosto. Oletko varma, että sait sen luotettavasta lähteestä ja se on \'%s\':lle?</string>
     <string name="show_popup_keys_main">Lisää hyvin yleiset muunnelmat (oletus)</string>
     <string name="remove_redundant_popups">Poista ylimääräiset ponnahdusikkunat</string>
     <string name="number_row_hints">Näytä vihjeet numerorivillä</string>

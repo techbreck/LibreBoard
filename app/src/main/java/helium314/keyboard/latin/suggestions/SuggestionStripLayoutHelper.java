@@ -226,8 +226,12 @@ final class SuggestionStripLayoutHelper {
         final SettingsValues settingsValues = Settings.getValues();
         final boolean shouldOmitTypedWord = shouldOmitTypedWord(suggestedWords.mInputStyle,
                 settingsValues.mGestureFloatingPreviewTextEnabled, true);
+        final SuggestedWordInfo rawTypedWord = suggestedWords.getTypedWordInfoOrNull();
+        final boolean alwaysShowRawTypedWord = rawTypedWord != null
+                && !TextUtils.isEmpty(rawTypedWord.mWord);
         return getPositionInSuggestionStrip(indexInSuggestedWords, suggestedWords.mWillAutoCorrect,
-                shouldOmitTypedWord, mCenterPositionInStrip, mTypedWordPositionWhenAutocorrect);
+                shouldOmitTypedWord, alwaysShowRawTypedWord, mCenterPositionInStrip,
+                mTypedWordPositionWhenAutocorrect);
     }
 
     static boolean shouldOmitTypedWord(final int inputStyle,
@@ -241,7 +245,19 @@ final class SuggestionStripLayoutHelper {
 
     static int getPositionInSuggestionStrip(final int indexInSuggestedWords,
             final boolean willAutoCorrect, final boolean omitTypedWord,
+            final boolean alwaysShowRawTypedWord,
             final int centerPositionInStrip, final int typedWordPositionWhenAutoCorrect) {
+        if (alwaysShowRawTypedWord) {
+            if (indexInSuggestedWords == SuggestedWords.INDEX_OF_TYPED_WORD) {
+                return typedWordPositionWhenAutoCorrect;
+            }
+            if (indexInSuggestedWords == SuggestedWords.INDEX_OF_AUTO_CORRECTION) {
+                return centerPositionInStrip;
+            }
+            final int n = indexInSuggestedWords + 1;
+            final int offsetFromCenter = (n % 2) == 0 ? -(n / 2) : (n / 2);
+            return centerPositionInStrip + offsetFromCenter;
+        }
         if (omitTypedWord) {
             if (indexInSuggestedWords == SuggestedWords.INDEX_OF_TYPED_WORD) {
                 // Ignore.

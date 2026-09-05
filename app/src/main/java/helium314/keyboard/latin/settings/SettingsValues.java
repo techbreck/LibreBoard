@@ -29,6 +29,7 @@ import helium314.keyboard.latin.PunctuationSuggestions;
 import helium314.keyboard.latin.R;
 import helium314.keyboard.latin.RichInputMethodManager;
 import helium314.keyboard.latin.common.Colors;
+import helium314.keyboard.latin.engine.FieldPolicy;
 import helium314.keyboard.latin.permissions.PermissionsUtil;
 import helium314.keyboard.latin.utils.FoldableUtils;
 import helium314.keyboard.latin.utils.InputTypeUtils;
@@ -154,6 +155,8 @@ public class SettingsValues {
     public final boolean mSuggestionsEnabled;
     private final boolean mOverrideShowingSuggestions;
     public final boolean mSuggestClipboardContent;
+    /** Incognito explicitly selected by the user, not merely implied by a restricted field. */
+    public final boolean mUserIncognitoModeEnabled;
     public final boolean mIncognitoModeEnabled;
     public final boolean mLongPressSymbolsForNumpad;
 
@@ -218,8 +221,12 @@ public class SettingsValues {
                 && inputAttributes.mIsGeneralTextInput;
         mBlockPotentiallyOffensive = prefs.getBoolean(Settings.PREF_BLOCK_POTENTIALLY_OFFENSIVE, Defaults.PREF_BLOCK_POTENTIALLY_OFFENSIVE);
         mUrlDetectionEnabled = prefs.getBoolean(Settings.PREF_URL_DETECTION, Defaults.PREF_URL_DETECTION);
+        mUserIncognitoModeEnabled = prefs.getBoolean(Settings.PREF_ALWAYS_INCOGNITO_MODE,
+                Defaults.PREF_ALWAYS_INCOGNITO_MODE);
         mAutoCorrectionEnabledPerUserSettings = prefs.getBoolean(Settings.PREF_AUTO_CORRECTION, Defaults.PREF_AUTO_CORRECTION);
         mAutoCorrectEnabled = mAutoCorrectionEnabledPerUserSettings
+                && !mUserIncognitoModeEnabled
+                && mInputAttributes.mFieldPolicy.getAllowsAutoCorrection()
                 && (mInputAttributes.mInputTypeShouldAutoCorrect || prefs.getBoolean(Settings.PREF_MORE_AUTO_CORRECTION, Defaults.PREF_MORE_AUTO_CORRECTION))
                 && (mUrlDetectionEnabled || !InputTypeUtils.isUriOrEmailType(mInputAttributes.mInputType));
         mCenterSuggestionTextToEnter = prefs.getBoolean(Settings.PREF_CENTER_SUGGESTION_TEXT_TO_ENTER, Defaults.PREF_CENTER_SUGGESTION_TEXT_TO_ENTER);
@@ -261,12 +268,12 @@ public class SettingsValues {
         mGestureTrailFadeoutDuration = prefs.getInt(Settings.PREF_GESTURE_TRAIL_FADEOUT_DURATION, Defaults.PREF_GESTURE_TRAIL_FADEOUT_DURATION);
         mSuggestionStripHiddenPerUserSettings = mToolbarMode == ToolbarMode.HIDDEN || mToolbarMode == ToolbarMode.TOOLBAR_KEYS;
         mOverrideShowingSuggestions = mInputAttributes.mMayOverrideShowingSuggestions
-                && prefs.getBoolean(Settings.PREF_ALWAYS_SHOW_SUGGESTIONS, Defaults.PREF_ALWAYS_SHOW_SUGGESTIONS)
-                && ((inputAttributes.mInputType & InputType.TYPE_MASK_VARIATION) != InputType.TYPE_TEXT_VARIATION_WEB_EDIT_TEXT
-                  || !prefs.getBoolean(Settings.PREF_ALWAYS_SHOW_SUGGESTIONS_EXCEPT_WEB_TEXT, Defaults.PREF_ALWAYS_SHOW_SUGGESTIONS_EXCEPT_WEB_TEXT));
+                && mInputAttributes.mFieldPolicy == FieldPolicy.NO_SUGGESTIONS
+                && prefs.getBoolean(Settings.PREF_ALWAYS_SHOW_SUGGESTIONS, Defaults.PREF_ALWAYS_SHOW_SUGGESTIONS);
         mSuggestionsEnabled = prefs.getBoolean(Settings.PREF_SHOW_SUGGESTIONS, Defaults.PREF_SHOW_SUGGESTIONS)
+            && !mUserIncognitoModeEnabled
             && (mInputAttributes.mShouldShowSuggestions || mOverrideShowingSuggestions) && !mSuggestionStripHiddenPerUserSettings;
-        mIncognitoModeEnabled = prefs.getBoolean(Settings.PREF_ALWAYS_INCOGNITO_MODE, Defaults.PREF_ALWAYS_INCOGNITO_MODE) || mInputAttributes.mNoLearning
+        mIncognitoModeEnabled = mUserIncognitoModeEnabled || mInputAttributes.mNoLearning
                 || mInputAttributes.mIsPasswordField;
         mBottomRowScale = Settings.readBottomRowScale(prefs, isLandscape, isFolded);
         mSpaceSwipeHorizontal = Settings.readHorizontalSpaceSwipe(prefs);
