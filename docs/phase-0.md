@@ -16,9 +16,10 @@ emulator. The swipe source, split, training, and ONNX export contracts are execu
 the exact million-gesture corpus manifest is committed. The context student architecture, tokenizer
 contract, INT4 exporter and hash-locked toolchain are also executable. Its pinned 68,748-sentence
 English/German corpus uses whole-session 90/5/5 splits and produces a deterministic 16,384-token BPE
-after runtime-parity checks. No complete trained candidate or held-out device measurement exists yet;
-context teacher scoring and student training remain outstanding. Synthetic smoke results never count
-as Phase 0 evidence.
+after runtime-parity checks. Its offline teacher-scoring pipeline is implemented with hash-bound,
+resumable chunks, but the full scored corpus has not been accepted. No complete trained candidate or
+held-out device measurement exists yet; context student training remains outstanding. Synthetic smoke
+results never count as Phase 0 evidence.
 
 Phase 1 remains blocked until all original gates pass: tap relative error reduction, context-sensitive
 and valid-word gains, false-correction ceiling, swipe top-1/top-3 strata, 80/200 ms p95 budgets, 64 MiB

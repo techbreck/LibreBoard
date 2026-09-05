@@ -48,9 +48,14 @@ sentences: 49,872 English US and 18,876 German. The held-out split contains 2,65
 German sentences. The FUTO source contributes only its public sentence field after strict filtering;
 raw gesture paths, timestamps and source session identifiers are discarded. The German portion is
 expanded from reviewed Apache-2.0 templates covering ordinary context, messages/search, contractions,
-confusion pairs, privacy vocabulary and compounds. Teacher scoring and student training remain
-outstanding. Development/random weights and synthetic reports must remain under `build/`, carry
-development filenames and cannot produce a release export.
+confusion pairs, privacy vocabulary and compounds. `tools/score_context_teacher.py` then constructs
+bounded same-language slates and computes the actual mean conditional log probability of every
+candidate with the verified offline Hanse2 model. Its emitted records retain only bounded student
+prefix IDs, candidate surfaces/IDs, provenance classes and teacher scores; source session IDs and
+teacher-prefix text are not copied. Scoring is resumable through atomic chunks whose bindings include
+the app commit, tool, policy, corpus, tokenizer, teacher and toolchain. The full teacher-scored corpus
+and student training remain outstanding. Development/random weights and synthetic reports must remain
+under `build/`, carry development filenames and cannot produce a release export.
 
 ## Reproducible export contract
 
@@ -73,6 +78,7 @@ uv pip install --python build/context-model-venv/bin/python \
 python3 tools/model_sources.py verify
 build/context-model-venv/bin/python tools/prepare_context_dataset.py
 build/context-model-venv/bin/python tools/build_context_tokenizer.py
+build/context-model-venv/bin/python tools/score_context_teacher.py --threads 4
 build/context-model-venv/bin/python tools/export_context_model.py
 ```
 

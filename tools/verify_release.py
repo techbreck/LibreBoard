@@ -22,6 +22,7 @@ import context_model_contract
 import model_sources
 import prepare_context_dataset
 import prepare_swipe_dataset
+import score_context_teacher
 import swipe_model_contract
 
 
@@ -442,6 +443,7 @@ def source_checks(errors: list[str]) -> None:
             context_policy,
         )
         context_tokenizer_policy = build_context_tokenizer.load_policy()
+        context_distillation_policy = score_context_teacher.load_policy()
         swipe_spec = swipe_model_contract.load_spec()
         context_spec = context_model_contract.load_spec()
         swipe_source = source_manifest.source(swipe_policy.source_id)
@@ -449,6 +451,7 @@ def source_checks(errors: list[str]) -> None:
         teacher_source = source_manifest.source("hanse2-100m-base-teacher-v1")
     except (
         build_context_tokenizer.ContextTokenizerBuildError,
+        score_context_teacher.ContextTeacherError,
         model_sources.ModelSourceError,
         prepare_context_dataset.ContextDataError,
         prepare_swipe_dataset.SwipeDataError,
@@ -541,6 +544,18 @@ def source_checks(errors: list[str]) -> None:
             or context_tokenizer_policy.languages != {"en": "<lang:en>", "de": "<lang:de>"}
         ):
             fail(errors, "context tokenizer policy has drifted from the Android model ABI")
+        if (
+            context_distillation_policy.teacher_source_id != teacher_source.identifier
+            or context_distillation_policy.tokenizer_sha256
+            != "1395e285927bfbfa5888dc7c83e4f57dfcfbfeb54f29a3cf2437f5db3d71d6a2"
+            or context_distillation_policy.maximum_prefix_student_tokens != 22
+            or context_distillation_policy.maximum_candidate_student_tokens != 8
+            or context_distillation_policy.maximum_candidates > 32
+            or context_distillation_policy.minimum_scored_records < 50_000
+            or context_distillation_policy.minimum_german_records < 10_000
+            or context_distillation_policy.minimum_held_out_records < 3_000
+        ):
+            fail(errors, "context distillation policy has drifted from the audited teacher/student contract")
 
         context_corpus_path = prepare_context_dataset.DEFAULT_CORPUS_MANIFEST
         try:

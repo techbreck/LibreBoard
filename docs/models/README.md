@@ -40,6 +40,11 @@ release artifact:
   the training split and checks 256 probes against the dependency-free algorithm used by Android.
   The pinned corpus produces a 530,571-byte tokenizer with SHA-256
   `1395e285927bfbfa5888dc7c83e4f57dfcfbfeb54f29a3cf2437f5db3d71d6a2`.
+- `tools/score_context_teacher.py` creates language-scoped 6–8 item slates from observed words or
+  short phrases, confusion/alias sets, bounded spatial-edit analogues and same-language distractors.
+  It scores actual conditional token probabilities with the hash-verified offline Hanse2 model and
+  emits only bounded student prefix IDs, candidate surfaces/IDs and scores. Atomic hash-bound chunks
+  make the long CPU run safely resumable without accepting work from a changed tool or corpus.
 - `models/context/model-spec.json` fixes the 35,662,848-parameter en/de candidate-only Transformer,
   32-row dynamic tensor ABI, 24-token shared prefix, eight-token candidate suffix, and 24 MiB limit.
 - `tools/context_tokenizer_contract.py` mirrors the Android tokenizer's strict schema and adds the
@@ -147,5 +152,6 @@ The current swipe model card and exact reproduction commands are in
 `models/swipe/MODEL_CARD.md`; the context architecture and export contract are in
 `models/context/MODEL_CARD.md`. The pinned gesture inputs total roughly 5.7 GB, so fetching them remains
 an explicit operator action rather than a side effect of Gradle or tests. The context source and
-deterministic bilingual corpus/tokenizer are pinned, but teacher scoring, context-student training and
-both accepted trained candidates still remain outstanding.
+deterministic bilingual corpus/tokenizer and teacher-scoring implementation are pinned, but the full
+teacher-scored corpus, context-student training and both accepted trained candidates still remain
+outstanding.

@@ -30,17 +30,14 @@ class ContextTokenizer:
     path: pathlib.Path
     sha256: str
     raw: dict[str, Any]
+    merge_ranks: dict[tuple[str, str], int]
+    unknown_token_id: int
 
 
 def encode_text(tokenizer: ContextTokenizer, text: str) -> list[int]:
     """Mirror the bounded Kotlin BPE algorithm for build-time parity checks."""
     vocabulary = tokenizer.raw["vocabulary"]
-    special = tokenizer.raw["specialTokens"]
-    unknown_id = vocabulary[special["unknown"]]
-    merge_ranks = {
-        (merge[0], merge[1]): rank
-        for rank, merge in enumerate(tokenizer.raw["merges"])
-    }
+    merge_ranks = tokenizer.merge_ranks
     normalized = unicodedata.normalize("NFKC", text).lower()
     output: list[int] = []
     for word in re.split(r"\s+", normalized.strip()):
@@ -60,7 +57,7 @@ def encode_text(tokenizer: ContextTokenizer, text: str) -> list[int]:
             symbols[selected_index:selected_index + 2] = [
                 symbols[selected_index] + symbols[selected_index + 1]
             ]
-        output.extend(vocabulary.get(symbol, unknown_id) for symbol in symbols)
+        output.extend(vocabulary.get(symbol, tokenizer.unknown_token_id) for symbol in symbols)
     return output
 
 
@@ -151,4 +148,13 @@ def load_tokenizer(
     if len({vocabulary[token] for token in special_values}) != len(special_values):
         raise ContextTokenizerContractError("context tokenizer special tokens must use distinct IDs")
 
-    return ContextTokenizer(path=path, sha256=hashlib.sha256(payload).hexdigest(), raw=raw)
+    return ContextTokenizer(
+        path=path,
+        sha256=hashlib.sha256(payload).hexdigest(),
+        raw=raw,
+        merge_ranks={
+            (merge[0], merge[1]): rank
+            for rank, merge in enumerate(merges)
+        },
+        unknown_token_id=vocabulary[special["unknown"]],
+    )
