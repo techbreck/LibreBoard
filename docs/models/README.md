@@ -122,11 +122,17 @@ tensor data are rejected. The runtime therefore cannot follow a model-supplied f
 
 Manual imports use a strict `.lbmodel` ZIP container with exactly `manifest.json`, `model.onnx`,
 optional `tokenizer.json`, and `signature.der`. `ModelRegistry` streams the blob into CE staging,
-enforces size and entry allowlists, verifies SHA-256 and the injected project ECDSA key, atomically
+enforces size and entry allowlists, verifies SHA-256 and the injected project RSA key, atomically
 activates it, and retains one last-known-good version for corruption rollback. Swipe and context
 models own separate CE activation/rollback slots, so installing or wiping one cannot replace the
 other. No ZIP entry is ever loaded as code. A production signing public key and accepted model still
 need to pass the Phase 0 gate.
+
+`tools/package_model.py` accepts only a hash-matched release export and a private RSA key of at least
+3072 bits whose file is inaccessible to group/other users. It signs the exact manifest twice to
+prove deterministic PKCS#1 v1.5 output, emits the X.509 public key separately, and writes a stored,
+sorted, fixed-timestamp `.lbmodel` plus a hash-bound package report. Private key material is never
+copied into the archive or repository.
 
 The official English/German context archive is distributed through the opt-in `modelpack-en-de`
 Android module. The resulting `org.libreboard.model.en_de` APK has no permissions, activity,
@@ -143,12 +149,14 @@ signed archive:
   :modelpack-en-de:assembleRelease
 
 python3 tools/verify_release.py \
-  --model-pack-apk modelpack-en-de/build/outputs/apk/release/modelpack-en-de-release-unsigned.apk
+  --model-pack-apk modelpack-en-de/build/outputs/apk/release/modelpack-en-de-release-unsigned.apk \
+  --model-public-key /absolute/path/libreboard-model-signing-public.der
 ```
 
 The verifier checks the merged zero-permission/component manifest, fixed authority, uncompressed
 single asset, absence of native code, bounded archive entries, hashes, en/de model contract, license,
-and provenance. The project signature is still rechecked by `ModelRegistry` on the device.
+provenance, RSA key strength, and signature. `ModelRegistry` independently rechecks the same project
+signature on the device.
 
 When the verified source-built runtime is packaged, LibreBoard opens the model by local filesystem
 path and validates the runtime-reported input/output names, element types, and static or required

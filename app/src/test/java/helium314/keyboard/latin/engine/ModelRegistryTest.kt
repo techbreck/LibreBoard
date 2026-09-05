@@ -32,7 +32,7 @@ class ModelRegistryTest {
 
     @Before
     fun setUp() {
-        keyPair = KeyPairGenerator.getInstance("EC").apply { initialize(256) }.generateKeyPair()
+        keyPair = KeyPairGenerator.getInstance("RSA").apply { initialize(3072) }.generateKeyPair()
         registry = ModelRegistry(
             ApplicationProvider.getApplicationContext<Context>(),
             ModelValidationLimits(
@@ -207,7 +207,7 @@ class ModelRegistryTest {
             minimumAppVersionCode = 1,
         )
         val manifestBytes = Json.encodeToString(manifest).encodeToByteArray()
-        val signature = Signature.getInstance("SHA256withECDSA").run {
+        val signature = Signature.getInstance("SHA256withRSA").run {
             initSign(keyPair.private)
             update(manifestBytes)
             sign()

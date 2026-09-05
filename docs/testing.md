@@ -48,9 +48,10 @@ The result is deliberately development-only and is deleted with the test workspa
 
 The optional context-model package is built separately and receives the same fail-closed release
 inspection. `tools/tests/test_verify_release.py` covers its bounded archive schema and payload hash
-checks; a release candidate must additionally run `tools/verify_release.py --model-pack-apk` against
-the built APK. The APK check proves that the sidecar requests no permissions, exposes only its fixed
-read-only provider, stores exactly one uncompressed `.lbmodel` asset, and contains no native code.
+checks; a release candidate must additionally run `tools/verify_release.py --model-pack-apk
+--model-public-key` against the built APK. The APK check proves that the sidecar requests no
+permissions, exposes only its fixed read-only provider, stores exactly one uncompressed `.lbmodel`
+asset, contains no native code, and carries a signature trusted by the supplied project RSA key.
 
 ## Android instrumentation
 

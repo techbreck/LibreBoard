@@ -5,6 +5,7 @@ import hashlib
 import io
 import json
 import pathlib
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -19,6 +20,7 @@ from verify_release import (  # noqa: E402
     model_archive_checks,
     validate_context_distillation_manifest,
     validate_hash_locked_requirements,
+    verify_model_signature,
 )
 import model_sources  # noqa: E402
 import prepare_context_dataset  # noqa: E402
@@ -106,6 +108,30 @@ class VerifyModelArchiveTest(unittest.TestCase):
         )
         self.assertIn("model archive must contain exactly the en-US and de locales", errors)
         self.assertIn("model archive has an invalid ONNX operator declaration", errors)
+
+    def test_model_signature_requires_strong_rsa_key_and_verified_manifest(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            key = pathlib.Path(temporary) / "public.der"
+            key.write_bytes(b"public key fixture")
+            accepted = subprocess.CompletedProcess(
+                ["openssl"], 0, "Public-Key: (3072 bit)\nModulus:\n  01", "",
+            )
+            verified = subprocess.CompletedProcess(["openssl"], 0, "Verified OK\n", "")
+            with mock.patch.object(verify_release, "run", side_effect=[accepted, verified]):
+                errors = []
+                verify_model_signature(errors, key, b"manifest", b"signature", "fixture")
+            self.assertEqual([], errors)
+
+            weak = subprocess.CompletedProcess(
+                ["openssl"], 0, "Public-Key: (2048 bit)\nModulus:\n  01", "",
+            )
+            with mock.patch.object(verify_release, "run", return_value=weak):
+                errors = []
+                verify_model_signature(errors, key, b"manifest", b"signature", "fixture")
+            self.assertEqual(
+                ["fixture public key must be a valid RSA key of at least 3072 bits"],
+                errors,
+            )
 
 
 class VerifyDependencyLockTest(unittest.TestCase):

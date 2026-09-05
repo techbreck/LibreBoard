@@ -1151,7 +1151,54 @@ def evidence_checks(
                 fail(errors, f"GrapheneOS device evidence disagrees with Phase 0 on {report_field}")
 
 
-def model_archive_checks(errors: list[str], archive_bytes: bytes, label: str = "model archive") -> None:
+def verify_model_signature(
+    errors: list[str],
+    public_key: pathlib.Path,
+    manifest: bytes,
+    signature: bytes,
+    label: str,
+) -> None:
+    if (
+        not public_key.is_file()
+        or public_key.is_symlink()
+        or public_key.stat().st_size <= 0
+        or public_key.stat().st_size > 8 * 1024
+    ):
+        fail(errors, f"{label} public key is missing, symlinked, empty, or oversized")
+        return
+    description = run([
+        "openssl", "pkey", "-pubin", "-inform", "DER", "-in", str(public_key),
+        "-text", "-noout",
+    ])
+    key_match = re.search(r"Public-Key:\s*\((\d+) bit", description.stdout)
+    if (
+        description.returncode != 0
+        or key_match is None
+        or int(key_match.group(1)) < 3072
+        or "modulus:" not in description.stdout.lower()
+    ):
+        fail(errors, f"{label} public key must be a valid RSA key of at least 3072 bits")
+        return
+    with tempfile.TemporaryDirectory(prefix="libreboard-model-signature-") as temporary:
+        root = pathlib.Path(temporary)
+        manifest_path = root / "manifest.json"
+        signature_path = root / "signature.der"
+        manifest_path.write_bytes(manifest)
+        signature_path.write_bytes(signature)
+        verification = run([
+            "openssl", "dgst", "-sha256", "-verify", str(public_key), "-keyform", "DER",
+            "-signature", str(signature_path), str(manifest_path),
+        ])
+    if verification.returncode != 0 or verification.stdout.strip() != "Verified OK":
+        fail(errors, f"{label} signature is not trusted by the supplied project key")
+
+
+def model_archive_checks(
+    errors: list[str],
+    archive_bytes: bytes,
+    label: str = "model archive",
+    public_key: pathlib.Path | None = None,
+) -> None:
     if not archive_bytes or len(archive_bytes) > MODEL_PACK_MAXIMUM_BYTES:
         fail(errors, f"{label} must be non-empty and at most {MODEL_PACK_MAXIMUM_BYTES} bytes")
         return
@@ -1178,7 +1225,7 @@ def model_archive_checks(errors: list[str], archive_bytes: bytes, label: str = "
             manifest_bytes = archive.read("manifest.json")
             model_bytes = archive.read("model.onnx")
             tokenizer_bytes = archive.read("tokenizer.json")
-            archive.read("signature.der")  # CRC-check the signature before accepting the container.
+            signature_bytes = archive.read("signature.der")
     except (OSError, RuntimeError, zipfile.BadZipFile, zipfile.LargeZipFile) as exc:
         fail(errors, f"cannot read {label}: {exc}")
         return
@@ -1245,9 +1292,11 @@ def model_archive_checks(errors: list[str], archive_bytes: bytes, label: str = "
         fail(errors, f"{label} has an invalid tokenizer hash")
     elif hashlib.sha256(tokenizer_bytes).hexdigest() != tokenizer_hash:
         fail(errors, f"{label} tokenizer hash does not match its payload")
+    if public_key is not None:
+        verify_model_signature(errors, public_key, manifest_bytes, signature_bytes, label)
 
 
-def model_pack_apk_checks(errors: list[str], apk: pathlib.Path) -> None:
+def model_pack_apk_checks(errors: list[str], apk: pathlib.Path, public_key: pathlib.Path) -> None:
     if not apk.is_file():
         fail(errors, f"model-pack APK does not exist: {apk}")
         return
@@ -1330,7 +1379,12 @@ def model_pack_apk_checks(errors: list[str], apk: pathlib.Path) -> None:
                 if asset.file_size <= 0 or asset.file_size > MODEL_PACK_MAXIMUM_BYTES:
                     fail(errors, "model-pack archive asset is empty or oversized")
                 else:
-                    model_archive_checks(errors, archive.read(asset), "packaged model archive")
+                    model_archive_checks(
+                        errors,
+                        archive.read(asset),
+                        "packaged model archive",
+                        public_key,
+                    )
             dex_entries = [name for name in archive.namelist() if name.endswith(".dex")]
             if dex_entries != ["classes.dex"]:
                 fail(errors, "model-pack APK must contain exactly one provider DEX")
@@ -1497,6 +1551,11 @@ def main() -> int:
         default=[],
         help="verify the separately built English/German context-model APK",
     )
+    parser.add_argument(
+        "--model-public-key",
+        type=pathlib.Path,
+        help="X.509 DER RSA public key trusted for signed model archives",
+    )
     parser.add_argument("--rebuilt-apk", type=pathlib.Path, help="independent clean rebuild of the release APK")
     parser.add_argument("--phase0-report", type=pathlib.Path, help="passing Phase 0 JSON report for the APK")
     parser.add_argument(
@@ -1527,6 +1586,8 @@ def main() -> int:
             "--phase0-report, --phase0-measurements, --grapheneos-evidence, and "
             "--instrumentation-output"
         )
+    if args.model_pack_apk and args.model_public_key is None:
+        parser.error("--model-pack-apk requires --model-public-key")
 
     errors: list[str] = []
     if args.source:
@@ -1534,7 +1595,7 @@ def main() -> int:
     for apk in args.apk:
         apk_checks(errors, apk.resolve())
     for model_pack_apk in args.model_pack_apk:
-        model_pack_apk_checks(errors, model_pack_apk.resolve())
+        model_pack_apk_checks(errors, model_pack_apk.resolve(), args.model_public_key.resolve())
     if has_evidence:
         evidence_checks(
             errors,

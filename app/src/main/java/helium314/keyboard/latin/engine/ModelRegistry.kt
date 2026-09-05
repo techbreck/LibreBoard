@@ -214,7 +214,9 @@ class ModelRegistry(
         private const val SIGNATURE = "signature.der"
         private const val ACTIVE = "active"
         private const val PREVIOUS = "previous"
-        private const val SIGNATURE_ALGORITHM = "SHA256withECDSA"
+        // RSA PKCS#1 v1.5 signatures are deterministic, allowing the checked-in data-only model
+        // archive to be reproduced byte-for-byte without weakening API 26 compatibility.
+        private const val SIGNATURE_ALGORITHM = "SHA256withRSA"
         private const val MAX_MANIFEST_BYTES = 256 * 1024
         private const val MAX_SIGNATURE_BYTES = 16 * 1024
         private const val MAX_TOKENIZER_BYTES = 2L * 1024 * 1024
