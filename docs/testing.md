@@ -12,10 +12,14 @@ tests enforce field-policy gates, candidate/language score identity, masks, fiel
 bounds, strict BPE schema/merge/special-token validation, Unicode normalization, and malformed/runtime
 fallback. Runtime adapter tests lock exact tensor names/types/shapes, dynamic batch dimensions,
 direct-buffer invocation, output bounds, native-wrapper cleanup, core-only absence, and hard deadline
-fallback. Registry tests prove swipe/context activation and rollback slots cannot collide. Lexical
-tests require contractions, split/join hypotheses, and German compound evidence to
-stay within one explicitly tagged dictionary; they also cover casing, language locks, deadline exits,
-generated provenance, raw-word vetoes, and multilingual source-order invariance. CTC tests cover
+fallback. Live-path tests prove bounded immutable request and language-lock propagation,
+0–100 neural weighting, calibrated commit selection, classic ranking on timeout, cooperative and
+non-cooperative timeout circuit breaking, delayed native-owner cleanup, invalid preference fallback,
+restricted-field bypass, and safety-veto precedence. Registry tests prove swipe/context activation
+and rollback slots cannot collide. Lexical tests require contractions, split/join hypotheses, and
+German compound evidence to stay within one explicitly tagged dictionary; they also cover casing,
+language locks, deadline exits, generated provenance, raw-word vetoes, and multilingual source-order
+invariance. CTC tests cover
 double letters, return-trip words, canonical contractions, language locks, malformed tensors,
 runtime failure, and deadline fallback. Backup tests additionally exercise ZIP path traversal,
 canonical aliases, entry and expanded-size limits, strict typed-settings parsing, preservation of excluded private

@@ -43,6 +43,7 @@ import helium314.keyboard.latin.utils.Theme
 import helium314.keyboard.settings.dialogs.ConfirmationDialog
 import helium314.keyboard.settings.initPreview
 import helium314.keyboard.settings.preferences.Preference
+import helium314.keyboard.settings.preferences.ListPreference
 import helium314.keyboard.settings.preferences.SwitchPreference
 import helium314.keyboard.settings.preferences.SwitchPreferenceWithEmojiDictWarning
 import helium314.keyboard.latin.utils.previewDark
@@ -72,6 +73,7 @@ fun TextCorrectionScreen(
         if (autocorrectEnabled) Settings.PREF_AUTOCORRECT_SHORTCUTS else null,
         if (autocorrectEnabled) Settings.PREF_AUTOCORRECT_CAPITALIZED_SUGGESTION else null,
         if (autocorrectEnabled) Settings.PREF_AUTO_CORRECT_CONFIDENCE else null,
+        if (autocorrectEnabled) Settings.PREF_AUTO_CORRECTION_AGGRESSIVENESS else null,
         if (autocorrectEnabled) Settings.PREF_BACKSPACE_REVERTS_AUTOCORRECT else null,
         Settings.PREF_AUTO_CAP,
         R.string.settings_category_space,
@@ -84,6 +86,7 @@ fun TextCorrectionScreen(
         R.string.settings_category_suggestions,
         if (suggestionsVisible) Settings.PREF_SHOW_SUGGESTIONS else null,
         if (suggestionsEnabled) Settings.PREF_ALWAYS_SHOW_SUGGESTIONS else null,
+        if (suggestionsEnabled || autocorrectEnabled) Settings.PREF_NEURAL_STRENGTH else null,
         if (suggestionsEnabled) Settings.PREF_CENTER_SUGGESTION_TEXT_TO_ENTER else null,
         if (suggestionsEnabled || autocorrectEnabled) Settings.PREF_SUGGEST_EMOJIS else null,
         if (suggestionsEnabled || autocorrectEnabled) Settings.PREF_INLINE_EMOJI_SEARCH else null,
@@ -156,6 +159,22 @@ fun createCorrectionSettings(context: Context) = listOf(
             }
         )
     },
+    Setting(
+        context,
+        Settings.PREF_AUTO_CORRECTION_AGGRESSIVENESS,
+        R.string.auto_correction_aggressiveness,
+        R.string.auto_correction_aggressiveness_summary,
+    ) { setting ->
+        ListPreference(
+            setting,
+            listOf(
+                stringResource(R.string.auto_correction_aggressiveness_cautious) to "CAUTIOUS",
+                stringResource(R.string.auto_correction_aggressiveness_balanced) to "BALANCED",
+                stringResource(R.string.auto_correction_aggressiveness_aggressive) to "AGGRESSIVE",
+            ),
+            Defaults.PREF_AUTO_CORRECTION_AGGRESSIVENESS,
+        )
+    },
     Setting(context, Settings.PREF_BACKSPACE_REVERTS_AUTOCORRECT, R.string.backspace_reverts_autocorrect) {
         SwitchPreference(it, Defaults.PREF_BACKSPACE_REVERTS_AUTOCORRECT)
     },
@@ -195,6 +214,24 @@ fun createCorrectionSettings(context: Context) = listOf(
         R.string.prefs_always_show_suggestions, R.string.prefs_always_show_suggestions_summary
     ) {
         SwitchPreference(it, Defaults.PREF_ALWAYS_SHOW_SUGGESTIONS)
+    },
+    Setting(
+        context,
+        Settings.PREF_NEURAL_STRENGTH,
+        R.string.neural_strength,
+        R.string.neural_strength_summary,
+    ) { setting ->
+        SliderPreference(
+            name = setting.title,
+            key = setting.key,
+            default = Defaults.PREF_NEURAL_STRENGTH,
+            range = 0f..100f,
+            stepSize = 1,
+            description = { value ->
+                if (value == 0f) stringResource(R.string.neural_strength_off)
+                else stringResource(R.string.neural_strength_percent, value.toInt())
+            },
+        )
     },
     Setting(context, Settings.PREF_KEY_USE_PERSONALIZED_DICTS,
         R.string.use_personalized_dicts, R.string.use_personalized_dicts_summary

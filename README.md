@@ -16,6 +16,12 @@ temporarily to keep upstream review practical; the Android application ID is `or
 - Pure-Kotlin geometric swipe fallback using live keyboard geometry.
 - Immutable engine contracts for candidate fusion, language lock, deadlines, model validation,
   neural availability, and stale-result sequencing.
+- Live tap and next-word fusion builds immutable, bounded requests from current geometry and coarse
+  field class. A registry-loaded context model is hard-limited to 35 ms; disabled, absent, late,
+  incompatible, and circuit-open results preserve the classic slate and raw-word guarantee.
+- User-facing 0–100 context strength and cautious/balanced/aggressive calibrated commit controls;
+  neither setting can bypass field, personal-word, rejection, digit, capitalization, or compound
+  safety vetoes.
 - Bounded, searchable credential-encrypted clipboard and personal stores with Direct-Boot-safe degradation.
 - Central field policy for passwords, PINs, email/URI fields, terminals,
   `IME_FLAG_NO_PERSONALIZED_LEARNING`, and `TYPE_TEXT_FLAG_NO_SUGGESTIONS`.
@@ -24,8 +30,10 @@ temporarily to keep upstream review practical; the Android application ID is `or
 - Local unigram, n-gram, phrase, and correction-rejection persistence with decay, preferred word
   casing, live personal completions/predictions, and atomic wipe.
 
-The context and CTC model artifacts are not represented as complete until their held-out quality,
-latency, provenance, reproducibility, and GrapheneOS gates pass. See [Phase 0](docs/phase-0.md).
+The production context-model loader is not activated until an accepted signing key and model pass
+the release gates. The context and CTC model artifacts are not represented as complete until their
+held-out quality, latency, provenance, reproducibility, and GrapheneOS gates pass. See
+[Phase 0](docs/phase-0.md).
 
 ## Build
 

@@ -14,7 +14,7 @@ object HeliBoardGeometricFallback {
     fun toTypingComposedData(inputPointers: InputPointers, keyboard: Keyboard): ComposedData? {
         val size = inputPointers.pointerSize
         if (size < 2) return null
-        val geometry = keyboard.toEngineGeometry()
+        val geometry = toEngineGeometry(keyboard)
         val xs = inputPointers.xCoordinates
         val ys = inputPointers.yCoordinates
         val times = inputPointers.times
@@ -32,8 +32,8 @@ object HeliBoardGeometricFallback {
         return ComposedData(syntheticPointers, false, trace)
     }
 
-    private fun Keyboard.toEngineGeometry(): KeyGeometry {
-        val slots = sortedKeys.mapNotNull { key ->
+    fun toEngineGeometry(keyboard: Keyboard): KeyGeometry {
+        val slots = keyboard.sortedKeys.mapNotNull { key ->
             val code = key.code
             if (code <= 0 || !Character.isLetter(code)) return@mapNotNull null
             KeySlot(
@@ -46,8 +46,8 @@ object HeliBoardGeometricFallback {
             )
         }.distinctBy { it.id }
         return KeyGeometry(
-            width = mOccupiedWidth.toFloat().coerceAtLeast(1f),
-            height = mOccupiedHeight.toFloat().coerceAtLeast(1f),
+            width = keyboard.mOccupiedWidth.toFloat().coerceAtLeast(1f),
+            height = keyboard.mOccupiedHeight.toFloat().coerceAtLeast(1f),
             keys = slots.take(64),
         )
     }

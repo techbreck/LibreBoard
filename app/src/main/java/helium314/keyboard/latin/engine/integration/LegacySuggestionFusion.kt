@@ -7,13 +7,21 @@ import helium314.keyboard.latin.dictionary.Dictionary
 import helium314.keyboard.latin.engine.AutoCorrectionAggressiveness
 import helium314.keyboard.latin.engine.Candidate
 import helium314.keyboard.latin.engine.CandidateSource
+import helium314.keyboard.latin.engine.Deadline
+import helium314.keyboard.latin.engine.EngineAvailability
 import helium314.keyboard.latin.engine.FusedCandidateScorer
 import helium314.keyboard.latin.engine.InputStyle
 import helium314.keyboard.latin.engine.LanguageEvidence
 import helium314.keyboard.latin.engine.LanguageLockController
+import helium314.keyboard.latin.engine.MAX_CANDIDATES
+import helium314.keyboard.latin.engine.NeuralRescorer
+import helium314.keyboard.latin.engine.NeuralScoreResult
 import helium314.keyboard.latin.engine.ScoreComponents
+import helium314.keyboard.latin.engine.TypingRequest
 import helium314.keyboard.latin.engine.WordLock
+import helium314.keyboard.latin.engine.key
 import helium314.keyboard.latin.engine.normalizeCandidate
+import helium314.keyboard.latin.engine.runtime.LiveTypingEngine
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.exp
@@ -25,6 +33,8 @@ internal data class LegacyFusionResult(
     val exactPersonalMatch: Boolean,
     val rawReplacementVeto: Boolean,
     val wordLock: WordLock,
+    val neuralAvailability: EngineAvailability,
+    val engineAutoCorrectionNormalized: String?,
 )
 
 /**
@@ -33,12 +43,13 @@ internal data class LegacyFusionResult(
  * contract.
  *
  * The legacy dictionary score already combines spatial and static evidence, so it is represented
- * once rather than double-counted. Neural autocorrection is deliberately not enabled here until a
- * measured model and calibrated live probability mapping are available.
+ * once rather than double-counted. A verified context model may add one bounded score component;
+ * unavailable, disabled, incompatible, or late inference leaves the classic ranking intact.
  */
 internal class LegacySuggestionFusion(
     private val scorer: FusedCandidateScorer = FusedCandidateScorer(),
     private val languageLock: LanguageLockController = LanguageLockController(),
+    private val neuralRescorer: NeuralRescorer = LiveTypingEngine.contextRescorer,
 ) {
     private var wordActive = false
     private var previousRaw = ""
@@ -56,7 +67,12 @@ internal class LegacySuggestionFusion(
         enabledLanguageTags: List<String>,
         defaultLocale: Locale,
         inputStyle: InputStyle,
+        typingRequest: TypingRequest? = null,
+        neuralStrength: Int = 0,
+        aggressiveness: AutoCorrectionAggressiveness = AutoCorrectionAggressiveness.BALANCED,
+        neuralDeadline: Deadline? = null,
     ): LegacyFusionResult {
+        require(neuralStrength in 0..100)
         val defaultLanguage = defaultLocale.toLanguageTag()
         val languageProbabilities = languageProbabilities(
             classicSuggestions,
@@ -96,14 +112,55 @@ internal class LegacySuggestionFusion(
                 ),
             )
         }
+        val unboundedUnion = classicCandidates + supplementalWithLanguage
+        val rawNormalized = normalizeCandidate(rawText)
+        val candidateUnion = if (rawText.isNotEmpty() && unboundedUnion.none { it.normalized == rawNormalized }) {
+            val rawLanguage = when (currentLock) {
+                is WordLock.Automatic -> currentLock.languageTag
+                is WordLock.Manual -> currentLock.languageTag
+                WordLock.Unlocked -> defaultLanguage
+            }
+            listOf(Candidate(rawText, languageTag = rawLanguage, sources = setOf(CandidateSource.RAW))) +
+                unboundedUnion.take(MAX_CANDIDATES - 1)
+        } else {
+            unboundedUnion.take(MAX_CANDIDATES)
+        }
+        val neuralResult = when {
+            neuralStrength == 0 -> NeuralScoreResult(EngineAvailability.DISABLED)
+            typingRequest == null || neuralDeadline == null -> NeuralScoreResult(EngineAvailability.UNAVAILABLE)
+            neuralDeadline.expired -> NeuralScoreResult(EngineAvailability.TIMEOUT)
+            else -> runCatching {
+                neuralRescorer.score(
+                    typingRequest.copy(
+                        rawText = rawText,
+                        enabledLanguages = enabledLanguageTags.ifEmpty { listOf(defaultLanguage) }.distinct(),
+                        wordLock = currentLock,
+                        inputStyle = inputStyle,
+                    ),
+                    candidateUnion,
+                    neuralDeadline,
+                )
+            }.getOrElse { NeuralScoreResult(EngineAvailability.UNAVAILABLE) }
+        }
+        val rescoredCandidates = if (neuralResult.availability == EngineAvailability.AVAILABLE) {
+            candidateUnion.map { candidate ->
+                val contextScore = neuralResult.scoresByCandidate[candidate.key]
+                if (contextScore == null) candidate else candidate.copy(
+                    components = candidate.components.copy(context = contextScore),
+                )
+            }
+        } else {
+            candidateUnion
+        }
         val ranked = scorer.rank(
             raw = rawText,
-            candidates = classicCandidates + supplementalWithLanguage,
+            candidates = rescoredCandidates,
             wordLock = currentLock,
-            neuralStrength = 0,
-            aggressiveness = AutoCorrectionAggressiveness.BALANCED,
+            neuralStrength = neuralStrength.takeIf {
+                neuralResult.availability == EngineAvailability.AVAILABLE
+            } ?: 0,
+            aggressiveness = aggressiveness,
         )
-        val rawNormalized = normalizeCandidate(rawText)
         val exactPersonalMatch = ranked.candidates.any {
             it.normalized == rawNormalized && it.exactPersonalMatch
         }
@@ -139,7 +196,17 @@ internal class LegacySuggestionFusion(
             if (seenWords.add(info.mWord)) translated += info
             if (translated.size == SuggestedWords.MAX_SUGGESTIONS) break
         }
-        return LegacyFusionResult(translated, exactPersonalMatch, rawReplacementVeto, currentLock)
+        val engineAutoCorrectionNormalized = ranked.autoCorrection?.normalized?.takeIf { normalized ->
+            translated.firstOrNull()?.mWord?.let(::normalizeCandidate) == normalized
+        }
+        return LegacyFusionResult(
+            translated,
+            exactPersonalMatch,
+            rawReplacementVeto,
+            currentLock,
+            neuralResult.availability,
+            engineAutoCorrectionNormalized,
+        )
     }
 
     private fun updateWordLock(rawText: String, probabilities: Map<String, Double>): WordLock {

@@ -22,6 +22,7 @@ import helium314.keyboard.latin.common.InputPointers
 import helium314.keyboard.latin.common.StringUtils
 import helium314.keyboard.latin.dictionary.Dictionary
 import helium314.keyboard.latin.engine.personal.PersonalizationRuntime
+import helium314.keyboard.latin.engine.AutoCorrectionAggressiveness
 import helium314.keyboard.latin.settings.Settings
 import helium314.keyboard.latin.settings.SettingsValuesForSuggestion
 import helium314.keyboard.latin.utils.SuggestionResults
@@ -86,6 +87,87 @@ class SuggestTest {
         )
         assert(!result.last()) // should not be corrected
         // not corrected because first suggestion score is too low
+    }
+
+    @Test fun `live engine settings are bounded and invalid modes fail to balanced`() {
+        latinIME.prefs().edit {
+            putFloat(Settings.PREF_NEURAL_STRENGTH, 500f)
+            putString(Settings.PREF_AUTO_CORRECTION_AGGRESSIVENESS, "not-a-mode")
+        }
+        Settings.getInstance().loadSettings(
+            latinIME,
+            Locale.ENGLISH,
+            InputAttributes(EditorInfo().apply { inputType = InputType.TYPE_CLASS_TEXT }, false, latinIME.packageName),
+        )
+        assertEquals(100, Settings.getValues().mNeuralStrength)
+        assertEquals(AutoCorrectionAggressiveness.BALANCED, Settings.getValues().mAutoCorrectionAggressiveness)
+
+        latinIME.prefs().edit {
+            putFloat(Settings.PREF_NEURAL_STRENGTH, -50f)
+            putString(Settings.PREF_AUTO_CORRECTION_AGGRESSIVENESS, "AGGRESSIVE")
+        }
+        Settings.getInstance().loadSettings(
+            latinIME,
+            Locale.ENGLISH,
+            InputAttributes(EditorInfo().apply { inputType = InputType.TYPE_CLASS_TEXT }, false, latinIME.packageName),
+        )
+        assertEquals(0, Settings.getValues().mNeuralStrength)
+        assertEquals(AutoCorrectionAggressiveness.AGGRESSIVE, Settings.getValues().mAutoCorrectionAggressiveness)
+    }
+
+    @Test fun `calibrated engine recommendation bypasses only legacy threshold`() {
+        val result = shouldBeAutoCorrected(
+            "thsi",
+            listOf(suggestion("this", 1, Locale.ENGLISH)),
+            null,
+            null,
+            Locale.ENGLISH,
+            confidenceModest,
+            engineAutoCorrectionNormalized = "this",
+        )
+
+        assert(result.last())
+    }
+
+    @Test fun `calibrated joint evidence may correct a valid word despite legacy score gate`() {
+        val result = shouldBeAutoCorrected(
+            "their",
+            listOf(
+                suggestion("there", 1, Locale.ENGLISH),
+                suggestion("their", 1_500_000, Locale.ENGLISH),
+            ),
+            null,
+            null,
+            Locale.ENGLISH,
+            confidenceModest,
+            engineAutoCorrectionNormalized = "there",
+        )
+
+        assert(result.last())
+    }
+
+    @Test fun `calibrated engine recommendation cannot bypass digit veto`() {
+        val composer = WordComposer()
+        StringUtils.toCodePointArray("th1s").forEach {
+            val event = Event.createEventForCodePointFromAlreadyTypedText(
+                it,
+                Constants.NOT_A_COORDINATE,
+                Constants.NOT_A_COORDINATE,
+            )
+            composer.applyProcessedEvent(composer.processEvent(event))
+        }
+        val result = shouldBeAutoCorrected(
+            "th1s",
+            listOf(suggestion("this", 1, Locale.ENGLISH)),
+            null,
+            null,
+            Locale.ENGLISH,
+            confidenceModest,
+            engineAutoCorrectionNormalized = "this",
+            wordComposer = composer,
+        )
+
+        assert(!result.last())
     }
 
     @Test fun `'ill' to 'I'll' if 'ill' not used before in this context, and I'll is whitelisted`() {
@@ -674,7 +756,9 @@ class SuggestTest {
                               firstSuggestionForEmpty: SuggestedWordInfo?, // first suggestion if typed word would be empty (null if none)
                               typedWordSuggestionForEmpty: SuggestedWordInfo?, // suggestion for actually typed word if typed word would be empty (null if none)
                               typingLocale: Locale, // used for checking whether suggestion locale is the same, relevant e.g. for English i -> I shortcut, but we want Polish i
-                              autoCorrectThreshold: Float
+                              autoCorrectThreshold: Float,
+                              engineAutoCorrectionNormalized: String? = null,
+                              wordComposer: WordComposer = WordComposer.getComposerForTest(false),
     ): List<Boolean> {
         enableAutocorrect(autoCorrectThreshold)
         currentTypingLocale = typingLocale
@@ -695,10 +779,11 @@ class SuggestTest {
             suggestionsContainer.firstOrNull(), // todo: get from suggestions? mostly it's just removing the typed word, right?
             { firstSuggestionForEmpty to typedWordSuggestionForEmpty },
             true, // doesn't make sense otherwise
-            WordComposer.getComposerForTest(false),
+            wordComposer,
             suggestionResults,
             firstOccurrenceOfTypedWordInSuggestions,
-            typedWordFirstOccurrenceWordInfo
+            typedWordFirstOccurrenceWordInfo,
+            engineAutoCorrectionNormalized,
         ).toList()
     }
 }

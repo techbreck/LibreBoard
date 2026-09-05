@@ -65,6 +65,8 @@ object Defaults {
     const val PREF_AUTO_CORRECTION = true
     const val PREF_MORE_AUTO_CORRECTION = false
     const val PREF_AUTO_CORRECT_CONFIDENCE = 0.24f
+    const val PREF_NEURAL_STRENGTH = 50f
+    const val PREF_AUTO_CORRECTION_AGGRESSIVENESS = "BALANCED"
     const val PREF_AUTOCORRECT_SHORTCUTS = true
     const val PREF_BACKSPACE_REVERTS_AUTOCORRECT = true
     const val PREF_AUTOCORRECT_CAPITALIZED_SUGGESTION = true

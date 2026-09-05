@@ -19,7 +19,11 @@ import helium314.keyboard.latin.define.DecoderSpecificConstants.SHOULD_AUTO_CORR
 import helium314.keyboard.latin.define.DecoderSpecificConstants.SHOULD_REMOVE_PREVIOUSLY_REJECTED_SUGGESTION
 import helium314.keyboard.latin.dictionary.Dictionary
 import helium314.keyboard.latin.engine.Candidate
+import helium314.keyboard.latin.engine.Deadline
+import helium314.keyboard.latin.engine.FieldClassResolver
 import helium314.keyboard.latin.engine.InputStyle
+import helium314.keyboard.latin.engine.TypingRequest
+import helium314.keyboard.latin.engine.WordLock
 import helium314.keyboard.latin.engine.integration.HeliBoardGeometricFallback
 import helium314.keyboard.latin.engine.integration.LegacySuggestionFusion
 import helium314.keyboard.latin.engine.lexical.LexicalCandidateProposer
@@ -116,13 +120,38 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
             typedWordFirstOccurrenceWordInfo?.let(::add)
             addAll(suggestionsContainer)
         }
+        val engineInputStyle = if (resultsArePredictions) InputStyle.PREDICTION else InputStyle.TAP
+        val liveSettings = Settings.getValues()
+        val fieldPolicy = liveSettings.mInputAttributes.mFieldPolicy
+        val allowsEngineContext = fieldPolicy.allowsContextRead && !liveSettings.mIncognitoModeEnabled
+        val typingRequest = TypingRequest.bounded(
+            rawText = capitalizedTypedWord,
+            precedingContext = if (allowsEngineContext) ngramContext.extractPrevWordsContext() else null,
+            geometry = HeliBoardGeometricFallback.toEngineGeometry(keyboard),
+            enabledLanguages = enabledLanguageTags.ifEmpty {
+                listOf(mDictionaryFacilitator.mainLocale.toLanguageTag())
+            },
+            wordLock = WordLock.Unlocked,
+            fieldPolicy = fieldPolicy,
+            fieldClass = FieldClassResolver.resolve(
+                liveSettings.mInputAttributes.mInputType,
+                liveSettings.mInputAttributes.mImeOptions,
+                fieldPolicy,
+            ),
+            inputStyle = engineInputStyle,
+            sequenceId = sequenceNumber.toLong(),
+        )
         val fusion = liveCandidateFusion.fuse(
             rawText = capitalizedTypedWord,
             classicSuggestions = classicCandidates,
             supplementalCandidates = transformedPersonalCandidates + lexicalCandidates,
             enabledLanguageTags = enabledLanguageTags,
             defaultLocale = mDictionaryFacilitator.mainLocale,
-            inputStyle = if (resultsArePredictions) InputStyle.PREDICTION else InputStyle.TAP,
+            inputStyle = engineInputStyle,
+            typingRequest = typingRequest,
+            neuralStrength = liveSettings.mNeuralStrength.takeIf { allowsEngineContext } ?: 0,
+            aggressiveness = liveSettings.mAutoCorrectionAggressiveness,
+            neuralDeadline = Deadline.afterMillis(CONTEXT_RESCORING_BUDGET_MILLIS),
         )
         suggestionsContainer.clear()
         suggestionsContainer.addAll(fusion.suggestions)
@@ -143,7 +172,8 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
             wordComposer,
             suggestionResults,
             firstOccurrenceOfTypedWordInSuggestions,
-            typedWordFirstOccurrenceWordInfo
+            typedWordFirstOccurrenceWordInfo,
+            fusion.engineAutoCorrectionNormalized,
         )
         val allowsToBeAutoCorrected = correctionDecision.first
         val hasAutoCorrection = correctionDecision.second && !rawReplacementVeto
@@ -205,15 +235,21 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
         wordComposer: WordComposer,
         suggestionResults: SuggestionResults,
         firstOccurrenceOfTypedWordInSuggestions: Int,
-        typedWordInfo: SuggestedWordInfo?
+        typedWordInfo: SuggestedWordInfo?,
+        engineAutoCorrectionNormalized: String? = null,
     ): Pair<Boolean, Boolean> {
         val consideredWord = typedWordString.dropLast(trailingSingleQuotesCount)
         val firstAndTypedEmptyInfos by lazy { getEmptyWordSuggestions() }
+        val engineSelectedFirst = engineAutoCorrectionNormalized != null &&
+            firstSuggestionInContainer?.let { normalizeCandidate(it.mWord) } == engineAutoCorrectionNormalized
+        val engineShapeIsSafe = engineSelectedFirst &&
+            (!typedWordString.contains('@') || firstSuggestionInContainer.mWord.contains('@')) &&
+            (!typedWordString.contains('.') || firstSuggestionInContainer.mWord.contains('.'))
 
         val scoreLimit = Settings.getValues().mScoreLimitForAutocorrect
         // We allow auto-correction if whitelisting is not required or the word is whitelisted,
         // or if the word had more than one char and was not suggested.
-        val allowsToBeAutoCorrected: Boolean
+        val legacyAllowsToBeAutoCorrected: Boolean
         if (SHOULD_AUTO_CORRECT_USING_NON_WHITE_LISTED_SUGGESTION
                 || firstSuggestionInContainer?.isKindOf(SuggestedWordInfo.KIND_WHITELIST) == true
                 || (consideredWord.length > 1
@@ -224,20 +260,24 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
                     && (!typedWordString.contains('.') || firstSuggestionInContainer?.mWord?.contains('.') == true)
                     )
             ) {
-            allowsToBeAutoCorrected = true
+            legacyAllowsToBeAutoCorrected = true
         } else if (firstSuggestionInContainer != null && typedWordString.isNotEmpty()) {
             // maybe allow autocorrect, depending on scores and emptyWordSuggestions
             val first = firstAndTypedEmptyInfos.first
             val typed = firstAndTypedEmptyInfos.second
-            allowsToBeAutoCorrected = when {
+            legacyAllowsToBeAutoCorrected = when {
                 firstSuggestionInContainer.mScore > scoreLimit -> true // suggestion has good score, allow
                 first == null -> false // no autocorrect if first suggestion unknown in this ngram context
                 typed == null -> true // allow autocorrect if typed word not known in this ngram context, todo: this may be too aggressive
                 else -> first.mScore - typed.mScore > 20 // autocorrect if suggested word has clearly higher score for empty word suggestions
             }
         } else {
-            allowsToBeAutoCorrected = false
+            legacyAllowsToBeAutoCorrected = false
         }
+        // A calibrated engine recommendation has already passed the scorer's confidence, margin,
+        // language-lock, personal-word, rejection, and valid-word joint-evidence gates. It may
+        // supersede only the legacy score heuristic; the terminal checks below remain authoritative.
+        val allowsToBeAutoCorrected = legacyAllowsToBeAutoCorrected || engineShapeIsSafe
         // If correction is not enabled, we never auto-correct. This is for example for when
         // the setting "Auto-correction" is "off": we still suggest, but we don't auto-correct.
         val hasAutoCorrection: Boolean
@@ -269,6 +309,9 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
                     correctionLanguage,
                 )) {
                 return true to false
+            }
+            if (engineAutoCorrectionNormalized != null) {
+                return true to (engineShapeIsSafe && isAllowedByAutoCorrectionWithSpaceFilter(firstSuggestion))
             }
             if (suggestionResults.mFirstSuggestionExceedsConfidenceThreshold && firstOccurrenceOfTypedWordInSuggestions != 0) {
                 // mFirstSuggestionExceedsConfidenceThreshold is always set to false, so currently this branch is useless
@@ -452,6 +495,7 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
 
     companion object {
         private const val LEXICAL_PROPOSAL_BUDGET_MILLIS = 8L
+        private const val CONTEXT_RESCORING_BUDGET_MILLIS = 35L
         private val TAG: String = Suggest::class.java.simpleName
 
         // Session id for {@link #getSuggestedWords(WordComposer,String,ProximityInfo,boolean,int)}.

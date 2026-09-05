@@ -143,6 +143,15 @@
     <string name="more_autocorrect_summary">Auto-correct even when not explicitly requested by the input field</string>
     <!-- Option to change the confidence level of the auto correction -->
     <string name="auto_correction_confidence">Auto-correction confidence</string>
+    <string name="auto_correction_aggressiveness">LibreBoard auto-correction mode</string>
+    <string name="auto_correction_aggressiveness_summary">Controls when a calibrated LibreBoard engine recommendation is committed; safety vetoes always apply</string>
+    <string name="auto_correction_aggressiveness_cautious">Cautious</string>
+    <string name="auto_correction_aggressiveness_balanced">Balanced</string>
+    <string name="auto_correction_aggressiveness_aggressive">Aggressive</string>
+    <string name="neural_strength">Context model strength</string>
+    <string name="neural_strength_summary">Controls how strongly a verified local model affects ranking; zero disables neural scoring</string>
+    <string name="neural_strength_off">Off</string>
+    <string name="neural_strength_percent">%1$d%%</string>
     <!-- Option to enable auto correction for shortcuts (will correct shortcut to the actual word) -->
     <string name="auto_correct_shortcuts">Auto-correct shortcuts</string>
     <!-- Description for auto_correct_shortcuts -->

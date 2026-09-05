@@ -6,10 +6,19 @@ import helium314.keyboard.latin.SuggestedWords.SuggestedWordInfo
 import helium314.keyboard.latin.common.ComposedData
 import helium314.keyboard.latin.dictionary.Dictionary
 import helium314.keyboard.latin.engine.Candidate
+import helium314.keyboard.latin.engine.AutoCorrectionAggressiveness
 import helium314.keyboard.latin.engine.CandidateSource
+import helium314.keyboard.latin.engine.Deadline
+import helium314.keyboard.latin.engine.EngineAvailability
+import helium314.keyboard.latin.engine.FieldPolicy
 import helium314.keyboard.latin.engine.InputStyle
+import helium314.keyboard.latin.engine.KeyGeometry
+import helium314.keyboard.latin.engine.NeuralRescorer
+import helium314.keyboard.latin.engine.NeuralScoreResult
 import helium314.keyboard.latin.engine.ScoreComponents
+import helium314.keyboard.latin.engine.TypingRequest
 import helium314.keyboard.latin.engine.WordLock
+import helium314.keyboard.latin.engine.key
 import helium314.keyboard.latin.settings.SettingsValuesForSuggestion
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -145,12 +154,121 @@ class LegacySuggestionFusionTest {
         assertTrue(result.suggestions.none { ' ' in it.mWord })
     }
 
+    @Test
+    fun availableNeuralScoresCanReorderTheLiveSlateAndSelectCalibratedCorrection() {
+        var captured: TypingRequest? = null
+        val fusion = LegacySuggestionFusion(neuralRescorer = NeuralRescorer { request, candidates, _ ->
+            captured = request
+            NeuralScoreResult(
+                EngineAvailability.AVAILABLE,
+                candidates.associate { candidate ->
+                    candidate.key to if (candidate.normalized == "this") 10.0 else -10.0
+                },
+            )
+        })
+        val classics = buildList {
+            add(suggestion("this", 100_000, english))
+            listOf("thus", "thin", "then", "than", "tish", "wish", "fish", "dish", "his").forEach {
+                add(suggestion(it, 100_000, english))
+            }
+        }
+
+        val result = fusion.fuse(
+            rawText = "thsi",
+            classicSuggestions = classics,
+            supplementalCandidates = emptyList(),
+            enabledLanguageTags = listOf("en-US"),
+            defaultLocale = english,
+            inputStyle = InputStyle.TAP,
+            typingRequest = request("thsi", listOf("en-US")),
+            neuralStrength = 100,
+            aggressiveness = AutoCorrectionAggressiveness.AGGRESSIVE,
+            neuralDeadline = Deadline.afterMillis(100),
+        )
+
+        assertEquals(EngineAvailability.AVAILABLE, result.neuralAvailability)
+        assertEquals("this", result.suggestions.first().mWord)
+        assertEquals("this", result.engineAutoCorrectionNormalized)
+        assertEquals("before", captured?.precedingContext)
+        assertEquals(result.wordLock, captured?.wordLock)
+    }
+
+    @Test
+    fun neuralTimeoutPreservesClassicFallbackRanking() {
+        val classics = listOf(
+            suggestion("this", 900_000, english),
+            suggestion("thus", 700_000, english),
+        )
+        val baseline = LegacySuggestionFusion().fuse(
+            rawText = "thsi",
+            classicSuggestions = classics,
+            supplementalCandidates = emptyList(),
+            enabledLanguageTags = listOf("en-US"),
+            defaultLocale = english,
+            inputStyle = InputStyle.TAP,
+        )
+        val timeout = LegacySuggestionFusion(neuralRescorer = NeuralRescorer { _, _, _ ->
+            NeuralScoreResult(EngineAvailability.TIMEOUT)
+        }).fuse(
+            rawText = "thsi",
+            classicSuggestions = classics,
+            supplementalCandidates = emptyList(),
+            enabledLanguageTags = listOf("en-US"),
+            defaultLocale = english,
+            inputStyle = InputStyle.TAP,
+            typingRequest = request("thsi", listOf("en-US")),
+            neuralStrength = 100,
+            neuralDeadline = Deadline.afterMillis(100),
+        )
+
+        assertEquals(EngineAvailability.TIMEOUT, timeout.neuralAvailability)
+        assertEquals(baseline.suggestions.map { it.mWord }, timeout.suggestions.map { it.mWord })
+        assertEquals(null, timeout.engineAutoCorrectionNormalized)
+    }
+
+    @Test
+    fun lockedLanguageIsCopiedIntoTheImmutableNeuralRequest() {
+        var captured: TypingRequest? = null
+        val fusion = LegacySuggestionFusion(neuralRescorer = NeuralRescorer { request, _, _ ->
+            captured = request
+            NeuralScoreResult(EngineAvailability.AVAILABLE)
+        })
+        val result = fusion.fuse(
+            rawText = "gif",
+            classicSuggestions = listOf(
+                suggestion("gift", 100, english),
+                suggestion("Gift", 1_000, german),
+            ),
+            supplementalCandidates = emptyList(),
+            enabledLanguageTags = listOf("en-US", "de"),
+            defaultLocale = english,
+            inputStyle = InputStyle.TAP,
+            typingRequest = request("gif", listOf("en-US", "de")),
+            neuralStrength = 50,
+            neuralDeadline = Deadline.afterMillis(100),
+        )
+
+        assertEquals(WordLock.Automatic("de"), result.wordLock)
+        assertEquals(result.wordLock, captured?.wordLock)
+        assertTrue(result.suggestions.all { it.mSourceDict.mLocale == german })
+    }
+
     private fun personal(surface: String, exact: Boolean) = Candidate(
         surface = surface,
         languageTag = "en-US",
         sources = setOf(CandidateSource.PERSONAL),
         components = ScoreComponents(personal = 2.0),
         exactPersonalMatch = exact,
+    )
+
+    private fun request(rawText: String, languages: List<String>) = TypingRequest.bounded(
+        rawText = rawText,
+        precedingContext = "before",
+        geometry = KeyGeometry(1f, 1f, emptyList()),
+        enabledLanguages = languages,
+        fieldPolicy = FieldPolicy.NORMAL,
+        inputStyle = InputStyle.TAP,
+        sequenceId = 17,
     )
 
     private fun suggestion(word: String, score: Int, locale: Locale) = SuggestedWordInfo(

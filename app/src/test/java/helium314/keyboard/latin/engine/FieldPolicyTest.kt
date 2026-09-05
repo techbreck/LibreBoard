@@ -92,6 +92,38 @@ class FieldPolicyTest {
     }
 
     @Test
+    fun fieldClassUsesOnlyCoarseNonSensitiveEditorSignals() {
+        assertEquals(
+            FieldClass.SHORT_MESSAGE,
+            FieldClassResolver.resolve(
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_SHORT_MESSAGE,
+                EditorInfo.IME_ACTION_NONE,
+                FieldPolicy.NORMAL,
+            ),
+        )
+        assertEquals(
+            FieldClass.SEARCH,
+            FieldClassResolver.resolve(
+                InputType.TYPE_CLASS_TEXT,
+                EditorInfo.IME_ACTION_SEARCH,
+                FieldPolicy.NORMAL,
+            ),
+        )
+        assertEquals(
+            FieldClass.CODE_OR_TERMINAL,
+            FieldClassResolver.resolve(InputType.TYPE_NULL, 0, FieldPolicy.TERMINAL),
+        )
+        assertEquals(
+            FieldClass.RESTRICTED,
+            FieldClassResolver.resolve(
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD,
+                EditorInfo.IME_ACTION_SEARCH,
+                FieldPolicy.SENSITIVE,
+            ),
+        )
+    }
+
+    @Test
     fun inputAttributesCannotOverrideRestrictedPolicies() {
         val noSuggestions = InputAttributes(EditorInfo().apply {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
@@ -108,9 +140,11 @@ class FieldPolicyTest {
 
         val terminal = InputAttributes(EditorInfo().apply {
             inputType = InputType.TYPE_NULL
+            imeOptions = EditorInfo.IME_ACTION_GO
         }, false, "")
         assertEquals(FieldPolicy.TERMINAL, terminal.mFieldPolicy)
         assertTrue(terminal.mShouldShowSuggestions)
         assertFalse(terminal.mInputTypeShouldAutoCorrect)
+        assertEquals(EditorInfo.IME_ACTION_GO, terminal.mImeOptions)
     }
 }

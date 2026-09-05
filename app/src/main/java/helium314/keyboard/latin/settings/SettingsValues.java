@@ -29,6 +29,7 @@ import helium314.keyboard.latin.PunctuationSuggestions;
 import helium314.keyboard.latin.R;
 import helium314.keyboard.latin.RichInputMethodManager;
 import helium314.keyboard.latin.common.Colors;
+import helium314.keyboard.latin.engine.AutoCorrectionAggressiveness;
 import helium314.keyboard.latin.engine.FieldPolicy;
 import helium314.keyboard.latin.permissions.PermissionsUtil;
 import helium314.keyboard.latin.utils.FoldableUtils;
@@ -150,6 +151,9 @@ public class SettingsValues {
     public final float mKeypressSoundVolume;
     public final boolean mAutoCorrectionEnabledPerUserSettings;
     public final boolean mAutoCorrectCapitalizedSuggestion;
+    public final int mNeuralStrength;
+    @NonNull
+    public final AutoCorrectionAggressiveness mAutoCorrectionAggressiveness;
     public final boolean mBackspaceRevertsAutocorrect;
     public final boolean mAutoCorrectShortcuts;
     public final boolean mSuggestionsEnabled;
@@ -231,6 +235,17 @@ public class SettingsValues {
                 && (mUrlDetectionEnabled || !InputTypeUtils.isUriOrEmailType(mInputAttributes.mInputType));
         mCenterSuggestionTextToEnter = prefs.getBoolean(Settings.PREF_CENTER_SUGGESTION_TEXT_TO_ENTER, Defaults.PREF_CENTER_SUGGESTION_TEXT_TO_ENTER);
         float autoCorrectConfidence = prefs.getFloat(Settings.PREF_AUTO_CORRECT_CONFIDENCE, Defaults.PREF_AUTO_CORRECT_CONFIDENCE);
+        mNeuralStrength = Math.round(Math.max(0f, Math.min(100f,
+                prefs.getFloat(Settings.PREF_NEURAL_STRENGTH, Defaults.PREF_NEURAL_STRENGTH))));
+        AutoCorrectionAggressiveness aggressiveness;
+        try {
+            aggressiveness = AutoCorrectionAggressiveness.valueOf(prefs.getString(
+                    Settings.PREF_AUTO_CORRECTION_AGGRESSIVENESS,
+                    Defaults.PREF_AUTO_CORRECTION_AGGRESSIVENESS));
+        } catch (IllegalArgumentException | NullPointerException ignored) {
+            aggressiveness = AutoCorrectionAggressiveness.BALANCED;
+        }
+        mAutoCorrectionAggressiveness = aggressiveness;
         // confidence -> threshold and score limit are just some formulas that give something similar to the old values, so that confidence can be in a nice 0-1 range
         mAutoCorrectionThreshold = mAutoCorrectEnabled
                 ? 0.5f - 0.5f * (float)Math.pow(autoCorrectConfidence, 0.33)

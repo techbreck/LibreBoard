@@ -21,9 +21,12 @@ and pointer collection. New behaviour enters through Android-independent contrac
 
 All published results must still match the active sequence. The raw tap input occupies the first
 suggestion slot. Autocorrection is a separately gated decision and cannot be forced by a model.
-The retained suggestion path now consumes bounded personal candidates without allowing an
-uncalibrated personal score to displace its classic winner; full source fusion remains gated on the
-Phase 0 measurements.
+The retained suggestion path now fuses bounded static/spatial, personal, lexical, language, and
+optional context scores. It snapshots current geometry, coarse field class, enabled languages,
+bounded context, and sequence ID before dispatch. Context inference runs through one process-scoped
+session behind a hard deadline and three-overrun circuit breaker. Only an available result receives
+nonzero neural weight; every other result preserves the classic ranking. Production activation and
+release calibration remain gated on accepted signed artifacts and Phase 0 measurements.
 
 ## Gesture decision
 

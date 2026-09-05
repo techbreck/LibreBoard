@@ -14,7 +14,7 @@ data class NeuralScoreResult(
 
 val Candidate.key: CandidateKey get() = CandidateKey(normalized, languageTag)
 
-interface NeuralRescorer {
+fun interface NeuralRescorer {
     fun score(request: TypingRequest, candidates: List<Candidate>, deadline: Deadline): NeuralScoreResult
 }
 

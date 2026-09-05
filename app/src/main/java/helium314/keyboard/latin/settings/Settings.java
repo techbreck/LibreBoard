@@ -79,6 +79,8 @@ public final class Settings implements SharedPreferences.OnSharedPreferenceChang
     public static final String PREF_AUTO_CORRECTION = "auto_correction";
     public static final String PREF_MORE_AUTO_CORRECTION = "more_auto_correction";
     public static final String PREF_AUTO_CORRECT_CONFIDENCE = "auto_correct_confidence";
+    public static final String PREF_NEURAL_STRENGTH = "neural_strength";
+    public static final String PREF_AUTO_CORRECTION_AGGRESSIVENESS = "auto_correction_aggressiveness";
     public static final String PREF_AUTOCORRECT_SHORTCUTS = "autocorrect_shortcuts";
     public static final String PREF_BACKSPACE_REVERTS_AUTOCORRECT = "backspace_reverts_autocorrect";
     public static final String PREF_AUTOCORRECT_CAPITALIZED_SUGGESTION = "autocorrect_capitalized_suggestion";

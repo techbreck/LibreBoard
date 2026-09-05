@@ -69,3 +69,20 @@ object FieldPolicyResolver {
         return "terminal" in privateOptions || "termux" in privateOptions
     }
 }
+
+object FieldClassResolver {
+    fun resolve(inputType: Int, imeOptions: Int, policy: FieldPolicy): FieldClass {
+        if (!policy.allowsContextRead) {
+            return if (policy == FieldPolicy.TERMINAL) FieldClass.CODE_OR_TERMINAL else FieldClass.RESTRICTED
+        }
+        val inputClass = inputType and InputType.TYPE_MASK_CLASS
+        val variation = inputType and InputType.TYPE_MASK_VARIATION
+        if (inputClass == InputType.TYPE_CLASS_TEXT && variation == InputType.TYPE_TEXT_VARIATION_SHORT_MESSAGE) {
+            return FieldClass.SHORT_MESSAGE
+        }
+        if (imeOptions and EditorInfo.IME_MASK_ACTION == EditorInfo.IME_ACTION_SEARCH) {
+            return FieldClass.SEARCH
+        }
+        return FieldClass.PLAIN
+    }
+}

@@ -49,6 +49,7 @@ public final class InputAttributes {
     final public boolean mDisableGestureFloatingPreviewText;
     final public boolean mIsGeneralTextInput;
     final public int mInputType;
+    final public int mImeOptions;
     final private EditorInfo mEditorInfo;
     final private String mPackageNameForPrivateImeOptions;
 
@@ -58,6 +59,7 @@ public final class InputAttributes {
         mPackageNameForPrivateImeOptions = packageNameForPrivateImeOptions;
         mTargetApplicationPackageName = null != editorInfo ? editorInfo.packageName : null;
         mInputType = AppWorkarounds.INSTANCE.adjustInputType(null != editorInfo ? editorInfo.inputType : 0, mTargetApplicationPackageName);
+        mImeOptions = null != editorInfo ? editorInfo.imeOptions : 0;
         mFieldPolicy = FieldPolicyResolver.INSTANCE.resolve(editorInfo, false);
         mNoLearning = !mFieldPolicy.getAllowsPersistence();
         final int inputClass = mInputType & InputType.TYPE_MASK_CLASS;
