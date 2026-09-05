@@ -56,6 +56,35 @@ class FusedCandidateScorerTest {
         assertNull(result.autoCorrection)
     }
 
+    @Test
+    fun singlePersonalSignalIsNotDiscardedByNormalization() {
+        val personal = Candidate(
+            surface = "LibreBoard",
+            languageTag = "en-US",
+            sources = setOf(CandidateSource.PERSONAL),
+            components = ScoreComponents(personal = 2.0),
+        )
+        val result = scorer.rank("libre", listOf(personal), WordLock.Automatic("en-US"), 0,
+            AutoCorrectionAggressiveness.BALANCED)
+
+        assertTrue(result.candidates.single { it.surface == "LibreBoard" }.totalScore > 0.0)
+    }
+
+    @Test
+    fun mergedCandidatePreservesPersonalCasing() {
+        val static = candidate("libreboard", spatial = 1.0, context = 0.0)
+        val personal = static.copy(
+            surface = "LibreBoard",
+            sources = setOf(CandidateSource.PERSONAL),
+            exactPersonalMatch = true,
+            components = ScoreComponents(personal = 2.0),
+        )
+        val result = scorer.rank("libre", listOf(static, personal), WordLock.Automatic("en-US"), 0,
+            AutoCorrectionAggressiveness.BALANCED)
+
+        assertEquals("LibreBoard", result.candidates.single { it.normalized == "libreboard" }.surface)
+    }
+
     private fun candidate(
         word: String,
         language: String = "en-US",

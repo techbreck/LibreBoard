@@ -116,8 +116,12 @@ class FusedCandidateScorer(private val weights: ScoreWeights = ScoreWeights()) {
     }
 
     private fun merge(candidates: List<Candidate>): Candidate {
-        val first = candidates.first()
-        return first.copy(
+        // Preserve user-selected casing when a static and personal source describe the same
+        // normalized word. Source order must not be allowed to erase the personal surface.
+        val representative = candidates.firstOrNull { it.exactPersonalMatch }
+            ?: candidates.firstOrNull { CandidateSource.PERSONAL in it.sources }
+            ?: candidates.first()
+        return representative.copy(
             sources = candidates.flatMapTo(mutableSetOf()) { it.sources },
             components = ScoreComponents(
                 spatial = candidates.mapNotNull { it.components.spatial }.maxOrNull(),
@@ -134,7 +138,10 @@ class FusedCandidateScorer(private val weights: ScoreWeights = ScoreWeights()) {
 
     private fun normalize(values: List<Double?>): List<Double> {
         val present = values.filterNotNull()
-        if (present.size < 2) return List(values.size) { 0.0 }
+        // A source that proposes only one candidate is still evidence. Returning all zeroes here
+        // used to discard unique personal completions and one-candidate neural responses.
+        if (present.size == 1) return values.map { if (it == null) 0.0 else 1.0 }
+        if (present.isEmpty()) return List(values.size) { 0.0 }
         val mean = present.average()
         val variance = present.sumOf { (it - mean).pow(2) } / present.size
         val deviation = sqrt(variance)

@@ -21,6 +21,8 @@ import helium314.keyboard.latin.dictionary.Dictionary
 import helium314.keyboard.latin.engine.Candidate
 import helium314.keyboard.latin.engine.InputStyle
 import helium314.keyboard.latin.engine.integration.HeliBoardGeometricFallback
+import helium314.keyboard.latin.engine.integration.LegacySuggestionFusion
+import helium314.keyboard.latin.engine.normalizeCandidate
 import helium314.keyboard.latin.engine.personal.PersonalizationRuntime
 import helium314.keyboard.latin.settings.Settings
 import helium314.keyboard.latin.settings.SettingsValuesForSuggestion
@@ -40,9 +42,13 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
     private var mAutoCorrectionThreshold = 0f
     private val mPlausibilityThreshold = 0f
     private val nextWordSuggestionsCache = HashMap<NgramContext, SuggestionResults>()
+    private val liveCandidateFusion = LegacySuggestionFusion()
 
     // cache cleared whenever LatinIME.loadSettings is called, notably on changing layout and switching input fields
-    fun clearNextWordSuggestionsCache() = nextWordSuggestionsCache.clear()
+    fun clearNextWordSuggestionsCache() {
+        nextWordSuggestionsCache.clear()
+        liveCandidateFusion.resetWord()
+    }
 
     /**
      * Set the normalized-score threshold for a suggestion to be considered strong enough that we
@@ -91,12 +97,28 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
         // we check against the capitalizedTypedWord because getTransformedSuggestedWordInfoList adjusts for capsMode
         val typedWordFirstOccurrenceWordInfo = suggestionsContainer.firstOrNull { it.mWord == capitalizedTypedWord }
         val firstOccurrenceOfTypedWordInSuggestions = SuggestedWordInfo.removeDupsAndTypedWord(capitalizedTypedWord, suggestionsContainer)
-        makeFirstTwoSuggestionsNonEmoji(suggestionsContainer)
-
         val personalCandidates = getPersonalCandidates(
             typedWordString, ngramContext, resultsArePredictions, sequenceNumber,
         )
-        val exactPersonalMatch = personalCandidates.any { it.exactPersonalMatch }
+        val transformedPersonalCandidates = transformPersonalCandidates(
+            personalCandidates, capsMode, trailingSingleQuotesCount, mDictionaryFacilitator.mainLocale,
+        )
+        val classicCandidates = buildList {
+            typedWordFirstOccurrenceWordInfo?.let(::add)
+            addAll(suggestionsContainer)
+        }
+        val fusion = liveCandidateFusion.fuse(
+            rawText = capitalizedTypedWord,
+            classicSuggestions = classicCandidates,
+            personalCandidates = transformedPersonalCandidates,
+            enabledLanguageTags = mDictionaryFacilitator.activeLocales.map(Locale::toLanguageTag),
+            defaultLocale = mDictionaryFacilitator.mainLocale,
+            inputStyle = if (resultsArePredictions) InputStyle.PREDICTION else InputStyle.TAP,
+        )
+        suggestionsContainer.clear()
+        suggestionsContainer.addAll(fusion.suggestions)
+        makeFirstTwoSuggestionsNonEmoji(suggestionsContainer)
+        val exactPersonalMatch = fusion.exactPersonalMatch
         val correctionDecision = shouldBeAutoCorrected(
             trailingSingleQuotesCount,
             capitalizedTypedWord,
@@ -116,10 +138,6 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
         )
         val allowsToBeAutoCorrected = correctionDecision.first
         val hasAutoCorrection = correctionDecision.second && !exactPersonalMatch
-        addPersonalCandidates(
-            suggestionsContainer, personalCandidates, capsMode, trailingSingleQuotesCount,
-            mDictionaryFacilitator.mainLocale, capitalizedTypedWord,
-        )
         val typedWordInfo = SuggestedWordInfo(typedWordString, "", SuggestedWordInfo.MAX_SCORE,
             SuggestedWordInfo.KIND_TYPED, typedWordFirstOccurrenceWordInfo?.mSourceDict ?: Dictionary.DICTIONARY_USER_TYPED,
             SuggestedWordInfo.NOT_AN_INDEX , SuggestedWordInfo.NOT_A_CONFIDENCE)
@@ -410,35 +428,17 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
         )
     }
 
-    /**
-     * Personal candidates enrich the visible slate without changing the retained dictionary's
-     * calibrated winner. An exact personal match separately vetoes autocorrection above.
-     */
-    private fun addPersonalCandidates(
-        suggestions: ArrayList<SuggestedWordInfo>,
+    private fun transformPersonalCandidates(
         candidates: List<Candidate>,
         capsMode: CapsMode,
         trailingSingleQuotesCount: Int,
         defaultLocale: Locale,
-        typedWord: String,
-    ) {
-        if (candidates.isEmpty()) return
-        val personal = ArrayList(candidates.take(MAX_VISIBLE_PERSONAL_CANDIDATES).map { candidate ->
-            SuggestedWordInfo(
-                candidate.surface,
-                "",
-                max(1, (candidate.components.personal.orZero() * 100).toInt()),
-                if (typedWord.isEmpty()) SuggestedWordInfo.KIND_PREDICTION else SuggestedWordInfo.KIND_COMPLETION,
-                Dictionary.DICTIONARY_USER_TYPED,
-                SuggestedWordInfo.NOT_AN_INDEX,
-                SuggestedWordInfo.NOT_A_CONFIDENCE,
-            )
-        })
-        capitalizeAndAddTrailingSingleQuotes(personal, capsMode, trailingSingleQuotesCount, defaultLocale)
-        val existing = suggestions.mapTo(hashSetOf()) { it.mWord }
-        personal.removeAll { it.mWord == typedWord || !existing.add(it.mWord) }
-        suggestions.addAll(min(1, suggestions.size), personal)
-        while (suggestions.size > SuggestedWords.MAX_SUGGESTIONS) suggestions.removeLast()
+    ): List<Candidate> = candidates.map { candidate ->
+        val locale = Locale.forLanguageTag(candidate.languageTag).takeUnless { it == Locale.ROOT } ?: defaultLocale
+        var surface = capitalize(candidate.surface, capsMode, locale)
+        val quotesToAppend = trailingSingleQuotesCount - if (candidate.surface.contains('\'')) 1 else 0
+        repeat(max(0, quotesToAppend)) { surface += '\'' }
+        candidate.copy(surface = surface, normalized = normalizeCandidate(surface))
     }
 
     companion object {
@@ -453,11 +453,8 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
         private const val SUPPRESS_SUGGEST_THRESHOLD = -2000000000
 
         private const val MAXIMUM_AUTO_CORRECT_LENGTH_FOR_GERMAN = 12
-        private const val MAX_VISIBLE_PERSONAL_CANDIDATES = 4
         // TODO: should we add Finnish here?
         private val sLanguageToMaximumAutoCorrectionWithSpaceLength = hashMapOf(Locale.GERMAN.language to MAXIMUM_AUTO_CORRECT_LENGTH_FOR_GERMAN)
-
-        private fun Double?.orZero() = this ?: 0.0
 
         private fun capitalizeAndAddTrailingSingleQuotes(
             suggestions: ArrayList<SuggestedWordInfo>, capsMode: CapsMode, trailingSingleQuotesCount: Int, defaultLocale: Locale
