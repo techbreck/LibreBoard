@@ -18,6 +18,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 import build_context_tokenizer
+import build_onnxruntime_android
 import context_model_contract
 import evaluate_engine
 import model_sources
@@ -585,13 +586,15 @@ def source_checks(errors: list[str]) -> None:
         if marker in build_text:
             fail(errors, f"forbidden network/proprietary dependency marker: {marker}")
 
-    runtime_settings = read_json_object(
-        errors,
-        ROOT / "runtime/onnxruntime/build-settings.json",
-        "ONNX Runtime build settings",
-    )
-    if runtime_settings is not None and runtime_settings.get("sourceCommit") != ONNXRUNTIME_COMMIT:
-        fail(errors, "ONNX Runtime build settings do not pin the approved commit")
+    try:
+        runtime_settings = build_onnxruntime_android.load_settings()
+    except build_onnxruntime_android.BuildConfigurationError as exc:
+        fail(errors, f"ONNX Runtime build settings are invalid: {exc}")
+    else:
+        if runtime_settings.get("sourceCommit") != ONNXRUNTIME_COMMIT:
+            fail(errors, "ONNX Runtime build settings do not pin the approved commit")
+        if runtime_settings.get("ndkRevision") != "28.0.13004108":
+            fail(errors, "ONNX Runtime build settings do not pin the application NDK")
     gitmodules = ROOT / ".gitmodules"
     if not gitmodules.is_file():
         fail(errors, "pinned ONNX Runtime source submodule is missing")
@@ -915,7 +918,10 @@ def source_checks(errors: list[str]) -> None:
 
 
 def run(command: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, text=True, capture_output=True, check=False)
+    try:
+        return subprocess.run(command, text=True, capture_output=True, check=False)
+    except OSError as exc:
+        return subprocess.CompletedProcess(command, 126, "", f"cannot start command: {exc}")
 
 
 def sha256_file(path: pathlib.Path) -> str:

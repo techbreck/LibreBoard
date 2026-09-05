@@ -1,6 +1,7 @@
 {
   "schemaVersion": 1,
   "sourceCommit": "8c546c37b43caaca1fa25db430dab94b901cf277",
+  "ndkRevision": "28.0.13004108",
   "configuration": "Release",
   "abis": [
     "armeabi-v7a",

@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import importlib.metadata
+import io
 import json
 import os
 import pathlib
@@ -24,6 +25,7 @@ DEFAULT_BUILD_ROOT = ROOT / "build" / "onnxruntime"
 EXPECTED_KEYS = {
     "schemaVersion",
     "sourceCommit",
+    "ndkRevision",
     "configuration",
     "abis",
     "androidMinSdk",
@@ -32,6 +34,7 @@ EXPECTED_KEYS = {
     "buildParameters",
 }
 EXPECTED_ABIS = ["armeabi-v7a", "arm64-v8a", "x86", "x86_64"]
+EXPECTED_NDK_REVISION = "28.0.13004108"
 REQUIRED_PARAMETERS = {
     "--android",
     "--parallel",
@@ -58,6 +61,7 @@ EXPECTED_PYTHON_PACKAGES = {
     "protobuf": "7.36.1",
 }
 OPS_LINE = re.compile(r"^[A-Za-z0-9_.-]+;[1-9][0-9]*;[A-Za-z0-9_.,-]+$")
+CANONICAL_ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 
 
 class BuildConfigurationError(RuntimeError):
@@ -89,7 +93,12 @@ def validate_python_toolchain(
 
 
 def run(command: list[str], *, cwd: pathlib.Path, env: dict[str, str] | None = None) -> str:
-    result = subprocess.run(command, cwd=cwd, env=env, text=True, capture_output=True, check=False)
+    try:
+        result = subprocess.run(command, cwd=cwd, env=env, text=True, capture_output=True, check=False)
+    except OSError as exc:
+        raise BuildConfigurationError(
+            f"cannot start command {' '.join(command)}: {exc}"
+        ) from exc
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip() or f"exit status {result.returncode}"
         raise BuildConfigurationError(f"command failed: {' '.join(command)}\n{detail}")
@@ -115,6 +124,8 @@ def load_settings(path: pathlib.Path = SETTINGS) -> dict:
         raise BuildConfigurationError("unsupported runtime build-settings schema")
     if not re.fullmatch(r"[0-9a-f]{40}", settings["sourceCommit"]):
         raise BuildConfigurationError("invalid ONNX Runtime source commit")
+    if settings["ndkRevision"] != EXPECTED_NDK_REVISION:
+        raise BuildConfigurationError("runtime must use the exact pinned NDK revision")
     if settings["configuration"] != "Release":
         raise BuildConfigurationError("runtime must use the Release configuration")
     if settings["abis"] != EXPECTED_ABIS:
@@ -175,8 +186,10 @@ def validate_ndk(ndk: pathlib.Path) -> pathlib.Path:
          if line.startswith("Pkg.Revision")),
         "",
     )
-    if not revision.startswith("28."):
-        raise BuildConfigurationError(f"NDK r28 is required, found {revision or 'unknown'}")
+    if revision != EXPECTED_NDK_REVISION:
+        raise BuildConfigurationError(
+            f"NDK {EXPECTED_NDK_REVISION} is required, found {revision or 'unknown'}"
+        )
     candidates = list((ndk / "toolchains" / "llvm" / "prebuilt").glob("*/bin/llvm-readobj"))
     if len(candidates) != 1:
         raise BuildConfigurationError("could not resolve the NDK llvm-readobj")
@@ -206,6 +219,70 @@ def resolved_build_parameters(settings: dict, jobs: int) -> list[str]:
         f"--parallel={jobs}" if value == "--parallel" else value
         for value in settings["buildParameters"]
     ]
+
+
+def _canonical_zip_payload(payload: bytes, *, depth: int = 0) -> bytes:
+    source = io.BytesIO(payload)
+    output = io.BytesIO()
+    with zipfile.ZipFile(source) as input_archive:
+        entries = input_archive.infolist()
+        names = [entry.filename for entry in entries]
+        if len(names) != len(set(names)):
+            raise BuildConfigurationError("runtime archive contains duplicate entries")
+        if any(
+            not name
+            or name.startswith(("/", "\\"))
+            or ".." in pathlib.PurePosixPath(name).parts
+            for name in names
+        ):
+            raise BuildConfigurationError("runtime archive contains an unsafe entry name")
+        with zipfile.ZipFile(output, "w", allowZip64=True) as output_archive:
+            for original in sorted(entries, key=lambda entry: entry.filename):
+                entry_payload = input_archive.read(original)
+                if (
+                    depth == 0
+                    and pathlib.PurePosixPath(original.filename).suffix.lower() in {".jar", ".zip"}
+                    and zipfile.is_zipfile(io.BytesIO(entry_payload))
+                ):
+                    entry_payload = _canonical_zip_payload(entry_payload, depth=1)
+                canonical = zipfile.ZipInfo(original.filename, CANONICAL_ZIP_TIMESTAMP)
+                canonical.compress_type = original.compress_type
+                canonical.create_system = 3
+                canonical.external_attr = (
+                    (0o40755 if original.is_dir() else 0o100644) << 16
+                ) | (0x10 if original.is_dir() else 0)
+                output_archive.writestr(
+                    canonical,
+                    entry_payload,
+                    compress_type=original.compress_type,
+                    compresslevel=9 if original.compress_type == zipfile.ZIP_DEFLATED else None,
+                )
+    return output.getvalue()
+
+
+def canonicalize_aar(source: pathlib.Path, destination: pathlib.Path) -> None:
+    """Rewrite an AAR and nested JARs with deterministic ZIP metadata and compression."""
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = tempfile.NamedTemporaryFile(
+        dir=destination.parent,
+        prefix=f".{destination.name}.",
+        delete=False,
+    )
+    temporary_path = pathlib.Path(temporary.name)
+    try:
+        temporary.write(_canonical_zip_payload(source.read_bytes()))
+        temporary.flush()
+        os.fsync(temporary.fileno())
+        temporary.close()
+        os.replace(temporary_path, destination)
+    except BuildConfigurationError:
+        raise
+    except (OSError, RuntimeError, zipfile.BadZipFile, zipfile.LargeZipFile) as exc:
+        raise BuildConfigurationError(f"cannot canonicalize runtime AAR: {exc}") from exc
+    finally:
+        if not temporary.closed:
+            temporary.close()
+        temporary_path.unlink(missing_ok=True)
 
 
 def build_aar(
@@ -276,7 +353,7 @@ def build_aar(
     output = build_root / "output"
     output.mkdir(parents=True, exist_ok=True)
     final_aar = output / "onnxruntime-mobile-1.26.0.aar"
-    shutil.copyfile(generated, final_aar)
+    canonicalize_aar(generated, final_aar)
     return final_aar
 
 
@@ -288,7 +365,21 @@ def verify_aar(
     build_root: pathlib.Path,
 ) -> pathlib.Path:
     native_hashes: dict[str, dict[str, str | int]] = {}
+    aar_payload = aar.read_bytes()
+    if _canonical_zip_payload(aar_payload) != aar_payload:
+        raise BuildConfigurationError("runtime AAR or a nested archive is not canonically packaged")
     with zipfile.ZipFile(aar) as archive, tempfile.TemporaryDirectory(prefix="libreboard-ort-") as temp:
+        if (
+            archive.comment
+            or archive.namelist() != sorted(archive.namelist())
+            or any(
+                entry.date_time != CANONICAL_ZIP_TIMESTAMP
+                or entry.extra
+                or entry.comment
+                for entry in archive.infolist()
+            )
+        ):
+            raise BuildConfigurationError("runtime AAR is not canonically packaged")
         native_entries = [name for name in archive.namelist() if name.endswith(".so")]
         expected_entries = {
             f"jni/{abi}/{library}" for abi in settings["abis"] for library in EXPECTED_LIBRARIES
@@ -317,8 +408,13 @@ def verify_aar(
                 }
 
     manifest = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "sourceCommit": settings["sourceCommit"],
+        "ndkRevision": settings["ndkRevision"],
+        "pythonVersion": f"{sys.version_info.major}.{sys.version_info.minor}",
+        "pythonPackages": dict(sorted(EXPECTED_PYTHON_PACKAGES.items())),
+        "sourceDateEpoch": int(run(["git", "show", "-s", "--format=%ct", "HEAD"], cwd=SOURCE)),
+        "buildToolSha256": sha256(pathlib.Path(__file__)),
         "settingsSha256": sha256(SETTINGS),
         "operatorsSha256": sha256(ops_config),
         "aarSha256": sha256(aar),

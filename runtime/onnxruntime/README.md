@@ -26,21 +26,25 @@ build/onnxruntime-venv/bin/python tools/build_onnxruntime_android.py \
 artifact contract. Lower it on a machine concurrently running model training.
 
 The builder verifies the source commit, clean source tree, initialized nested submodules, exact build
-settings, NDK r28, reduced-operator configuration, native size ceiling, and 16 KiB ELF alignment. It
-sets stable locale/time/path inputs and writes a hash manifest beside the generated AAR under
+settings, exact NDK 28.0.13004108, reduced-operator configuration, native size ceiling, and 16 KiB ELF
+alignment. It sets stable locale/time/path inputs, rewrites the AAR with canonical order, timestamps,
+metadata and compression, and writes a schema-2 hash/toolchain manifest beside it under
 `build/onnxruntime/output`. Generated binaries are never committed as source.
 
-For a model-qualified integration build, pass both verified outputs to Gradle:
+For a model-qualified integration build, pass the verified AAR, build manifest, and exact composed
+operator configuration to Gradle:
 
 ```sh
 ./gradlew assembleRelease \
   -PlibreboardOnnxRuntimeAar=build/onnxruntime/output/onnxruntime-mobile-1.26.0.aar \
-  -PlibreboardOnnxRuntimeManifest=build/onnxruntime/output/onnxruntime-mobile-1.26.0.build.json
+  -PlibreboardOnnxRuntimeManifest=build/onnxruntime/output/onnxruntime-mobile-1.26.0.build.json \
+  -PlibreboardOnnxRuntimeOperators=build/model-export/onnxruntime/required_operators.config
 ```
 
-Gradle rejects a lone artifact, an altered AAR, a non-pinned source revision, or a build manifest
-produced from settings other than the audited file in this directory. Ordinary development builds
-omit both properties and exercise the always-available classic/geometric path.
+Gradle rejects an incomplete artifact set, an altered AAR, a non-pinned source/NDK/toolchain, a
+different builder or settings file, or an AAR reduced for a different operator configuration.
+Ordinary development builds omit all three properties and exercise the always-available
+classic/geometric path.
 
 The application refers to the optional AAR through fixed internal class names rather than a Maven
 compile dependency, allowing the same source tree to build the core-only fallback. The adapter never

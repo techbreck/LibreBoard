@@ -4,6 +4,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.security.MessageDigest
 
 val pinnedOnnxRuntimeCommit = "8c546c37b43caaca1fa25db430dab94b901cf277"
+val pinnedNdkRevision = "28.0.13004108"
 
 private fun sha256(file: File): String {
     val digest = MessageDigest.getInstance("SHA-256")
@@ -20,24 +21,69 @@ private fun sha256(file: File): String {
 
 val onnxRuntimeAarProperty = providers.gradleProperty("libreboardOnnxRuntimeAar").orNull
 val onnxRuntimeManifestProperty = providers.gradleProperty("libreboardOnnxRuntimeManifest").orNull
-require((onnxRuntimeAarProperty == null) == (onnxRuntimeManifestProperty == null)) {
-    "The source-built ONNX Runtime AAR and build manifest must be supplied together"
+val onnxRuntimeOperatorsProperty = providers.gradleProperty("libreboardOnnxRuntimeOperators").orNull
+val onnxRuntimeProperties = listOf(
+    onnxRuntimeAarProperty,
+    onnxRuntimeManifestProperty,
+    onnxRuntimeOperatorsProperty,
+)
+require(onnxRuntimeProperties.all { it == null } || onnxRuntimeProperties.all { it != null }) {
+    "The source-built ONNX Runtime AAR, build manifest, and operator config must be supplied together"
 }
 val verifiedOnnxRuntimeAar = onnxRuntimeAarProperty?.let { aarPath ->
     val aar = rootProject.file(aarPath)
     val manifestFile = rootProject.file(requireNotNull(onnxRuntimeManifestProperty))
+    val operatorsFile = rootProject.file(requireNotNull(onnxRuntimeOperatorsProperty))
     val runtimeSettings = rootProject.file("runtime/onnxruntime/build-settings.json")
-    require(aar.isFile && manifestFile.isFile) { "The source-built ONNX Runtime artifacts are missing" }
+    val runtimeBuilder = rootProject.file("tools/build_onnxruntime_android.py")
+    require(aar.isFile && manifestFile.isFile && operatorsFile.isFile) {
+        "The source-built ONNX Runtime artifacts are missing"
+    }
     require(runtimeSettings.isFile) { "The audited ONNX Runtime build settings are missing" }
+    require(runtimeBuilder.isFile) { "The audited ONNX Runtime builder is missing" }
     @Suppress("UNCHECKED_CAST")
     val manifest = JsonSlurper().parse(manifestFile) as? Map<String, Any?>
         ?: error("The ONNX Runtime build manifest is invalid")
-    require(manifest["schemaVersion"] == 1) { "Unsupported ONNX Runtime build manifest" }
+    require(manifest.keys == setOf(
+        "schemaVersion",
+        "sourceCommit",
+        "ndkRevision",
+        "pythonVersion",
+        "pythonPackages",
+        "sourceDateEpoch",
+        "buildToolSha256",
+        "settingsSha256",
+        "operatorsSha256",
+        "aarSha256",
+        "nativeLibraries",
+    )) { "The ONNX Runtime build manifest has unexpected fields" }
+    require(manifest["schemaVersion"] == 2) { "Unsupported ONNX Runtime build manifest" }
     require(manifest["sourceCommit"] == pinnedOnnxRuntimeCommit) {
         "The ONNX Runtime AAR was built from an unapproved source commit"
     }
+    require(manifest["ndkRevision"] == pinnedNdkRevision) {
+        "The ONNX Runtime AAR was built with a different NDK"
+    }
+    require(manifest["pythonVersion"] == "3.11") {
+        "The ONNX Runtime AAR was built with an unapproved Python interpreter"
+    }
+    require(manifest["pythonPackages"] == mapOf(
+        "flatbuffers" to "25.12.19",
+        "numpy" to "2.2.6",
+        "packaging" to "26.3",
+        "protobuf" to "7.36.1",
+    )) { "The ONNX Runtime AAR was built with unapproved Python packages" }
+    require((manifest["sourceDateEpoch"] as? Number)?.toLong()?.let { it > 0 } == true) {
+        "The ONNX Runtime AAR has an invalid reproducibility epoch"
+    }
+    require(manifest["buildToolSha256"] == sha256(runtimeBuilder)) {
+        "The ONNX Runtime AAR was built with a different builder"
+    }
     require(manifest["settingsSha256"] == sha256(runtimeSettings)) {
         "The ONNX Runtime AAR was built with different settings"
+    }
+    require(manifest["operatorsSha256"] == sha256(operatorsFile)) {
+        "The ONNX Runtime AAR was reduced for a different operator set"
     }
     require(manifest["aarSha256"] == sha256(aar)) {
         "The ONNX Runtime AAR hash does not match its build manifest"
@@ -125,7 +171,7 @@ android {
             path = File("src/main/jni/Android.mk")
         }
     }
-    ndkVersion = "28.0.13004108"
+    ndkVersion = pinnedNdkRevision
 
     packaging {
         jniLibs {

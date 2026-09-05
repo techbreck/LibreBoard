@@ -9,6 +9,7 @@ import sys
 import tempfile
 import unittest
 import zipfile
+from unittest import mock
 
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
@@ -23,6 +24,7 @@ import model_sources  # noqa: E402
 import prepare_context_dataset  # noqa: E402
 import score_context_teacher  # noqa: E402
 import evaluate_engine  # noqa: E402
+import verify_release  # noqa: E402
 
 
 def sha256(value: bytes) -> str:
@@ -107,6 +109,16 @@ class VerifyModelArchiveTest(unittest.TestCase):
 
 
 class VerifyDependencyLockTest(unittest.TestCase):
+    def test_process_exhaustion_is_a_failed_command_not_a_traceback(self):
+        with mock.patch.object(
+            verify_release.subprocess,
+            "run",
+            side_effect=BlockingIOError(35, "Resource temporarily unavailable"),
+        ):
+            result = verify_release.run(["fixture"])
+        self.assertEqual(126, result.returncode)
+        self.assertIn("Resource temporarily unavailable", result.stderr)
+
     def test_accepts_hash_locked_direct_dependencies(self):
         with tempfile.TemporaryDirectory() as temporary:
             path = pathlib.Path(temporary) / "requirements.lock"
