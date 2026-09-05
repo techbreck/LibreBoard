@@ -571,6 +571,14 @@ class DictionaryFacilitatorImpl : DictionaryFacilitator {
         return result
     }
 
+    override fun isValidSpellingWord(word: String, languageTag: String): Boolean {
+        val requested = Locale.forLanguageTag(languageTag)
+        if (requested.language.isBlank()) return false
+        val group = dictionaryGroups.firstOrNull { it.locale.toLanguageTag().equals(requested.toLanguageTag(), ignoreCase = true) }
+            ?: return false
+        return isValidWord(word, DictionaryFacilitator.ALL_DICTIONARY_TYPES, group)
+    }
+
     // this is unused, so leave it for now (redirecting to isValidWord seems to defeat the purpose...)
     override fun isValidSuggestionWord(word: String): Boolean {
         return isValidWord(word, DictionaryFacilitator.ALL_DICTIONARY_TYPES, dictionaryGroups[0])

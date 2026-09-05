@@ -10,10 +10,12 @@ language lock, geometric swipe, CTC feature tensors and lexicon beam decoding, m
 ONNX validation, bounded context tensors, persistence, deadlines, and stale-result handling. Context
 tests enforce field-policy gates, candidate/language score identity, masks, field classes, tokenizer
 bounds, strict BPE schema/merge/special-token validation, Unicode normalization, and malformed/runtime
-fallback. CTC tests cover double letters,
-return-trip words, canonical contractions, language locks, malformed tensors, runtime failure, and
-deadline fallback. Backup tests additionally exercise ZIP path traversal, canonical aliases,
-entry and expanded-size limits, strict typed-settings parsing, preservation of excluded private
+fallback. Lexical tests require contractions, split/join hypotheses, and German compound evidence to
+stay within one explicitly tagged dictionary; they also cover casing, language locks, deadline exits,
+generated provenance, raw-word vetoes, and multilingual source-order invariance. CTC tests cover
+double letters, return-trip words, canonical contractions, language locks, malformed tensors,
+runtime failure, and deadline fallback. Backup tests additionally exercise ZIP path traversal,
+canonical aliases, entry and expanded-size limits, strict typed-settings parsing, preservation of excluded private
 state, and process-death recovery on both sides of the restore commit point. Learned-data tests
 require idempotent removal without deleting clipboard, model, or explicit dictionary fixtures.
 `python3 -m unittest discover -s tools/tests` exercises the Phase 0 evaluator and release-evidence

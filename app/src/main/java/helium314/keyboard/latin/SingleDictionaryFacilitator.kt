@@ -127,6 +127,10 @@ class SingleDictionaryFacilitator(private val dict: Dictionary) : DictionaryFaci
 
     override fun isValidSpellingWord(word: String): Boolean = dict.isValidWord(word)
 
+    override fun isValidSpellingWord(word: String, languageTag: String): Boolean =
+        dict.mLocale.toLanguageTag().equals(Locale.forLanguageTag(languageTag).toLanguageTag(), ignoreCase = true) &&
+            dict.isValidWord(word)
+
     override fun isValidSuggestionWord(word: String) = isValidSpellingWord(word)
 
     override fun removeWord(word: String) {}

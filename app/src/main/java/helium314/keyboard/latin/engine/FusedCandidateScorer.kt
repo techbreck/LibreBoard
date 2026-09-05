@@ -65,9 +65,9 @@ class FusedCandidateScorer(private val weights: ScoreWeights = ScoreWeights()) {
             if (CandidateSource.COMPOUND in candidate.sources) score += weights.compoundBonus
             score -= candidate.edits.size * weights.editPenalty
             if (CandidateSource.SPLIT_JOIN in candidate.sources) score -= weights.splitJoinPenalty
-            if (wordLock is WordLock.Unlocked && candidate.languageTag != fused.firstOrNull()?.languageTag) {
-                score -= weights.languageSwitchPenalty
-            }
+            // An unlocked word has no preferred language. Applying a switch penalty here would
+            // make the result depend on source iteration order; language posterior evidence is
+            // already represented by the normalized language component.
             score -= candidate.rejectionPenalty
             candidate.copy(totalScore = score)
         }.sortedWith(compareByDescending<Candidate> { it.totalScore }.thenBy { it.normalized })

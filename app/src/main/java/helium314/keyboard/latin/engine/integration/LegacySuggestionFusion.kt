@@ -23,12 +23,14 @@ import kotlin.math.max
 internal data class LegacyFusionResult(
     val suggestions: ArrayList<SuggestedWordInfo>,
     val exactPersonalMatch: Boolean,
+    val rawReplacementVeto: Boolean,
     val wordLock: WordLock,
 )
 
 /**
  * Translates retained AOSP dictionary results into LibreBoard candidates, ranks the union with
- * personal candidates, and translates the bounded slate back to the existing IME UI contract.
+ * supplemental engine candidates, and translates the bounded slate back to the existing IME UI
+ * contract.
  *
  * The legacy dictionary score already combines spatial and static evidence, so it is represented
  * once rather than double-counted. Neural autocorrection is deliberately not enabled here until a
@@ -50,7 +52,7 @@ internal class LegacySuggestionFusion(
     fun fuse(
         rawText: String,
         classicSuggestions: List<SuggestedWordInfo>,
-        personalCandidates: List<Candidate>,
+        supplementalCandidates: List<Candidate>,
         enabledLanguageTags: List<String>,
         defaultLocale: Locale,
         inputStyle: InputStyle,
@@ -58,7 +60,7 @@ internal class LegacySuggestionFusion(
         val defaultLanguage = defaultLocale.toLanguageTag()
         val languageProbabilities = languageProbabilities(
             classicSuggestions,
-            personalCandidates,
+            supplementalCandidates,
             enabledLanguageTags.ifEmpty { listOf(defaultLanguage) },
             defaultLanguage,
         )
@@ -87,7 +89,7 @@ internal class LegacySuggestionFusion(
                 exactPersonalMatch = userSpecific && normalizeCandidate(info.mWord) == normalizeCandidate(rawText),
             )
         }
-        val personalWithLanguage = personalCandidates.map { candidate ->
+        val supplementalWithLanguage = supplementalCandidates.map { candidate ->
             candidate.copy(
                 components = candidate.components.copy(
                     language = candidate.components.language ?: languageProbabilities[candidate.languageTag],
@@ -96,7 +98,7 @@ internal class LegacySuggestionFusion(
         }
         val ranked = scorer.rank(
             raw = rawText,
-            candidates = classicCandidates + personalWithLanguage,
+            candidates = classicCandidates + supplementalWithLanguage,
             wordLock = currentLock,
             neuralStrength = 0,
             aggressiveness = AutoCorrectionAggressiveness.BALANCED,
@@ -105,11 +107,15 @@ internal class LegacySuggestionFusion(
         val exactPersonalMatch = ranked.candidates.any {
             it.normalized == rawNormalized && it.exactPersonalMatch
         }
+        val rawReplacementVeto = ranked.candidates.any {
+            it.normalized == rawNormalized &&
+                (it.exactPersonalMatch || CandidateSource.COMPOUND in it.sources)
+        }
 
         val classicByKey = classicSuggestions.groupBy { info ->
             normalizeCandidate(info.mWord) to languageTag(info, defaultLanguage)
         }
-        val personalByKey = personalWithLanguage.associateBy { it.normalized to it.languageTag }
+        val supplementalByKey = supplementalWithLanguage.groupBy { it.normalized to it.languageTag }
         val seenWords = hashSetOf<String>()
         val translated = ArrayList<SuggestedWordInfo>()
         for (candidate in ranked.candidates) {
@@ -118,17 +124,22 @@ internal class LegacySuggestionFusion(
             // raw "libreboard"). The literal raw surface itself is injected by Suggest.
             if (rawText.isNotEmpty() && candidate.surface == rawText) continue
             val key = candidate.normalized to candidate.languageTag
-            val personal = personalByKey[key]
+            val supplemental = supplementalByKey[key].orEmpty()
+            val personal = supplemental.firstOrNull {
+                it.exactPersonalMatch || CandidateSource.PERSONAL in it.sources || CandidateSource.PERSONAL_PHRASE in it.sources
+            }
             val classic = classicByKey[key]?.maxByOrNull { it.mScore }
-            val info = if (personal != null && (classic == null || CandidateSource.PERSONAL in candidate.sources)) {
+            val candidateIsPersonal = CandidateSource.PERSONAL in candidate.sources ||
+                CandidateSource.PERSONAL_PHRASE in candidate.sources
+            val info = if (personal != null && (classic == null || candidateIsPersonal)) {
                 personalInfo(candidate, inputStyle)
             } else {
-                classic?.withSurface(candidate.surface) ?: personalInfo(candidate, inputStyle)
+                classic?.withSurface(candidate.surface) ?: generatedInfo(candidate, inputStyle)
             }
             if (seenWords.add(info.mWord)) translated += info
             if (translated.size == SuggestedWords.MAX_SUGGESTIONS) break
         }
-        return LegacyFusionResult(translated, exactPersonalMatch, currentLock)
+        return LegacyFusionResult(translated, exactPersonalMatch, rawReplacementVeto, currentLock)
     }
 
     private fun updateWordLock(rawText: String, probabilities: Map<String, Double>): WordLock {
@@ -183,6 +194,16 @@ internal class LegacySuggestionFusion(
         )
     }
 
+    private fun generatedInfo(candidate: Candidate, inputStyle: InputStyle): SuggestedWordInfo = SuggestedWordInfo(
+        candidate.surface,
+        "",
+        max(1, (candidate.totalScore.coerceIn(0.0, MAX_GENERATED_SCORE) * GENERATED_SCORE_SCALE).toInt()),
+        if (inputStyle == InputStyle.PREDICTION) SuggestedWordInfo.KIND_PREDICTION else SuggestedWordInfo.KIND_CORRECTION,
+        Dictionary.DICTIONARY_ENGINE_GENERATED,
+        SuggestedWordInfo.NOT_AN_INDEX,
+        SuggestedWordInfo.NOT_A_CONFIDENCE,
+    )
+
     private fun SuggestedWordInfo.withSurface(surface: String): SuggestedWordInfo =
         if (surface == mWord) this else SuggestedWordInfo(
             surface,
@@ -200,5 +221,7 @@ internal class LegacySuggestionFusion(
     private companion object {
         const val LANGUAGE_SCORE_TEMPERATURE_RATIO = 0.25
         const val PERSONAL_SCORE_SCALE = 100.0
+        const val GENERATED_SCORE_SCALE = 100_000.0
+        const val MAX_GENERATED_SCORE = 10.0
     }
 }

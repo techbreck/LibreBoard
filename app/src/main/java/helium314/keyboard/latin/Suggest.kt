@@ -22,6 +22,7 @@ import helium314.keyboard.latin.engine.Candidate
 import helium314.keyboard.latin.engine.InputStyle
 import helium314.keyboard.latin.engine.integration.HeliBoardGeometricFallback
 import helium314.keyboard.latin.engine.integration.LegacySuggestionFusion
+import helium314.keyboard.latin.engine.lexical.LexicalCandidateProposer
 import helium314.keyboard.latin.engine.normalizeCandidate
 import helium314.keyboard.latin.engine.personal.PersonalizationRuntime
 import helium314.keyboard.latin.settings.Settings
@@ -43,6 +44,7 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
     private val mPlausibilityThreshold = 0f
     private val nextWordSuggestionsCache = HashMap<NgramContext, SuggestionResults>()
     private val liveCandidateFusion = LegacySuggestionFusion()
+    private val lexicalCandidateProposer = LexicalCandidateProposer(mDictionaryFacilitator::isValidSpellingWord)
 
     // cache cleared whenever LatinIME.loadSettings is called, notably on changing layout and switching input fields
     fun clearNextWordSuggestionsCache() {
@@ -103,6 +105,13 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
         val transformedPersonalCandidates = transformPersonalCandidates(
             personalCandidates, capsMode, trailingSingleQuotesCount, mDictionaryFacilitator.mainLocale,
         )
+        val enabledLanguageTags = mDictionaryFacilitator.activeLocales.map(Locale::toLanguageTag)
+        val lexicalCandidates = if (resultsArePredictions) emptyList() else lexicalCandidateProposer.propose(
+            rawText = capitalizedTypedWord,
+            enabledLanguageTags = enabledLanguageTags,
+            wordLock = helium314.keyboard.latin.engine.WordLock.Unlocked,
+            deadline = helium314.keyboard.latin.engine.Deadline.afterMillis(LEXICAL_PROPOSAL_BUDGET_MILLIS),
+        )
         val classicCandidates = buildList {
             typedWordFirstOccurrenceWordInfo?.let(::add)
             addAll(suggestionsContainer)
@@ -110,15 +119,15 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
         val fusion = liveCandidateFusion.fuse(
             rawText = capitalizedTypedWord,
             classicSuggestions = classicCandidates,
-            personalCandidates = transformedPersonalCandidates,
-            enabledLanguageTags = mDictionaryFacilitator.activeLocales.map(Locale::toLanguageTag),
+            supplementalCandidates = transformedPersonalCandidates + lexicalCandidates,
+            enabledLanguageTags = enabledLanguageTags,
             defaultLocale = mDictionaryFacilitator.mainLocale,
             inputStyle = if (resultsArePredictions) InputStyle.PREDICTION else InputStyle.TAP,
         )
         suggestionsContainer.clear()
         suggestionsContainer.addAll(fusion.suggestions)
         makeFirstTwoSuggestionsNonEmoji(suggestionsContainer)
-        val exactPersonalMatch = fusion.exactPersonalMatch
+        val rawReplacementVeto = fusion.rawReplacementVeto
         val correctionDecision = shouldBeAutoCorrected(
             trailingSingleQuotesCount,
             capitalizedTypedWord,
@@ -137,7 +146,7 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
             typedWordFirstOccurrenceWordInfo
         )
         val allowsToBeAutoCorrected = correctionDecision.first
-        val hasAutoCorrection = correctionDecision.second && !exactPersonalMatch
+        val hasAutoCorrection = correctionDecision.second && !rawReplacementVeto
         val typedWordInfo = SuggestedWordInfo(typedWordString, "", SuggestedWordInfo.MAX_SCORE,
             SuggestedWordInfo.KIND_TYPED, typedWordFirstOccurrenceWordInfo?.mSourceDict ?: Dictionary.DICTIONARY_USER_TYPED,
             SuggestedWordInfo.NOT_AN_INDEX , SuggestedWordInfo.NOT_A_CONFIDENCE)
@@ -160,7 +169,7 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
         // If there is an incoming autocorrection, make sure typed word is shown, so user is able to override it.
         // Otherwise, if the relevant setting is enabled, show the typed word in the middle.
         val typedWordWasCapitalized = capitalizedTypedWord != typedWordString
-        val correctToCapitalizedWord = !exactPersonalMatch && typedWordWasCapitalized && isCorrectionEnabled && Settings.getValues().mAutoCorrectCapitalizedSuggestion
+        val correctToCapitalizedWord = !rawReplacementVeto && typedWordWasCapitalized && isCorrectionEnabled && Settings.getValues().mAutoCorrectCapitalizedSuggestion
             && !wordComposer.isCursorFrontOrMiddleOfComposingWord && typedWordString.drop(1).none { it.isUpperCase() }
         val indexOfTypedWord = 1 + if (hasAutoCorrection) SuggestedWords.INDEX_OF_AUTO_CORRECTION else SuggestedWords.INDEX_OF_TYPED_WORD
         if (
@@ -178,7 +187,7 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
                 )
             }
         }
-        val isTypedWordValid = exactPersonalMatch || firstOccurrenceOfTypedWordInSuggestions > -1 ||
+        val isTypedWordValid = rawReplacementVeto || firstOccurrenceOfTypedWordInSuggestions > -1 ||
             (!resultsArePredictions && !allowsToBeAutoCorrected)
         return SuggestedWords(suggestionsList, suggestionResults.mRawSuggestions, typedWordInfo,
             isTypedWordValid, hasAutoCorrection || correctToCapitalizedWord, false, inputStyle, sequenceNumber)
@@ -442,6 +451,7 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
     }
 
     companion object {
+        private const val LEXICAL_PROPOSAL_BUDGET_MILLIS = 8L
         private val TAG: String = Suggest::class.java.simpleName
 
         // Session id for {@link #getSuggestedWords(WordComposer,String,ProximityInfo,boolean,int)}.

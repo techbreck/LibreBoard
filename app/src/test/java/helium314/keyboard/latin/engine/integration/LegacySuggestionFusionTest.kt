@@ -32,7 +32,7 @@ class LegacySuggestionFusionTest {
                 suggestion("this", 900_000, english),
                 suggestion("thus", 700_000, english),
             ),
-            personalCandidates = emptyList(),
+            supplementalCandidates = emptyList(),
             enabledLanguageTags = listOf("en-US"),
             defaultLocale = english,
             inputStyle = InputStyle.TAP,
@@ -50,7 +50,7 @@ class LegacySuggestionFusionTest {
                 suggestion("libretto", 900_000, english),
                 suggestion("liberty", 800_000, english),
             ),
-            personalCandidates = listOf(personal("LibreBoard", exact = false)),
+            supplementalCandidates = listOf(personal("LibreBoard", exact = false)),
             enabledLanguageTags = listOf("en-US"),
             defaultLocale = english,
             inputStyle = InputStyle.TAP,
@@ -65,7 +65,7 @@ class LegacySuggestionFusionTest {
         val result = fusion.fuse(
             rawText = "libreboard",
             classicSuggestions = listOf(suggestion("whiteboard", 1_500_000, english)),
-            personalCandidates = listOf(personal("LibreBoard", exact = true)),
+            supplementalCandidates = listOf(personal("LibreBoard", exact = true)),
             enabledLanguageTags = listOf("en-US"),
             defaultLocale = english,
             inputStyle = InputStyle.TAP,
@@ -85,7 +85,7 @@ class LegacySuggestionFusionTest {
                 suggestion("gift", englishScore, english),
                 suggestion("Gift", germanScore, german),
             ),
-            personalCandidates = emptyList(),
+            supplementalCandidates = emptyList(),
             enabledLanguageTags = enabled,
             defaultLocale = english,
             inputStyle = InputStyle.TAP,
@@ -96,6 +96,53 @@ class LegacySuggestionFusionTest {
         val locked = fuse("gif", 100, 1_000)
         assertEquals(WordLock.Automatic("de"), locked.wordLock)
         assertEquals(listOf("Gift"), locked.suggestions.map { it.mWord })
+    }
+
+    @Test
+    fun generatedCorrectionUsesDistinctNonPersonalProvenance() {
+        val fusion = LegacySuggestionFusion()
+        val contraction = Candidate(
+            surface = "don't",
+            languageTag = "en-US",
+            sources = setOf(CandidateSource.CONTRACTION),
+            components = ScoreComponents(staticFrequency = 1.0),
+        )
+
+        val result = fusion.fuse(
+            rawText = "dont",
+            classicSuggestions = emptyList(),
+            supplementalCandidates = listOf(contraction),
+            enabledLanguageTags = listOf("en-US"),
+            defaultLocale = english,
+            inputStyle = InputStyle.TAP,
+        )
+
+        assertEquals(listOf("don't"), result.suggestions.map { it.mWord })
+        assertEquals(Dictionary.DICTIONARY_ENGINE_GENERATED, result.suggestions.single().mSourceDict)
+        assertTrue(!result.suggestions.single().isAppropriateForAutoCorrection)
+    }
+
+    @Test
+    fun germanCompoundEvidenceVetoesReplacementWithoutCreatingSplitSuggestion() {
+        val fusion = LegacySuggestionFusion()
+        val compound = Candidate(
+            surface = "datenschutz",
+            languageTag = "de",
+            sources = setOf(CandidateSource.COMPOUND),
+            components = ScoreComponents(staticFrequency = 1.0),
+        )
+
+        val result = fusion.fuse(
+            rawText = "datenschutz",
+            classicSuggestions = listOf(suggestion("Datenschatz", 1_000_000, german)),
+            supplementalCandidates = listOf(compound),
+            enabledLanguageTags = listOf("de"),
+            defaultLocale = german,
+            inputStyle = InputStyle.TAP,
+        )
+
+        assertTrue(result.rawReplacementVeto)
+        assertTrue(result.suggestions.none { ' ' in it.mWord })
     }
 
     private fun personal(surface: String, exact: Boolean) = Candidate(

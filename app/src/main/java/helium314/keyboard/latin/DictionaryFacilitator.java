@@ -149,6 +149,13 @@ public interface DictionaryFacilitator {
 
     boolean isValidSpellingWord(final String word);
 
+    /**
+     * Returns whether {@code word} is valid in the requested active language only. This must not
+     * fall through to another multilingual dictionary: engine transformations use it to prevent
+     * constructing a candidate from fragments belonging to different languages.
+     */
+    boolean isValidSpellingWord(final String word, @NonNull final String languageTag);
+
     boolean isValidSuggestionWord(final String word);
 
     void clearUserHistoryDictionary(final Context context);

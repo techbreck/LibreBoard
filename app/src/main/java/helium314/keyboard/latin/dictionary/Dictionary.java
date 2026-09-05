@@ -40,6 +40,10 @@ public abstract class Dictionary {
     public static final PhonyDictionary DICTIONARY_HARDCODED =
             new PhonyDictionary(TYPE_HARDCODED);
 
+    public static final String TYPE_ENGINE_GENERATED = "engine_generated";
+    public static final PhonyDictionary DICTIONARY_ENGINE_GENERATED =
+            new PhonyDictionary(TYPE_ENGINE_GENERATED);
+
     // Spawned by resuming suggestions. Comes from a span that was in the TextView.
     public static final String TYPE_RESUMED = "resumed";
     public static final PhonyDictionary DICTIONARY_RESUMED = new PhonyDictionary(TYPE_RESUMED);

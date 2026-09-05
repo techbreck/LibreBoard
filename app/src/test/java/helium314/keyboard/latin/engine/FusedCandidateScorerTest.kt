@@ -85,6 +85,21 @@ class FusedCandidateScorerTest {
         assertEquals("LibreBoard", result.candidates.single { it.normalized == "libreboard" }.surface)
     }
 
+    @Test
+    fun unlockedMultilingualRankingDoesNotDependOnSourceOrder() {
+        val raw = candidate("gix", spatial = -1.0, context = -1.0)
+        val english = candidate("give", language = "en-US", spatial = 2.0, context = 2.0)
+        val german = candidate("gibt", language = "de", spatial = 2.0, context = 2.0)
+
+        val englishFirst = scorer.rank("gix", listOf(english, german, raw), WordLock.Unlocked, 50,
+            AutoCorrectionAggressiveness.BALANCED)
+        val germanFirst = scorer.rank("gix", listOf(german, english, raw), WordLock.Unlocked, 50,
+            AutoCorrectionAggressiveness.BALANCED)
+
+        assertEquals(englishFirst.candidates.map { it.surface }, germanFirst.candidates.map { it.surface })
+        assertEquals(englishFirst.candidates.map { it.totalScore }, germanFirst.candidates.map { it.totalScore })
+    }
+
     private fun candidate(
         word: String,
         language: String = "en-US",
