@@ -12,7 +12,10 @@ may be measured only outside the repository as a black-box reference.
 JSONL. Its versioned input contract is documented in `docs/phase-0-dataset-schema.md`, and its own
 tests run in CI. Reports are cryptographically bound by SHA-256 to the APK and both models and must
 identify stock hardware, physical GrapheneOS hardware without sandboxed Google Play, and a low-RAM
-emulator. The required held-out dataset and trained model measurements do not yet exist.
+emulator. The swipe source, split, training, and ONNX export contracts are now executable and tested;
+the several-gigabyte source corpus has not yet been materialized in this checkout and no full trained
+candidate or held-out device measurement exists. The context distillation pipeline also remains to be
+implemented. Synthetic smoke results never count as Phase 0 evidence.
 
 Phase 1 remains blocked until all original gates pass: tap relative error reduction, context-sensitive
 and valid-word gains, false-correction ceiling, swipe top-1/top-3 strata, 80/200 ms p95 budgets, 64 MiB

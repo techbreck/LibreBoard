@@ -1,0 +1,105 @@
+{
+    "schemaVersion": 1,
+    "sources": [
+        {
+            "id": "futo-swipe-dataset-v1",
+            "kind": "dataset",
+            "repositoryType": "dataset",
+            "repository": "futo-org/swipe.futo.org",
+            "revision": "d71bf5fd7f45b3e7c2ed2d76a21b0dbd3b4ba566",
+            "license": "MIT",
+            "sourceUrl": "https://huggingface.co/datasets/futo-org/swipe.futo.org",
+            "artifacts": [
+                {
+                    "path": "LICENSE",
+                    "purpose": "license",
+                    "bytes": 1060,
+                    "sha256": "60968505ce2909b45997d104b678eb42474d47174924338cd0fa652abe0fff60"
+                },
+                {
+                    "path": "README.md",
+                    "purpose": "documentation",
+                    "bytes": 2813,
+                    "sha256": "a201a99869afbdffded1e4fe4c8fdbe54d8f5debef77043050ea0bde8c944d40"
+                },
+                {
+                    "path": "swipe-5/layouts/qwerty.json",
+                    "purpose": "layout",
+                    "bytes": 4667,
+                    "sha256": "1965ecd59c9e4bff89446bb56ff3a2d0070b16eeae4ce424ce08b06ed6864632"
+                },
+                {
+                    "path": "train.jsonl",
+                    "purpose": "training-data",
+                    "bytes": 5157753763,
+                    "sha256": "6e12f113459857e08f235ad7007af5519e6b3f01e0fdaaff39b988827e588365"
+                },
+                {
+                    "path": "dev.jsonl",
+                    "purpose": "training-data",
+                    "bytes": 304264958,
+                    "sha256": "8d9d34ec1c12f564d02dcb69cf132ba19d45b75632a205af90d3a81290e24972"
+                },
+                {
+                    "path": "test.jsonl",
+                    "purpose": "training-data",
+                    "bytes": 269612671,
+                    "sha256": "d4e42e34ced1cae925a5ec94672bdaf48b4532598a1e39d72884f9c7b588721e"
+                }
+            ]
+        },
+        {
+            "id": "hanse2-100m-base-teacher-v1",
+            "kind": "teacher-model",
+            "repositoryType": "model",
+            "repository": "Evicka/Hanse2-100M-Base",
+            "revision": "0a834967424be0ec471f2846646d1c75906a9a9c",
+            "license": "Apache-2.0",
+            "sourceUrl": "https://huggingface.co/Evicka/Hanse2-100M-Base",
+            "artifacts": [
+                {
+                    "path": "LICENSE",
+                    "purpose": "license",
+                    "bytes": 11342,
+                    "sha256": "a88ae428c3bea5de8948ad77d002d255e29bcf365be491e41fb77ddb36befa31"
+                },
+                {
+                    "path": "README.md",
+                    "purpose": "documentation",
+                    "bytes": 10462,
+                    "sha256": "923f9150e0fa5c4b1363674b4b272f84ee891e0f6983aa3097800bf9ae9f1e01"
+                },
+                {
+                    "path": "config.json",
+                    "purpose": "teacher-config",
+                    "bytes": 716,
+                    "sha256": "2f9a64a5411e9a31a943537f5b66c02dbe21fabaf0ecaf45f3716769e4cf4ccb"
+                },
+                {
+                    "path": "model.safetensors",
+                    "purpose": "teacher-weights",
+                    "bytes": 396593528,
+                    "sha256": "e53fe4ee925f53dac5b0aae468843d76469df35c2c9c79bee1dd70cf7752ce2c"
+                },
+                {
+                    "path": "tokenizer.json",
+                    "purpose": "teacher-tokenizer",
+                    "bytes": 2322350,
+                    "sha256": "b9bf65e92e9dfa01a918c7011b03aa7eff5518124e89ae431f4ee7988a8d36c0"
+                },
+                {
+                    "path": "tokenizer_config.json",
+                    "purpose": "teacher-tokenizer-config",
+                    "bytes": 2257,
+                    "sha256": "ff535eb51c6cffe611b61ad01f680cde9c82f3cd8d7ecffeda1907323d6a95ca"
+                },
+                {
+                    "path": "special_tokens_map.json",
+                    "purpose": "teacher-tokenizer-config",
+                    "bytes": 275,
+                    "sha256": "9df5c9416d5f791e9eaa30260544ad02b81aa74d05de9426085a9b25c66ab1b0"
+                }
+            ]
+        }
+    ]
+}

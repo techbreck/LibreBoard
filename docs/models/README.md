@@ -4,6 +4,29 @@ The core APK currently has no accepted neural artifact. This is intentional: mod
 treated as implementation until training provenance, held-out quality, latency, memory, reproducible
 export, and GrapheneOS execution all pass.
 
+The swipe build path is now implemented without committing or pretending to accept untrained bytes:
+
+- `models/sources/v1.json` pins the MIT FUTO gesture corpus and Apache-2.0 Hanse2 teacher to immutable
+  repository commits, exact sizes, licenses, and SHA-256 values.
+- `tools/model_sources.py` verifies offline by default. Its explicit `fetch` operation stages each
+  transfer, enforces the declared byte ceiling while streaming, checks SHA-256, and atomically
+  publishes only an exact match. Files over 64 MiB require `--accept-large-downloads`.
+- `tools/prepare_swipe_dataset.py` reassigns whole collection sessions with a committed salted hash,
+  hashes session IDs, strips timestamps/context, resamples paths to the Android 64-point convention,
+  uses top-left-to-bottom-right key-slot order, deduplicates records, and emits a hash-bound split
+  manifest with all rejection and difficulty-stratum counts.
+- `models/swipe/model-spec.json` fixes the 821,121-parameter layout-conditioned architecture and
+  tensor ABI. `tools/train_swipe_model.py` uses deterministic CTC training and writes hash-bound
+  safetensors. `tools/export_swipe_model.py` stores learned initializers as FP16, retains float32
+  external tensors/CPU compute, runs the full ONNX checker, rejects external data/custom domains,
+  and derives the reduced-operator file from the exact graph.
+- `models/training/requirements-linux-x86_64.lock` pins and hashes the build-only CPU toolchain. These
+  packages are not Android dependencies and never enter an APK.
+
+Synthetic end-to-end smoke tests prove corpus preparation, one-step training, FP16 ONNX export,
+operator enumeration, the 2.5 MiB model ceiling, and manifest/hash binding. A smoke artifact retains
+`development` in every relevant filename and is release-ineligible by construction.
+
 The accepted v1 design reserves engine ABI 1 for:
 
 - `swipe-latin-v1.onnx`: layout-conditioned CTC model, Apache-2.0 project weights, at most 3 MiB.
@@ -92,3 +115,8 @@ so it cannot delay classic suggestion publication past the request budget.
 An accepted model directory must contain the ONNX blob, `model.json`, tokenizer where applicable,
 LICENSE, model card, deterministic export command, dataset revision manifest, split hashes, evaluation
 report, and reduced-operator configuration. Never commit placeholder bytes under a release filename.
+
+The current swipe model card and exact reproduction commands are in
+`models/swipe/MODEL_CARD.md`. The pinned gesture inputs total roughly 5.7 GB, so fetching them remains
+an explicit operator action rather than a side effect of Gradle or tests. The context source is pinned,
+but its corpus/distillation/export pipeline and both real trained candidates still remain outstanding.

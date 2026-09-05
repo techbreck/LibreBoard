@@ -17,6 +17,10 @@ import tempfile
 import xml.etree.ElementTree as ET
 import zipfile
 
+import model_sources
+import prepare_swipe_dataset
+import swipe_model_contract
+
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ANDROID_NS = "{http://schemas.android.com/apk/res/android}"
@@ -399,6 +403,52 @@ def source_checks(errors: list[str]) -> None:
     ]
     if committed_runtime_binaries:
         fail(errors, "generated ONNX Runtime binaries must not be committed as source")
+
+    try:
+        source_manifest = model_sources.load_manifest()
+        swipe_policy = prepare_swipe_dataset.load_policy()
+        swipe_spec = swipe_model_contract.load_spec()
+        swipe_source = source_manifest.source(swipe_policy.source_id)
+        teacher_source = source_manifest.source("hanse2-100m-base-teacher-v1")
+    except (
+        model_sources.ModelSourceError,
+        prepare_swipe_dataset.SwipeDataError,
+        swipe_model_contract.SwipeModelContractError,
+    ) as exc:
+        fail(errors, f"model source/training contract is invalid: {exc}")
+    else:
+        if swipe_source.repository != "futo-org/swipe.futo.org" or swipe_source.license != "MIT":
+            fail(errors, "swipe training must remain pinned to the MIT FUTO gesture dataset")
+        if teacher_source.repository != "Evicka/Hanse2-100M-Base" or teacher_source.license != "Apache-2.0":
+            fail(errors, "context distillation teacher must remain the Apache-2.0 Hanse2 base model")
+        if any(
+            source.repository.lower() == "futo-org/futo-swipe"
+            or (source.repository.lower().startswith("futo-org/") and source.kind == "teacher-model")
+            for source in source_manifest.sources
+        ):
+            fail(errors, "FUTO model weights or outputs are forbidden; only the MIT gesture dataset is approved")
+        if swipe_spec.raw.get("parameterCount") > 1_000_000:
+            fail(errors, "swipe model exceeds the audited one-million-parameter architecture ceiling")
+
+    training_lock = ROOT / "models/training/requirements-linux-x86_64.lock"
+    try:
+        lock_text = training_lock.read_text(encoding="utf-8")
+    except OSError as exc:
+        fail(errors, f"cannot read hash-locked model training dependencies: {exc}")
+    else:
+        required_packages = ("numpy==2.2.6", "onnx==1.19.0", "safetensors==0.6.2", "torch==2.8.0+cpu")
+        if any(package not in lock_text for package in required_packages):
+            fail(errors, "model training lock does not contain the audited direct dependencies")
+        requirement_blocks = re.split(r"\n(?=[a-z0-9][a-z0-9_.-]*==)", lock_text)
+        unhashed = [
+            block.split("==", 1)[0]
+            for block in requirement_blocks
+            if "==" in block and "--hash=sha256:" not in block
+        ]
+        if unhashed:
+            fail(errors, "model training lock contains unhashed packages: " + ", ".join(unhashed))
+        if "http://" in lock_text:
+            fail(errors, "model training lock contains an insecure package source")
 
 
 def run(command: list[str]) -> subprocess.CompletedProcess[str]:

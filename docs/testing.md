@@ -31,7 +31,17 @@ state, and process-death recovery on both sides of the restore commit point. Lea
 require idempotent removal without deleting clipboard, model, or explicit dictionary fixtures.
 `python3 -m unittest discover -s tools/tests` exercises the Phase 0 evaluator and release-evidence
 verifier. It also locks the ONNX Runtime source-build schema, ABI set, SDK levels, CPU-only flags,
-and strict reduced-operator configuration parser. These tests run for every pull request.
+strict reduced-operator configuration parser, immutable model-source manifest/fetch behavior,
+session-separated swipe preparation, split/hash reproducibility, model architecture/parameter count,
+CTC utilities, and ONNX operator-file ordering. These dependency-free tests run for every pull
+request.
+
+A second CI job installs the hash-locked Python 3.11 CPU model toolchain and runs the same suite with
+its optional checks enabled. It instantiates the real 821,121-parameter model, verifies finite
+`[1,32,65]` output, prepares a synthetic three-split corpus, trains one deterministic CTC step, stores
+safetensors, exports FP16-stored ONNX, runs full ONNX type/shape checking, verifies exact tensor names
+and dimensions, derives required operators, and enforces the model-size and manifest hash contracts.
+The result is deliberately development-only and is deleted with the test workspace.
 
 The optional context-model package is built separately and receives the same fail-closed release
 inspection. `tools/tests/test_verify_release.py` covers its bounded archive schema and payload hash

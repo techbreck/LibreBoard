@@ -1,0 +1,5 @@
+# Build-time only. None of these packages enter an Android APK or model-pack APK.
+numpy==2.2.6
+onnx==1.19.0
+safetensors==0.6.2
+torch==2.8.0

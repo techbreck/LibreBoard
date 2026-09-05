@@ -31,6 +31,9 @@ temporarily to keep upstream review practical; the Android application ID is `or
   surrounding editor text, even during cache refresh or cursor reconciliation.
 - Local unigram, n-gram, phrase, and correction-rejection persistence with decay, preferred word
   casing, live personal completions/predictions, and atomic wipe.
+- Content-addressed MIT swipe-data and Apache-2.0 teacher-source manifests; deterministic
+  session-separated CTC corpus preparation; and a hash-locked, tested 821,121-parameter swipe
+  train/export path. Partial runs are visibly marked `development` and cannot become release input.
 
 The production context-model loader is not activated until an accepted signing key and model pass
 the release gates. The context and CTC model artifacts are not represented as complete until their
@@ -47,6 +50,9 @@ Install Android SDK 36, NDK `28.0.13004108`, JDK 17, and set `sdk.dir` in `local
 ./gradlew assembleDebug
 python3 tools/verify_release.py --source --apk app/build/outputs/apk/debug/LibreBoard_0.1.0-alpha01-debug.apk
 ```
+
+Model data and training are never part of an ordinary Android build. Their explicit, offline-first
+workflow is documented in [the model policy](docs/models/README.md).
 
 ## Architecture and release gates
 

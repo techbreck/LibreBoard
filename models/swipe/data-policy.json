@@ -1,0 +1,28 @@
+{
+    "schemaVersion": 1,
+    "sourceId": "futo-swipe-dataset-v1",
+    "dataArtifacts": [
+        "train.jsonl",
+        "dev.jsonl",
+        "test.jsonl"
+    ],
+    "layoutArtifact": "swipe-5/layouts/qwerty.json",
+    "splitSalt": "libreboard-swipe-session-split-v1",
+    "splitBasisPoints": {
+        "train": 9000,
+        "validation": 500,
+        "test": 500
+    },
+    "pathPoints": 64,
+    "keySlots": 64,
+    "outputFrames": 32,
+    "maximumSourcePoints": 4096,
+    "maximumLineBytes": 2097152,
+    "maximumRejectedFraction": 0.1,
+    "minimumCoordinate": -0.5,
+    "maximumCoordinate": 1.5,
+    "shortMaximumCodePoints": 3,
+    "longMinimumCodePoints": 9,
+    "sloppyPercentile": 0.8,
+    "verySloppyPercentile": 0.95
+}
