@@ -6,13 +6,16 @@ provider for API 26 and all four application ABIs. NNAPI, XNNPACK, WebGPU, Play 
 Extensions, training APIs, and the Maven ONNX Runtime AAR are not used.
 
 The build is intentionally fail-closed until the accepted ONNX models and their generated reduced
-operator configuration exist. After those artifacts pass Phase 0, initialize all source dependencies
-and build the local AAR with:
+operator configurations exist. `tools/assemble_runtime_operator_config.py` verifies each exported
+model, export report, signed manifest and per-model operator file before producing their deterministic
+union. After those artifacts pass Phase 0, initialize all source dependencies and build the local AAR
+with:
 
 ```sh
 git submodule update --init --recursive third_party/onnxruntime
+python3 tools/assemble_runtime_operator_config.py
 python3 tools/build_onnxruntime_android.py \
-  --ops-config models/runtime/required_operators.config
+  --ops-config build/model-export/onnxruntime/required_operators.config
 ```
 
 The builder verifies the source commit, clean source tree, initialized nested submodules, exact build

@@ -1,0 +1,299 @@
+#!/usr/bin/env python3
+"""Compose the exact reduced ONNX Runtime operator config from both model exports."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import pathlib
+import re
+import sys
+import tempfile
+from typing import Any
+
+import model_sources
+
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+DEFAULT_SWIPE_REPORT = ROOT / "build" / "model-export" / "swipe-latin-v1" / "export-report.json"
+DEFAULT_CONTEXT_REPORT = ROOT / "build" / "model-export" / "context-en-de-v1" / "export-report.json"
+DEFAULT_OUTPUT_ROOT = ROOT / "build" / "model-export" / "onnxruntime"
+MODEL_LIMITS = {
+    "swipe-latin-v1": 3 * 1024 * 1024,
+    "context-en-de-v1": 24 * 1024 * 1024,
+}
+MODEL_IDENTITIES = {
+    "swipe-latin-v1": ("swipe-ctc", "swipe-latin-v1"),
+    "context-en-de-v1": ("context-rescorer", "context-en-de-v1"),
+}
+MODEL_DOMAIN_OPSETS = {
+    "swipe-latin-v1": {("ai.onnx", 18)},
+    "context-en-de-v1": {("ai.onnx", 21), ("com.microsoft", 1)},
+}
+MAXIMUM_JSON_BYTES = 4 * 1024 * 1024
+MAXIMUM_CONFIG_BYTES = 1024 * 1024
+OPERATOR = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+DOMAIN = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]*$")
+
+
+class RuntimeOperatorConfigError(ValueError):
+    pass
+
+
+def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise RuntimeOperatorConfigError(f"JSON contains duplicate key: {key}")
+        result[key] = value
+    return result
+
+
+def _load_json(path: pathlib.Path, label: str) -> tuple[dict[str, Any], str]:
+    path = path.absolute()
+    try:
+        if (
+            not path.is_file()
+            or path.is_symlink()
+            or not 0 < path.stat().st_size <= MAXIMUM_JSON_BYTES
+        ):
+            raise RuntimeOperatorConfigError(f"{label} is missing, linked, empty, or too large")
+        payload = path.read_bytes()
+        value = json.loads(payload, object_pairs_hook=_unique_object)
+    except RuntimeOperatorConfigError:
+        raise
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as failure:
+        raise RuntimeOperatorConfigError(f"cannot read {label}: {failure}") from failure
+    if not isinstance(value, dict):
+        raise RuntimeOperatorConfigError(f"{label} must be a JSON object")
+    return value, hashlib.sha256(payload).hexdigest()
+
+
+def _artifact(root: pathlib.Path, filename: Any, label: str) -> pathlib.Path:
+    if (
+        not isinstance(filename, str)
+        or pathlib.PurePosixPath(filename).name != filename
+        or filename in {"", ".", ".."}
+    ):
+        raise RuntimeOperatorConfigError(f"{label} has an unsafe filename")
+    path = root / filename
+    if not path.is_file() or path.is_symlink():
+        raise RuntimeOperatorConfigError(f"{label} is missing or linked")
+    return path
+
+
+def _parse_operator_config(path: pathlib.Path) -> dict[tuple[str, int], set[str]]:
+    try:
+        if not 0 < path.stat().st_size <= MAXIMUM_CONFIG_BYTES:
+            raise RuntimeOperatorConfigError("model operator config is empty or too large")
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except RuntimeOperatorConfigError:
+        raise
+    except (OSError, UnicodeDecodeError) as failure:
+        raise RuntimeOperatorConfigError(f"cannot read model operator config: {failure}") from failure
+    if lines[:1] != ["# Generated from the exact LibreBoard model graph; do not edit by hand."]:
+        raise RuntimeOperatorConfigError("model operator config has an unexpected provenance header")
+    required: dict[tuple[str, int], set[str]] = {}
+    for line in lines[1:]:
+        if not line:
+            continue
+        parts = line.split(";")
+        if len(parts) != 3 or not DOMAIN.fullmatch(parts[0]):
+            raise RuntimeOperatorConfigError(f"invalid reduced-operator line: {line}")
+        try:
+            opset = int(parts[1])
+        except ValueError as failure:
+            raise RuntimeOperatorConfigError(f"invalid reduced-operator opset: {line}") from failure
+        operators = parts[2].split(",")
+        if (
+            not 1 <= opset <= 100
+            or not operators
+            or any(not OPERATOR.fullmatch(operator) for operator in operators)
+            or operators != sorted(set(operators))
+        ):
+            raise RuntimeOperatorConfigError(f"invalid reduced-operator inventory: {line}")
+        key = (parts[0], opset)
+        if key in required:
+            raise RuntimeOperatorConfigError(f"duplicate reduced-operator domain/opset: {line}")
+        required[key] = set(operators)
+    if not required:
+        raise RuntimeOperatorConfigError("model operator config contains no operators")
+    return required
+
+
+def _flatten(required: dict[tuple[str, int], set[str]]) -> set[str]:
+    return {
+        operator if domain == "ai.onnx" else f"{domain}::{operator}"
+        for (domain, _opset), operators in required.items()
+        for operator in operators
+    }
+
+
+def _load_export(
+    report_path: pathlib.Path,
+    *,
+    expected_model_id: str,
+    development: bool,
+) -> tuple[dict[tuple[str, int], set[str]], dict[str, Any]]:
+    report_path = report_path.absolute()
+    report, report_sha = _load_json(report_path, f"{expected_model_id} export report")
+    if (
+        report.get("schemaVersion") != 1
+        or report.get("modelId") != expected_model_id
+        or not isinstance(report.get("releaseEligible"), bool)
+        or (not development and report["releaseEligible"] is not True)
+    ):
+        raise RuntimeOperatorConfigError(f"{expected_model_id} export is not release eligible")
+    app_commit = report.get("appCommit")
+    if not isinstance(app_commit, str) or not model_sources.REVISION.fullmatch(app_commit):
+        raise RuntimeOperatorConfigError(f"{expected_model_id} export has an invalid app commit")
+    root = report_path.parent
+    model_details = report.get("model")
+    if not isinstance(model_details, dict) or set(model_details) != {"file", "bytes", "sha256"}:
+        raise RuntimeOperatorConfigError(f"{expected_model_id} export has invalid model metadata")
+    model_path = _artifact(root, model_details["file"], f"{expected_model_id} model")
+    if (
+        isinstance(model_details["bytes"], bool)
+        or not isinstance(model_details["bytes"], int)
+        or not 0 < model_details["bytes"] <= MODEL_LIMITS[expected_model_id]
+        or model_path.stat().st_size != model_details["bytes"]
+        or not isinstance(model_details["sha256"], str)
+        or not model_sources.SHA256.fullmatch(model_details["sha256"])
+        or model_sources.file_sha256(model_path) != model_details["sha256"]
+    ):
+        raise RuntimeOperatorConfigError(f"{expected_model_id} model does not match its export report")
+
+    manifest_path = _artifact(root, report.get("manifest"), f"{expected_model_id} manifest")
+    manifest, manifest_sha = _load_json(manifest_path, f"{expected_model_id} manifest")
+    expected_kind, expected_tensor_abi = MODEL_IDENTITIES[expected_model_id]
+    operators = manifest.get("requiredOnnxOperators")
+    if (
+        manifest.get("schemaVersion") != 1
+        or manifest.get("engineAbi") != 1
+        or manifest.get("modelKind") != expected_kind
+        or manifest.get("tensorAbi") != expected_tensor_abi
+        or manifest.get("modelSha256") != model_details["sha256"]
+        or not isinstance(operators, list)
+        or not operators
+        or any(
+            not isinstance(operator, str)
+            or (
+                not OPERATOR.fullmatch(operator)
+                and not (
+                    operator.count("::") == 1
+                    and DOMAIN.fullmatch(operator.split("::", 1)[0])
+                    and OPERATOR.fullmatch(operator.split("::", 1)[1])
+                )
+            )
+            for operator in operators
+        )
+        or operators != sorted(set(operators))
+    ):
+        raise RuntimeOperatorConfigError(f"{expected_model_id} manifest has an invalid runtime contract")
+    config_path = _artifact(root, report.get("requiredOperators"), f"{expected_model_id} operator config")
+    required = _parse_operator_config(config_path)
+    if set(required) != MODEL_DOMAIN_OPSETS[expected_model_id]:
+        raise RuntimeOperatorConfigError(f"{expected_model_id} operator config has unexpected domains or opsets")
+    if _flatten(required) != set(operators):
+        raise RuntimeOperatorConfigError(
+            f"{expected_model_id} operator config does not match its signed manifest"
+        )
+    return required, {
+        "appCommit": app_commit,
+        "exportReportSha256": report_sha,
+        "manifestSha256": manifest_sha,
+        "modelSha256": model_details["sha256"],
+        "operatorsSha256": model_sources.file_sha256(config_path),
+    }
+
+
+def _canonical_config(required: dict[tuple[str, int], set[str]]) -> bytes:
+    lines = [
+        "# Generated from the exact LibreBoard swipe-latin-v1 and context-en-de-v1 model graphs; do not edit by hand."
+    ]
+    for (domain, opset), operators in sorted(required.items()):
+        lines.append(f"{domain};{opset};{','.join(sorted(operators))}")
+    return ("\n".join(lines) + "\n").encode("utf-8")
+
+
+def _atomic_write(path: pathlib.Path, payload: bytes) -> None:
+    path = path.absolute()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = tempfile.NamedTemporaryFile(dir=path.parent, prefix=f".{path.name}.", delete=False)
+    temporary_path = pathlib.Path(temporary.name)
+    try:
+        temporary.write(payload)
+        temporary.flush()
+        os.fsync(temporary.fileno())
+        temporary.close()
+        os.replace(temporary_path, path)
+    finally:
+        if not temporary.closed:
+            temporary.close()
+        temporary_path.unlink(missing_ok=True)
+
+
+def assemble(args: argparse.Namespace) -> dict[str, Any]:
+    combined: dict[tuple[str, int], set[str]] = {}
+    inputs = {}
+    for model_id, report_path in (
+        ("swipe-latin-v1", args.swipe_export_report),
+        ("context-en-de-v1", args.context_export_report),
+    ):
+        required, details = _load_export(
+            report_path,
+            expected_model_id=model_id,
+            development=args.development,
+        )
+        inputs[model_id] = details
+        for key, operators in required.items():
+            combined.setdefault(key, set()).update(operators)
+    config = _canonical_config(combined)
+    config_name = "required_operators-development.config" if args.development else "required_operators.config"
+    report_name = "runtime-operators-development.json" if args.development else "runtime-operators.json"
+    output_root = args.output_root.absolute()
+    config_path = output_root / config_name
+    report_path = output_root / report_name
+    report = {
+        "schemaVersion": 1,
+        "releaseEligible": not args.development,
+        "toolSha256": model_sources.file_sha256(pathlib.Path(__file__)),
+        "inputs": inputs,
+        "operators": {
+            "file": config_name,
+            "bytes": len(config),
+            "sha256": hashlib.sha256(config).hexdigest(),
+            "domainOpsets": len(combined),
+            "uniqueOperators": len(_flatten(combined)),
+        },
+    }
+    _atomic_write(config_path, config)
+    _atomic_write(
+        report_path,
+        (json.dumps(report, indent=2, sort_keys=True) + "\n").encode("utf-8"),
+    )
+    return report
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--swipe-export-report", type=pathlib.Path, default=DEFAULT_SWIPE_REPORT)
+    parser.add_argument("--context-export-report", type=pathlib.Path, default=DEFAULT_CONTEXT_REPORT)
+    parser.add_argument("--output-root", type=pathlib.Path, default=DEFAULT_OUTPUT_ROOT)
+    parser.add_argument("--development", action="store_true")
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    try:
+        print(json.dumps(assemble(parse_args(argv)), indent=2, sort_keys=True))
+        return 0
+    except (RuntimeOperatorConfigError, model_sources.ModelSourceError, OSError) as failure:
+        print(f"runtime operator config error: {failure}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

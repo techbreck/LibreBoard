@@ -59,6 +59,9 @@ release artifact:
   operator counts; and runs CPU inference at batch sizes 1 and 32.
 - `models/training/requirements-context-linux-x86_64.lock` hashes the complete build-only distillation
   and export environment, including Transformers and ONNX Runtime 1.26 tooling.
+- `tools/assemble_runtime_operator_config.py` independently checks both exported model hashes and
+  signed operator inventories, then emits the deterministic union consumed by the reduced runtime
+  build. A development mode permits source-build smoke tests but can never produce a release config.
 
 Synthetic end-to-end smoke tests prove corpus preparation, one-step training, FP16 ONNX export,
 operator enumeration, the 2.5 MiB model ceiling, and manifest/hash binding. A smoke artifact retains
