@@ -57,6 +57,15 @@ the app commit, tool, policy, corpus, tokenizer, teacher and toolchain. The full
 and student training remain outstanding. Development/random weights and synthetic reports must remain
 under `build/`, carry development filenames and cannot produce a release export.
 
+Student training uses 128 candidate rows per optimizer step, implemented as 16 vectorized but
+prefix-isolated eight-candidate groups. Its committed objective combines temperature-scaled teacher
+cross-entropy (weight 1.0), observed-candidate cross-entropy (0.5), and a 0.2 observed-versus-negative
+margin (weight 0.25). The order is deterministically buffer-shuffled, and atomic checkpoints every
+4,096 examples retain model, AdamW, RNG and exact mid-epoch progress. Validation is measured after
+every epoch, while the untouched test split is evaluated once for the final training report. Bounded
+development smoke data has passed teacher scoring, student forward/backward, safetensors publication,
+INT4 export, exact operator validation and ONNX Runtime CPU inference; this is not model-quality evidence.
+
 ## Reproducible export contract
 
 The build-only x86-64 Linux toolchain is hash-locked in
@@ -79,6 +88,7 @@ python3 tools/model_sources.py verify
 build/context-model-venv/bin/python tools/prepare_context_dataset.py
 build/context-model-venv/bin/python tools/build_context_tokenizer.py
 build/context-model-venv/bin/python tools/score_context_teacher.py --threads 4
+build/context-model-venv/bin/python tools/train_context_model.py --threads 4
 build/context-model-venv/bin/python tools/export_context_model.py
 ```
 

@@ -482,6 +482,22 @@ def source_checks(errors: list[str]) -> None:
             fail(errors, "context model has drifted from the audited parameter budget")
         if context_spec.export.get("quantization") != "INT4_BLOCK128":
             fail(errors, "context model must retain the audited blockwise INT4 export")
+        if context_spec.training != {
+            "seed": 24_012_026,
+            "epochs": 4,
+            "batchSize": 128,
+            "learningRate": 0.0003,
+            "weightDecay": 0.1,
+            "gradientClip": 1.0,
+            "teacherTemperature": 1.0,
+            "rankingMargin": 0.2,
+            "teacherLossWeight": 1.0,
+            "observedLossWeight": 0.5,
+            "rankingLossWeight": 0.25,
+            "shuffleBufferRecords": 4_096,
+            "checkpointEveryExamples": 4_096,
+        }:
+            fail(errors, "context model training recipe has drifted from the audited distillation contract")
         if context_spec.export.get("maximumModelBytes", CONTEXT_MODEL_MAXIMUM_BYTES + 1) > CONTEXT_MODEL_MAXIMUM_BYTES:
             fail(errors, "context model spec exceeds the sidecar payload ceiling")
         corpus_manifest_path = swipe_model_contract.DEFAULT_CORPUS_MANIFEST

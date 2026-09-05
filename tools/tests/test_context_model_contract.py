@@ -24,6 +24,13 @@ class ContextModelContractTest(unittest.TestCase):
         self.assertEqual(set(contract.EXPECTED_INPUTS), {
             tensor["name"] for tensor in spec.export["inputs"]
         })
+        self.assertEqual(
+            {"teacherLossWeight": 1.0, "observedLossWeight": 0.5, "rankingLossWeight": 0.25},
+            {key: spec.training[key] for key in (
+                "teacherLossWeight", "observedLossWeight", "rankingLossWeight",
+            )},
+        )
+        self.assertEqual(4096, spec.training["checkpointEveryExamples"])
 
     def test_spec_rejects_architecture_and_tensor_drift(self):
         with tempfile.TemporaryDirectory() as temporary:

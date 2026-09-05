@@ -47,6 +47,11 @@ release artifact:
   make the long CPU run safely resumable without accepting work from a changed tool or corpus.
 - `models/context/model-spec.json` fixes the 35,662,848-parameter en/de candidate-only Transformer,
   32-row dynamic tensor ABI, 24-token shared prefix, eight-token candidate suffix, and 24 MiB limit.
+- `tools/train_context_model.py` validates every scored slate and data hash, vectorizes 16 distinct
+  prefixes per optimizer step while preserving each prefix's isolated candidate group, and combines
+  teacher cross-entropy, observed-candidate supervision and an explicit ranking margin. Deterministic
+  4,096-example checkpoints include model, AdamW and RNG state plus mid-epoch progress; the final
+  report includes evaluation on the untouched test split.
 - `tools/context_tokenizer_contract.py` mirrors the Android tokenizer's strict schema and adds the
   release requirement for exactly 16,384 dense token IDs.
 - `tools/export_context_model.py` binds the pinned Hanse2 teacher, corpus manifest, tokenizer,
@@ -153,5 +158,6 @@ The current swipe model card and exact reproduction commands are in
 `models/context/MODEL_CARD.md`. The pinned gesture inputs total roughly 5.7 GB, so fetching them remains
 an explicit operator action rather than a side effect of Gradle or tests. The context source and
 deterministic bilingual corpus/tokenizer and teacher-scoring implementation are pinned, but the full
-teacher-scored corpus, context-student training and both accepted trained candidates still remain
-outstanding.
+teacher-scored corpus, full context-student run and both accepted trained candidates still remain
+outstanding. A bounded real-teacher-to-student smoke run already reaches the verified INT4 exporter;
+it is development evidence only.

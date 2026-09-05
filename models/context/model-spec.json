@@ -33,7 +33,12 @@
     "weightDecay": 0.1,
     "gradientClip": 1.0,
     "teacherTemperature": 1.0,
-    "rankingMargin": 0.2
+    "rankingMargin": 0.2,
+    "teacherLossWeight": 1.0,
+    "observedLossWeight": 0.5,
+    "rankingLossWeight": 0.25,
+    "shuffleBufferRecords": 4096,
+    "checkpointEveryExamples": 4096
   },
   "export": {
     "sourceOpsetVersion": 18,

@@ -25,7 +25,8 @@ ARCHITECTURE_KEYS = {
 }
 TRAINING_KEYS = {
     "seed", "epochs", "batchSize", "learningRate", "weightDecay", "gradientClip",
-    "teacherTemperature", "rankingMargin",
+    "teacherTemperature", "rankingMargin", "teacherLossWeight", "observedLossWeight",
+    "rankingLossWeight", "shuffleBufferRecords", "checkpointEveryExamples",
 }
 EXPORT_KEYS = {
     "sourceOpsetVersion", "opsetVersion", "quantization", "quantizationBlockSize", "maximumModelBytes",
@@ -164,7 +165,7 @@ def load_spec(path: pathlib.Path = DEFAULT_SPEC) -> ContextModelSpec:
         )
 
     training = _strict_object(raw["training"], TRAINING_KEYS, "context training config")
-    for field in ("seed", "epochs", "batchSize"):
+    for field in ("seed", "epochs", "batchSize", "shuffleBufferRecords", "checkpointEveryExamples"):
         _positive_int(training[field], f"training {field}")
     for field, lower, upper in (
         ("learningRate", 1e-8, 1.0),
@@ -172,8 +173,15 @@ def load_spec(path: pathlib.Path = DEFAULT_SPEC) -> ContextModelSpec:
         ("gradientClip", 0.01, 100.0),
         ("teacherTemperature", 0.01, 100.0),
         ("rankingMargin", 0.0, 100.0),
+        ("teacherLossWeight", 0.0, 100.0),
+        ("observedLossWeight", 0.0, 100.0),
+        ("rankingLossWeight", 0.0, 100.0),
     ):
         _finite_float(training[field], f"training {field}", lower, upper)
+    if sum(training[field] for field in (
+        "teacherLossWeight", "observedLossWeight", "rankingLossWeight",
+    )) <= 0:
+        raise ContextModelContractError("context training loss weights cannot all be zero")
 
     export = _strict_object(raw["export"], EXPORT_KEYS, "context export config")
     if export["sourceOpsetVersion"] != 18 or export["opsetVersion"] != 21:
