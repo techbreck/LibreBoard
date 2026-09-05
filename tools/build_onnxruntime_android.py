@@ -43,6 +43,7 @@ REQUIRED_PARAMETERS = {
     "--cmake_generator=Ninja",
     "--build_java",
     "--build_shared_lib",
+    "--cmake_extra_defines=onnxruntime_BUILD_UNIT_TESTS=OFF",
     "--disable_ml_ops",
     "--enable_lto",
     "--skip_tests",

@@ -34,11 +34,14 @@ temporarily to keep upstream review practical; the Android application ID is `or
 - Content-addressed MIT swipe-data and Apache-2.0 teacher-source manifests; deterministic
   session-separated CTC corpus preparation; and a hash-locked, tested 821,121-parameter swipe
   train/export path. Partial runs are visibly marked `development` and cannot become release input.
+- Model-qualified builds package the source-built reduced ONNX Runtime, signed swipe archive, and
+  fixed project key as one fail-closed set. After first unlock, a background bootstrap activates CTC
+  and discovers the optional signed en/de context-model provider without blocking classic input.
 
-The production context-model loader is not activated until an accepted signing key and model pass
-the release gates. The context and CTC model artifacts are not represented as complete until their
-held-out quality, latency, provenance, reproducibility, and GrapheneOS gates pass. See
-[Phase 0](docs/phase-0.md).
+Production artifacts remain disabled until an accepted signing key and both models pass the release
+gates. The context and CTC model artifacts are not represented as complete until their held-out
+quality, latency, provenance, reproducibility, and GrapheneOS gates pass. See [Phase
+0](docs/phase-0.md).
 
 ## Build
 

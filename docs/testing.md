@@ -12,7 +12,9 @@ tests enforce field-policy gates, candidate/language score identity, masks, fiel
 bounds, strict BPE schema/merge/special-token validation, Unicode normalization, and malformed/runtime
 fallback. Runtime adapter tests lock exact tensor names/types/shapes, dynamic batch dimensions,
 direct-buffer invocation, output bounds, native-wrapper cleanup, core-only absence, and hard deadline
-fallback. Live-path tests prove bounded immutable request and language-lock propagation,
+fallback. Official-model policy tests lock the independent swipe/context size and parameter ceilings,
+the exact reduced-operator allowlist, bounded RSA key reads, and the 3072-bit/exponent-65537 trust
+contract. Live-path tests prove bounded immutable request and language-lock propagation,
 0–100 neural weighting, calibrated commit selection, classic ranking on timeout, cooperative and
 non-cooperative timeout circuit breaking, delayed native-owner cleanup, invalid preference fallback,
 restricted-field bypass, and safety-veto precedence. Swipe live-path tests additionally prove
@@ -47,11 +49,14 @@ and dimensions, derives required operators, and enforces the model-size and mani
 The result is deliberately development-only and is deleted with the test workspace.
 
 The optional context-model package is built separately and receives the same fail-closed release
-inspection. `tools/tests/test_verify_release.py` covers its bounded archive schema and payload hash
-checks; a release candidate must additionally run `tools/verify_release.py --model-pack-apk
---model-public-key` against the built APK. The APK check proves that the sidecar requests no
-permissions, exposes only its fixed read-only provider, stores exactly one uncompressed `.lbmodel`
-asset, contains no native code, and carries a signature trusted by the supplied project RSA key.
+inspection. `tools/tests/test_verify_release.py` covers both model identities, their bounded archive
+schemas, deterministic ZIP metadata, payload hashes, and RSA policy; a release candidate must
+additionally run `tools/verify_release.py --model-pack-apk --model-public-key` against the built APK.
+The APK check proves that the sidecar requests no permissions, exposes only its fixed read-only
+provider, stores exactly one uncompressed `.lbmodel` asset, contains no native code, and carries a
+signature trusted by the supplied project RSA key. Core-APK inspection likewise verifies the signed
+swipe archive and key together and rejects that pair unless every ABI carries the complete source-
+built ONNX Runtime native pair.
 
 ## Android instrumentation
 

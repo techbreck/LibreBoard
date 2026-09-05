@@ -31,7 +31,11 @@ class LiveSwipeModelSlot(
         var closeNow: AutoCloseable? = null
         synchronized(monitor) {
             check(!closed) { "Swipe model slot is closed" }
-            if (installed?.owner === owner) return
+            installed?.takeIf { it.owner === owner }?.let {
+                it.decoder = decoder
+                circuitBreaker.reset()
+                return
+            }
             installed?.let { previous ->
                 previous.retired = true
                 if (previous.activeCalls == 0) closeNow = previous.owner
@@ -121,7 +125,7 @@ class LiveSwipeModelSlot(
     private fun AutoCloseable.closeQuietly() = runCatching { close() }.getOrDefault(Unit)
 
     private class Entry(
-        val decoder: SwipeDecoder,
+        var decoder: SwipeDecoder,
         val owner: AutoCloseable,
         var activeCalls: Int = 0,
         var retired: Boolean = false,

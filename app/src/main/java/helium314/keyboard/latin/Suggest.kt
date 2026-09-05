@@ -33,6 +33,7 @@ import helium314.keyboard.latin.engine.geometric.ParallelSwipeDecoder
 import helium314.keyboard.latin.engine.normalizeCandidate
 import helium314.keyboard.latin.engine.personal.PersonalizationRuntime
 import helium314.keyboard.latin.engine.runtime.LiveTypingEngine
+import helium314.keyboard.latin.engine.runtime.InstalledModelRuntime
 import helium314.keyboard.latin.settings.Settings
 import helium314.keyboard.latin.settings.SettingsValuesForSuggestion
 import helium314.keyboard.latin.suggestions.SuggestionStripView
@@ -58,6 +59,14 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
         LiveTypingEngine.swipeDecoder,
         GeometricSwipeDecoder(swipeLexicon),
     )
+
+    init {
+        ensureInstalledModelsLoaded()
+    }
+
+    fun ensureInstalledModelsLoaded() {
+        InstalledModelRuntime.ensureLoaded(Settings.getCurrentContext(), swipeLexicon)
+    }
 
     // cache cleared whenever LatinIME.loadSettings is called, notably on changing layout and switching input fields
     fun clearNextWordSuggestionsCache() {

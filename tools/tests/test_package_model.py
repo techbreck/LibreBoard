@@ -1,3 +1,4 @@
+import errno
 import hashlib
 import json
 import os
@@ -5,12 +6,25 @@ import pathlib
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 import zipfile
+from unittest import mock
 
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import package_model as packager
+
+
+def run_subprocess(command: list[str]) -> subprocess.CompletedProcess[bytes]:
+    for attempt in range(5):
+        try:
+            return subprocess.run(command, capture_output=True, check=False)
+        except BlockingIOError as failure:
+            if failure.errno != errno.EAGAIN or attempt == 4:
+                raise
+            time.sleep(0.1)
+    raise AssertionError("bounded subprocess retry loop did not return")
 
 
 class ModelPackageTest(unittest.TestCase):
@@ -18,19 +32,38 @@ class ModelPackageTest(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = pathlib.Path(self.temporary.name)
         self.key = self.root / "model-signing.pem"
-        result = subprocess.run(
-            [
-                "openssl", "genpkey", "-algorithm", "RSA",
-                "-pkeyopt", "rsa_keygen_bits:3072", "-out", str(self.key),
-            ],
-            capture_output=True,
-            check=False,
-        )
+        result = run_subprocess([
+            "openssl", "genpkey", "-algorithm", "RSA",
+            "-pkeyopt", "rsa_keygen_bits:3072", "-out", str(self.key),
+        ])
         self.assertEqual(0, result.returncode, result.stderr.decode(errors="replace"))
         self.key.chmod(0o600)
 
     def tearDown(self):
         self.temporary.cleanup()
+
+    def test_openssl_retries_only_transient_process_exhaustion(self):
+        success = subprocess.CompletedProcess(["openssl"], 0, b"ok", b"")
+        with (
+            mock.patch.object(
+                packager.subprocess,
+                "run",
+                side_effect=[BlockingIOError(errno.EAGAIN, "busy"), success],
+            ) as process,
+            mock.patch.object(packager.time, "sleep") as sleep,
+        ):
+            self.assertEqual(b"ok", packager._run_openssl(["openssl"]))
+        self.assertEqual(2, process.call_count)
+        sleep.assert_called_once_with(0.1)
+
+        with mock.patch.object(
+            packager.subprocess,
+            "run",
+            side_effect=OSError(errno.ENOENT, "missing"),
+        ) as process:
+            with self.assertRaisesRegex(packager.ModelPackagingError, "could not start OpenSSL"):
+                packager._run_openssl(["openssl"])
+        self.assertEqual(1, process.call_count)
 
     def test_development_package_is_canonical_signed_and_reproducible(self):
         export = self.root / "export"
@@ -66,28 +99,20 @@ class ModelPackageTest(unittest.TestCase):
             signature = archive.read("signature.der")
 
         public_pem = self.root / "public.pem"
-        conversion = subprocess.run(
-            [
-                "openssl", "pkey", "-pubin", "-inform", "DER",
-                "-in", str(first / "libreboard-model-signing-public.der"),
-                "-pubout", "-out", str(public_pem),
-            ],
-            capture_output=True,
-            check=False,
-        )
+        conversion = run_subprocess([
+            "openssl", "pkey", "-pubin", "-inform", "DER",
+            "-in", str(first / "libreboard-model-signing-public.der"),
+            "-pubout", "-out", str(public_pem),
+        ])
         self.assertEqual(0, conversion.returncode, conversion.stderr.decode(errors="replace"))
         manifest_path = self.root / "manifest.json"
         signature_path = self.root / "signature.der"
         manifest_path.write_bytes(manifest)
         signature_path.write_bytes(signature)
-        verification = subprocess.run(
-            [
-                "openssl", "dgst", "-sha256", "-verify", str(public_pem),
-                "-signature", str(signature_path), str(manifest_path),
-            ],
-            capture_output=True,
-            check=False,
-        )
+        verification = run_subprocess([
+            "openssl", "dgst", "-sha256", "-verify", str(public_pem),
+            "-signature", str(signature_path), str(manifest_path),
+        ])
         self.assertEqual(0, verification.returncode, verification.stderr.decode(errors="replace"))
         self.assertEqual(b"Verified OK\n", verification.stdout)
 

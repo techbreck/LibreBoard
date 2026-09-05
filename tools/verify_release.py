@@ -37,6 +37,7 @@ EXPECTED_APPLICATION_IDS = {
 EXPECTED_MIN_SDK = "26"
 EXPECTED_TARGET_SDK = "36"
 EXPECTED_APP_VERSION_CODE = 1
+EXPECTED_NATIVE_ABIS = {"armeabi-v7a", "arm64-v8a", "x86", "x86_64"}
 LATIN_IME_CLASS = "helium314.keyboard.latin.LatinIME"
 CLIPBOARD_PROVIDER_CLASS = "helium314.keyboard.latin.database.ClipboardContentProvider"
 FORBIDDEN_PERMISSIONS = {
@@ -115,13 +116,24 @@ MODEL_PACK_PROVIDER_CLASS = "org.libreboard.model.en_de.ContextModelProvider"
 MODEL_PACK_ASSET = "assets/model.lbmodel"
 MODEL_PACK_MAXIMUM_BYTES = 28 * 1024 * 1024
 CONTEXT_MODEL_MAXIMUM_BYTES = 24 * 1024 * 1024
+SWIPE_MODEL_MAXIMUM_BYTES = 2_621_440
+SWIPE_ARCHIVE_MAXIMUM_BYTES = 3 * 1024 * 1024
+CORE_SWIPE_MODEL_ASSET = "assets/models/swipe-latin-v1.lbmodel"
+CORE_MODEL_PUBLIC_KEY_ASSET = "assets/models/libreboard-model-signing-public.der"
 MODEL_TOKENIZER_MAXIMUM_BYTES = 2 * 1024 * 1024
 MODEL_MANIFEST_MAXIMUM_BYTES = 256 * 1024
 MODEL_SIGNATURE_MAXIMUM_BYTES = 16 * 1024
-MODEL_ARCHIVE_ENTRIES = {
+MODEL_ARCHIVE_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
+MODEL_ARCHIVE_EXTERNAL_ATTRIBUTES = 0o100644 << 16
+CONTEXT_MODEL_ARCHIVE_ENTRIES = {
     "manifest.json",
     "model.onnx",
     "tokenizer.json",
+    "signature.der",
+}
+SWIPE_MODEL_ARCHIVE_ENTRIES = {
+    "manifest.json",
+    "model.onnx",
     "signature.der",
 }
 MODEL_MANIFEST_FIELDS = {
@@ -140,6 +152,15 @@ MODEL_MANIFEST_FIELDS = {
     "provenance",
     "minimumAppVersionCode",
 }
+
+
+def reject_duplicate_json_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
 CONTEXT_DISTILLATION_MANIFEST_FIELDS = {
     "schemaVersion",
     "modelId",
@@ -1171,13 +1192,16 @@ def verify_model_signature(
         "-text", "-noout",
     ])
     key_match = re.search(r"Public-Key:\s*\((\d+) bit", description.stdout)
+    exponent_match = re.search(r"Exponent:\s*(\d+)", description.stdout)
     if (
         description.returncode != 0
         or key_match is None
         or int(key_match.group(1)) < 3072
         or "modulus:" not in description.stdout.lower()
+        or exponent_match is None
+        or int(exponent_match.group(1)) != 65_537
     ):
-        fail(errors, f"{label} public key must be a valid RSA key of at least 3072 bits")
+        fail(errors, f"{label} public key must be a valid RSA key of at least 3072 bits with exponent 65537")
         return
     with tempfile.TemporaryDirectory(prefix="libreboard-model-signature-") as temporary:
         root = pathlib.Path(temporary)
@@ -1198,51 +1222,91 @@ def model_archive_checks(
     archive_bytes: bytes,
     label: str = "model archive",
     public_key: pathlib.Path | None = None,
+    model_id: str = "context-en-de-v1",
 ) -> None:
-    if not archive_bytes or len(archive_bytes) > MODEL_PACK_MAXIMUM_BYTES:
-        fail(errors, f"{label} must be non-empty and at most {MODEL_PACK_MAXIMUM_BYTES} bytes")
+    if model_id == "context-en-de-v1":
+        expected_entries = CONTEXT_MODEL_ARCHIVE_ENTRIES
+        maximum_archive_bytes = MODEL_PACK_MAXIMUM_BYTES
+        maximum_model_bytes = CONTEXT_MODEL_MAXIMUM_BYTES
+        expected_kind = "context-rescorer"
+        maximum_parameter_count = 40_000_000
+        requires_tokenizer = True
+    elif model_id == "swipe-latin-v1":
+        expected_entries = SWIPE_MODEL_ARCHIVE_ENTRIES
+        maximum_archive_bytes = SWIPE_ARCHIVE_MAXIMUM_BYTES
+        maximum_model_bytes = SWIPE_MODEL_MAXIMUM_BYTES
+        expected_kind = "swipe-ctc"
+        maximum_parameter_count = 1_000_000
+        requires_tokenizer = False
+    else:
+        fail(errors, f"{label} has an unsupported model identity")
+        return
+    if not archive_bytes or len(archive_bytes) > maximum_archive_bytes:
+        fail(errors, f"{label} must be non-empty and at most {maximum_archive_bytes} bytes")
         return
     try:
         with zipfile.ZipFile(io.BytesIO(archive_bytes)) as archive:
             entries = archive.infolist()
             names = [entry.filename for entry in entries]
-            if (len(entries) != len(MODEL_ARCHIVE_ENTRIES)
+            if (len(entries) != len(expected_entries)
                     or len(names) != len(set(names))
-                    or set(names) != MODEL_ARCHIVE_ENTRIES
+                    or set(names) != expected_entries
                     or any(entry.is_dir() for entry in entries)):
-                fail(errors, f"{label} must contain exactly the four approved data entries")
+                fail(errors, f"{label} must contain exactly the approved data entries")
+                return
+            if (
+                names != sorted(expected_entries)
+                or archive.comment
+                or any(
+                    entry.date_time != MODEL_ARCHIVE_TIMESTAMP
+                    or entry.compress_type != zipfile.ZIP_STORED
+                    or entry.create_system != 3
+                    or entry.external_attr != MODEL_ARCHIVE_EXTERNAL_ATTRIBUTES
+                    or entry.flag_bits != 0
+                    or entry.extra
+                    or entry.comment
+                    for entry in entries
+                )
+            ):
+                fail(errors, f"{label} is not in the canonical deterministic ZIP format")
                 return
             sizes = {entry.filename: entry.file_size for entry in entries}
             maximums = {
                 "manifest.json": MODEL_MANIFEST_MAXIMUM_BYTES,
-                "model.onnx": CONTEXT_MODEL_MAXIMUM_BYTES,
-                "tokenizer.json": MODEL_TOKENIZER_MAXIMUM_BYTES,
+                "model.onnx": maximum_model_bytes,
                 "signature.der": MODEL_SIGNATURE_MAXIMUM_BYTES,
             }
+            if requires_tokenizer:
+                maximums["tokenizer.json"] = MODEL_TOKENIZER_MAXIMUM_BYTES
             if any(sizes[name] <= 0 or sizes[name] > maximum for name, maximum in maximums.items()):
                 fail(errors, f"{label} contains an empty or oversized entry")
                 return
             manifest_bytes = archive.read("manifest.json")
             model_bytes = archive.read("model.onnx")
-            tokenizer_bytes = archive.read("tokenizer.json")
+            tokenizer_bytes = archive.read("tokenizer.json") if requires_tokenizer else None
             signature_bytes = archive.read("signature.der")
     except (OSError, RuntimeError, zipfile.BadZipFile, zipfile.LargeZipFile) as exc:
         fail(errors, f"cannot read {label}: {exc}")
         return
 
     try:
-        manifest = json.loads(manifest_bytes.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        manifest = json.loads(
+            manifest_bytes.decode("utf-8"),
+            object_pairs_hook=reject_duplicate_json_keys,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         fail(errors, f"cannot parse {label} manifest: {exc}")
         return
-    if not isinstance(manifest, dict) or set(manifest) != MODEL_MANIFEST_FIELDS:
+    expected_manifest_fields = MODEL_MANIFEST_FIELDS if requires_tokenizer else (
+        MODEL_MANIFEST_FIELDS - {"tokenizerSha256"}
+    )
+    if not isinstance(manifest, dict) or set(manifest) != expected_manifest_fields:
         fail(errors, f"{label} manifest must contain exactly the supported schema fields")
         return
     if manifest.get("schemaVersion") != 1 or manifest.get("engineAbi") != 1:
         fail(errors, f"{label} has an unsupported schema or engine ABI")
-    if (manifest.get("modelKind") != "context-rescorer"
-            or manifest.get("tensorAbi") != "context-en-de-v1"):
-        fail(errors, f"{label} is not the official context-en-de tensor contract")
+    if manifest.get("modelKind") != expected_kind or manifest.get("tensorAbi") != model_id:
+        fail(errors, f"{label} is not the official {model_id} tensor contract")
     locales = manifest.get("locales")
     if (not isinstance(locales, list) or len(locales) != 2
             or any(not isinstance(locale, str) for locale in locales)
@@ -1253,7 +1317,7 @@ def model_archive_checks(
         fail(errors, f"{label} has no architecture")
     parameter_count = manifest.get("parameterCount")
     if (isinstance(parameter_count, bool) or not isinstance(parameter_count, int)
-            or parameter_count <= 0 or parameter_count > 50_000_000):
+            or parameter_count <= 0 or parameter_count > maximum_parameter_count):
         fail(errors, f"{label} has an invalid parameter count")
     if (not isinstance(manifest.get("quantization"), str)
             or not manifest["quantization"] or len(manifest["quantization"]) > 32):
@@ -1288,10 +1352,11 @@ def model_archive_checks(
         fail(errors, f"{label} has an invalid model hash")
     elif hashlib.sha256(model_bytes).hexdigest() != model_hash:
         fail(errors, f"{label} model hash does not match its payload")
-    if not isinstance(tokenizer_hash, str) or not SHA256.fullmatch(tokenizer_hash):
-        fail(errors, f"{label} has an invalid tokenizer hash")
-    elif hashlib.sha256(tokenizer_bytes).hexdigest() != tokenizer_hash:
-        fail(errors, f"{label} tokenizer hash does not match its payload")
+    if requires_tokenizer:
+        if not isinstance(tokenizer_hash, str) or not SHA256.fullmatch(tokenizer_hash):
+            fail(errors, f"{label} has an invalid tokenizer hash")
+        elif hashlib.sha256(tokenizer_bytes).hexdigest() != tokenizer_hash:
+            fail(errors, f"{label} tokenizer hash does not match its payload")
     if public_key is not None:
         verify_model_signature(errors, public_key, manifest_bytes, signature_bytes, label)
 
@@ -1401,6 +1466,33 @@ def model_pack_apk_checks(errors: list[str], apk: pathlib.Path, public_key: path
         fail(errors, f"cannot inspect model-pack APK: {exc}")
 
 
+def onnx_runtime_apk_entry_checks(
+    errors: list[str],
+    native_entries: list[str],
+    signed_model_packaged: bool,
+) -> None:
+    ort_names = {"libonnxruntime.so", "libonnxruntime4j_jni.so"}
+    ort_by_abi: dict[str, set[str]] = {}
+    for entry in native_entries:
+        path = pathlib.PurePosixPath(entry)
+        if path.name not in ort_names:
+            continue
+        if len(path.parts) < 3:
+            fail(errors, f"ONNX Runtime library has an invalid APK path: {entry}")
+            continue
+        ort_by_abi.setdefault(path.parts[-2], set()).add(path.name)
+    for abi, libraries in ort_by_abi.items():
+        if libraries != ort_names:
+            fail(errors, f"ONNX Runtime native pair is incomplete for {abi}")
+    if ort_by_abi and set(ort_by_abi) != EXPECTED_NATIVE_ABIS:
+        fail(errors, "ONNX Runtime native libraries must cover exactly the four application ABIs")
+    if signed_model_packaged and (
+        set(ort_by_abi) != EXPECTED_NATIVE_ABIS
+        or any(libraries != ort_names for libraries in ort_by_abi.values())
+    ):
+        fail(errors, "core APK contains a signed swipe model without the complete ONNX Runtime")
+
+
 def apk_checks(errors: list[str], apk: pathlib.Path) -> None:
     if not apk.is_file():
         fail(errors, f"APK does not exist: {apk}")
@@ -1497,6 +1589,29 @@ def apk_checks(errors: list[str], apk: pathlib.Path) -> None:
 
     readobj = newest_tool("llvm-readobj", "ndk/*/toolchains/llvm/prebuilt/*/bin/llvm-readobj")
     with zipfile.ZipFile(apk) as archive, tempfile.TemporaryDirectory(prefix="libreboard-native-") as temp:
+        signed_model_assets = {
+            name for name in archive.namelist()
+            if name in {CORE_SWIPE_MODEL_ASSET, CORE_MODEL_PUBLIC_KEY_ASSET}
+        }
+        if signed_model_assets and signed_model_assets != {
+            CORE_SWIPE_MODEL_ASSET,
+            CORE_MODEL_PUBLIC_KEY_ASSET,
+        }:
+            fail(errors, "core APK must package the signed swipe model and project key together")
+        elif signed_model_assets:
+            public_key_entry = archive.getinfo(CORE_MODEL_PUBLIC_KEY_ASSET)
+            if public_key_entry.file_size <= 0 or public_key_entry.file_size > 8 * 1024:
+                fail(errors, "core APK model public key is empty or oversized")
+            else:
+                public_key_path = pathlib.Path(temp) / "libreboard-model-signing-public.der"
+                public_key_path.write_bytes(archive.read(CORE_MODEL_PUBLIC_KEY_ASSET))
+                model_archive_checks(
+                    errors,
+                    archive.read(CORE_SWIPE_MODEL_ASSET),
+                    "core swipe model archive",
+                    public_key_path,
+                    "swipe-latin-v1",
+                )
         for dex_entry in (name for name in archive.namelist() if name.endswith(".dex")):
             dex = archive.read(dex_entry).lower()
             for marker in FORBIDDEN_DEPENDENCY_MARKERS:
@@ -1506,19 +1621,7 @@ def apk_checks(errors: list[str], apk: pathlib.Path) -> None:
                     fail(errors, f"APK DEX contains forbidden dependency marker {marker}: {dex_entry}")
 
         native_entries = [name for name in archive.namelist() if name.endswith(".so")]
-        ort_names = {"libonnxruntime.so", "libonnxruntime4j_jni.so"}
-        ort_by_abi: dict[str, set[str]] = {}
-        for entry in native_entries:
-            path = pathlib.PurePosixPath(entry)
-            if path.name not in ort_names:
-                continue
-            if len(path.parts) < 3:
-                fail(errors, f"ONNX Runtime library has an invalid APK path: {entry}")
-                continue
-            ort_by_abi.setdefault(path.parts[-2], set()).add(path.name)
-        for abi, libraries in ort_by_abi.items():
-            if libraries != ort_names:
-                fail(errors, f"ONNX Runtime native pair is incomplete for {abi}")
+        onnx_runtime_apk_entry_checks(errors, native_entries, bool(signed_model_assets))
         for entry in native_entries:
             name = pathlib.PurePosixPath(entry).name
             if name not in ALLOWED_NATIVE_LIBRARIES:

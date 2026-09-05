@@ -155,8 +155,16 @@ python3 tools/verify_release.py \
 
 The verifier checks the merged zero-permission/component manifest, fixed authority, uncompressed
 single asset, absence of native code, bounded archive entries, hashes, en/de model contract, license,
-provenance, RSA key strength, and signature. `ModelRegistry` independently rechecks the same project
-signature on the device.
+provenance, canonical deterministic ZIP metadata, RSA key strength and fixed exponent, and signature.
+`ModelRegistry` independently rechecks the same project signature on the device.
+
+The model-qualified core build embeds the signed swipe archive and that same public key through the
+five Gradle properties documented in `runtime/onnxruntime/README.md`. After first unlock, a bounded
+background bootstrap activates the swipe archive in credential-encrypted storage, opens its one ORT
+session, and installs it into the live CTC/geometric union. It also discovers the official context
+provider and installs its accepted model when available. Core-only, Direct Boot, low-RAM, missing,
+corrupt, incompatible, and slow-model states continue through classic tap and geometric swipe paths;
+model setup never runs on the input UI thread.
 
 When the verified source-built runtime is packaged, LibreBoard opens the model by local filesystem
 path and validates the runtime-reported input/output names, element types, and static or required

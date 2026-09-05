@@ -154,6 +154,7 @@ public final class InputLogic {
      * @param settingsValues the current settings values
      */
     public void startInput(final String combiningSpec, final SettingsValues settingsValues) {
+        mSuggest.ensureInstalledModelsLoaded();
         PersonalizationRuntime.clearSession();
         mEnteredText = null;
         mWordBeingCorrectedByCursor = null;

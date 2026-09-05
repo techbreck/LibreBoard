@@ -18,6 +18,7 @@ from verify_release import (  # noqa: E402
     GRAPHENEOS_CHECKS,
     evidence_checks,
     model_archive_checks,
+    onnx_runtime_apk_entry_checks,
     validate_context_distillation_manifest,
     validate_hash_locked_requirements,
     verify_model_signature,
@@ -33,7 +34,22 @@ def sha256(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
-def context_model_archive(**manifest_overrides) -> bytes:
+def _model_archive(entries: dict[str, bytes], *, canonical: bool = True) -> bytes:
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as archive:
+        for name in sorted(entries):
+            if canonical:
+                info = zipfile.ZipInfo(name, (1980, 1, 1, 0, 0, 0))
+                info.compress_type = zipfile.ZIP_STORED
+                info.create_system = 3
+                info.external_attr = 0o100644 << 16
+                archive.writestr(info, entries[name])
+            else:
+                archive.writestr(name, entries[name])
+    return output.getvalue()
+
+
+def context_model_archive(*, canonical: bool = True, **manifest_overrides) -> bytes:
     model = b"fixture onnx"
     tokenizer = b'{"fixture":true}'
     manifest = {
@@ -58,13 +74,41 @@ def context_model_archive(**manifest_overrides) -> bytes:
         "minimumAppVersionCode": 1,
     }
     manifest.update(manifest_overrides)
-    output = io.BytesIO()
-    with zipfile.ZipFile(output, "w") as archive:
-        archive.writestr("manifest.json", json.dumps(manifest, separators=(",", ":")))
-        archive.writestr("model.onnx", model)
-        archive.writestr("tokenizer.json", tokenizer)
-        archive.writestr("signature.der", b"fixture signature")
-    return output.getvalue()
+    return _model_archive({
+        "manifest.json": json.dumps(manifest, separators=(",", ":")).encode(),
+        "model.onnx": model,
+        "tokenizer.json": tokenizer,
+        "signature.der": b"fixture signature",
+    }, canonical=canonical)
+
+
+def swipe_model_archive() -> bytes:
+    model = b"fixture swipe onnx"
+    manifest = {
+        "schemaVersion": 1,
+        "engineAbi": 1,
+        "modelKind": "swipe-ctc",
+        "tensorAbi": "swipe-latin-v1",
+        "locales": ["en-US", "de"],
+        "architecture": "fixture",
+        "parameterCount": 1,
+        "quantization": "FP16",
+        "modelSha256": sha256(model),
+        "requiredOnnxOperators": ["MatMul"],
+        "license": "Apache-2.0",
+        "provenance": [{
+            "name": "fixture",
+            "revision": "1",
+            "license": "MIT",
+            "source_url": "https://example.invalid/swipe",
+        }],
+        "minimumAppVersionCode": 1,
+    }
+    return _model_archive({
+        "manifest.json": json.dumps(manifest, separators=(",", ":")).encode(),
+        "model.onnx": model,
+        "signature.der": b"fixture signature",
+    })
 
 
 class VerifyModelArchiveTest(unittest.TestCase):
@@ -73,13 +117,18 @@ class VerifyModelArchiveTest(unittest.TestCase):
         model_archive_checks(errors, context_model_archive())
         self.assertEqual([], errors)
 
+    def test_accepts_bounded_swipe_pack_contract_without_a_tokenizer(self):
+        errors = []
+        model_archive_checks(errors, swipe_model_archive(), model_id="swipe-latin-v1")
+        self.assertEqual([], errors)
+
     def test_rejects_wrong_model_kind_and_payload_hash(self):
         errors = []
         model_archive_checks(
             errors,
             context_model_archive(modelKind="swipe-ctc", modelSha256="a" * 64),
         )
-        self.assertIn("model archive is not the official context-en-de tensor contract", errors)
+        self.assertIn("model archive is not the official context-en-de-v1 tensor contract", errors)
         self.assertIn("model archive model hash does not match its payload", errors)
 
     def test_rejects_extra_archive_entry(self):
@@ -93,7 +142,27 @@ class VerifyModelArchiveTest(unittest.TestCase):
         errors = []
         model_archive_checks(errors, output.getvalue())
         self.assertEqual(
-            ["model archive must contain exactly the four approved data entries"],
+            ["model archive must contain exactly the approved data entries"],
+            errors,
+        )
+
+    def test_rejects_noncanonical_archive_metadata(self):
+        errors = []
+        model_archive_checks(errors, context_model_archive(canonical=False))
+        self.assertEqual(
+            ["model archive is not in the canonical deterministic ZIP format"],
+            errors,
+        )
+
+    def test_rejects_duplicate_manifest_keys(self):
+        original = context_model_archive()
+        with zipfile.ZipFile(io.BytesIO(original)) as archive:
+            entries = {name: archive.read(name) for name in archive.namelist()}
+        entries["manifest.json"] = b'{"schemaVersion":1,"schemaVersion":1}'
+        errors = []
+        model_archive_checks(errors, _model_archive(entries))
+        self.assertEqual(
+            ["cannot parse model archive manifest: duplicate JSON key: schemaVersion"],
             errors,
         )
 
@@ -114,7 +183,8 @@ class VerifyModelArchiveTest(unittest.TestCase):
             key = pathlib.Path(temporary) / "public.der"
             key.write_bytes(b"public key fixture")
             accepted = subprocess.CompletedProcess(
-                ["openssl"], 0, "Public-Key: (3072 bit)\nModulus:\n  01", "",
+                ["openssl"], 0,
+                "Public-Key: (3072 bit)\nModulus:\n  01\nExponent: 65537 (0x10001)", "",
             )
             verified = subprocess.CompletedProcess(["openssl"], 0, "Verified OK\n", "")
             with mock.patch.object(verify_release, "run", side_effect=[accepted, verified]):
@@ -123,16 +193,71 @@ class VerifyModelArchiveTest(unittest.TestCase):
             self.assertEqual([], errors)
 
             weak = subprocess.CompletedProcess(
-                ["openssl"], 0, "Public-Key: (2048 bit)\nModulus:\n  01", "",
+                ["openssl"], 0,
+                "Public-Key: (2048 bit)\nModulus:\n  01\nExponent: 65537 (0x10001)", "",
             )
             with mock.patch.object(verify_release, "run", return_value=weak):
                 errors = []
                 verify_model_signature(errors, key, b"manifest", b"signature", "fixture")
             self.assertEqual(
-                ["fixture public key must be a valid RSA key of at least 3072 bits"],
+                ["fixture public key must be a valid RSA key of at least 3072 bits with exponent 65537"],
                 errors,
             )
 
+            wrong_exponent = subprocess.CompletedProcess(
+                ["openssl"], 0,
+                "Public-Key: (3072 bit)\nModulus:\n  01\nExponent: 3 (0x3)", "",
+            )
+            with mock.patch.object(verify_release, "run", return_value=wrong_exponent):
+                errors = []
+                verify_model_signature(errors, key, b"manifest", b"signature", "fixture")
+            self.assertEqual(
+                ["fixture public key must be a valid RSA key of at least 3072 bits with exponent 65537"],
+                errors,
+            )
+
+
+class VerifyOnnxRuntimeApkEntriesTest(unittest.TestCase):
+    def test_requires_complete_pairs_for_all_application_abis(self):
+        entries = [
+            f"lib/{abi}/{library}"
+            for abi in ("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+            for library in ("libonnxruntime.so", "libonnxruntime4j_jni.so")
+        ]
+        errors = []
+        onnx_runtime_apk_entry_checks(errors, entries, signed_model_packaged=True)
+        self.assertEqual([], errors)
+
+        errors = []
+        onnx_runtime_apk_entry_checks(errors, entries[:-2], signed_model_packaged=True)
+        self.assertIn(
+            "ONNX Runtime native libraries must cover exactly the four application ABIs",
+            errors,
+        )
+        self.assertIn(
+            "core APK contains a signed swipe model without the complete ONNX Runtime",
+            errors,
+        )
+
+    def test_signed_model_rejects_absent_or_partial_runtime(self):
+        errors = []
+        onnx_runtime_apk_entry_checks(errors, [], signed_model_packaged=True)
+        self.assertEqual(
+            ["core APK contains a signed swipe model without the complete ONNX Runtime"],
+            errors,
+        )
+
+        errors = []
+        onnx_runtime_apk_entry_checks(
+            errors,
+            ["lib/arm64-v8a/libonnxruntime.so"],
+            signed_model_packaged=False,
+        )
+        self.assertIn("ONNX Runtime native pair is incomplete for arm64-v8a", errors)
+        self.assertIn(
+            "ONNX Runtime native libraries must cover exactly the four application ABIs",
+            errors,
+        )
 
 class VerifyDependencyLockTest(unittest.TestCase):
     def test_process_exhaustion_is_a_failed_command_not_a_traceback(self):

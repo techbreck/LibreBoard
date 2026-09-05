@@ -3,7 +3,8 @@
 LibreBoard pins ONNX Runtime 1.26.0 as the `third_party/onnxruntime` Git submodule at commit
 `8c546c37b43caaca1fa25db430dab94b901cf277`. The committed settings build only the CPU execution
 provider for API 26 and all four application ABIs. NNAPI, XNNPACK, WebGPU, Play Services, Runtime
-Extensions, training APIs, and the Maven ONNX Runtime AAR are not used.
+Extensions, training APIs, upstream unit-test/example-plugin targets, and the Maven ONNX Runtime AAR
+are not used.
 
 The build is intentionally fail-closed until the accepted ONNX models and their generated reduced
 operator configurations exist. `tools/assemble_runtime_operator_config.py` verifies each exported
@@ -42,13 +43,17 @@ operator configuration to Gradle:
 ./gradlew assembleRelease \
   -PlibreboardOnnxRuntimeAar=build/onnxruntime/output/onnxruntime-mobile-1.26.0.aar \
   -PlibreboardOnnxRuntimeManifest=build/onnxruntime/output/onnxruntime-mobile-1.26.0.build.json \
-  -PlibreboardOnnxRuntimeOperators=build/model-export/onnxruntime/required_operators.config
+  -PlibreboardOnnxRuntimeOperators=build/model-export/onnxruntime/required_operators.config \
+  -PlibreboardSwipeModelArchive=/absolute/path/swipe-latin-v1.lbmodel \
+  -PlibreboardModelPublicKey=/absolute/path/libreboard-model-signing-public.der
 ```
 
 Gradle rejects an incomplete artifact set, an altered AAR, a non-pinned source/NDK/toolchain, a
-different builder or settings file, or an AAR reduced for a different operator configuration.
-Ordinary development builds omit all three properties and exercise the always-available
-classic/geometric path.
+different builder or settings file, an AAR reduced for a different operator configuration, a
+partial model/key pair, or a signed model without the verified runtime. The generated model assets
+are deleted before every packaging pass so a core-only build cannot inherit files from an earlier
+model-qualified build. Ordinary development builds omit all five properties and exercise the
+always-available classic/geometric path.
 
 The application refers to the optional AAR through fixed internal class names rather than a Maven
 compile dependency, allowing the same source tree to build the core-only fallback. The adapter never

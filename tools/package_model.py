@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import hashlib
 import json
 import os
@@ -13,6 +14,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 import zipfile
 from typing import Any
 
@@ -105,10 +107,17 @@ def _required_file(root: pathlib.Path, descriptor: dict[str, Any], label: str) -
 
 
 def _run_openssl(command: list[str], *, input_bytes: bytes | None = None) -> bytes:
-    try:
-        result = subprocess.run(command, input=input_bytes, capture_output=True, check=False)
-    except OSError as exc:
-        raise ModelPackagingError(f"could not start OpenSSL: {exc}") from exc
+    for attempt in range(5):
+        try:
+            result = subprocess.run(command, input=input_bytes, capture_output=True, check=False)
+            break
+        except OSError as exc:
+            if exc.errno == errno.EAGAIN and attempt < 4:
+                time.sleep(0.1)
+                continue
+            raise ModelPackagingError(f"could not start OpenSSL: {exc}") from exc
+    else:
+        raise AssertionError("bounded OpenSSL retry loop did not return")
     if result.returncode != 0:
         detail = result.stderr.decode("utf-8", errors="replace").strip()
         raise ModelPackagingError(f"OpenSSL command failed: {detail or result.returncode}")

@@ -91,6 +91,54 @@ val verifiedOnnxRuntimeAar = onnxRuntimeAarProperty?.let { aarPath ->
     aar
 }
 
+val swipeModelArchiveProperty = providers.gradleProperty("libreboardSwipeModelArchive").orNull
+val modelPublicKeyProperty = providers.gradleProperty("libreboardModelPublicKey").orNull
+require((swipeModelArchiveProperty == null) == (modelPublicKeyProperty == null)) {
+    "The signed swipe model archive and project public key must be supplied together"
+}
+require(swipeModelArchiveProperty == null || verifiedOnnxRuntimeAar != null) {
+    "A signed swipe model requires the source-built ONNX Runtime artifact set"
+}
+val verifiedSwipeModelArchive = swipeModelArchiveProperty?.let { path ->
+    rootProject.file(path).also { archive ->
+        require(archive.isFile && archive.extension == "lbmodel") {
+            "The signed swipe model archive is missing or has the wrong extension"
+        }
+        require(archive.length() in 1..(3L * 1024L * 1024L)) {
+            "The signed swipe model archive must be non-empty and at most 3 MiB"
+        }
+    }
+}
+val verifiedModelPublicKey = modelPublicKeyProperty?.let { path ->
+    rootProject.file(path).also { key ->
+        require(key.isFile && key.length() in 1..(8L * 1024L)) {
+            "The model-signing public key is missing, empty, or oversized"
+        }
+    }
+}
+val generatedSignedModelAssets = layout.buildDirectory.dir("generated/libreboard/signedModelAssets")
+val cleanSignedModelAssets by tasks.registering(Delete::class) {
+    // Always remove generated assets first. A core-only build must not reuse files produced by a
+    // previous model-qualified invocation under a different Gradle configuration-cache key.
+    delete(generatedSignedModelAssets)
+}
+val prepareSignedModelAssets by tasks.registering(Sync::class) {
+    dependsOn(cleanSignedModelAssets)
+    into(generatedSignedModelAssets)
+    verifiedSwipeModelArchive?.let { archive ->
+        from(archive) {
+            into("models")
+            rename { "swipe-latin-v1.lbmodel" }
+        }
+    }
+    verifiedModelPublicKey?.let { key ->
+        from(key) {
+            into("models")
+            rename { "libreboard-model-signing-public.der" }
+        }
+    }
+}
+
 plugins {
     id("com.android.application")
     kotlin("android")
@@ -109,6 +157,7 @@ android {
         versionCode = 1
         versionName = "0.1.0-alpha01"
         buildConfigField("boolean", "LIBREBOARD_ONNX_RUNTIME_PACKAGED", (verifiedOnnxRuntimeAar != null).toString())
+        buildConfigField("boolean", "LIBREBOARD_SIGNED_MODELS_PACKAGED", (verifiedSwipeModelArchive != null).toString())
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             abiFilters.clear()
@@ -180,6 +229,8 @@ android {
         }
     }
 
+    sourceSets.getByName("main").assets.srcDir(generatedSignedModelAssets)
+
     testOptions {
         unitTests {
             isIncludeAndroidResources = true
@@ -209,6 +260,10 @@ android {
     lint {
         abortOnError = true
     }
+}
+
+tasks.named("preBuild").configure {
+    dependsOn(prepareSignedModelAssets)
 }
 
 dependencies {

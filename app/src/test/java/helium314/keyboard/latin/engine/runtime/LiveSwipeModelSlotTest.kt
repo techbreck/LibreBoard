@@ -57,6 +57,34 @@ class LiveSwipeModelSlotTest {
     }
 
     @Test
+    fun reinstallingTheSameOwnerRefreshesDecoderWithoutClosingNativeState() {
+        var closes = 0
+        val owner = AutoCloseable { closes++ }
+        LiveSwipeModelSlot().use { slot ->
+            slot.install(decoder("old"), owner)
+            assertEquals("old", slot.decode(request(), Deadline.afterMillis(100)).candidates.single().surface)
+
+            slot.install(decoder("new"), owner)
+            assertEquals("new", slot.decode(request(), Deadline.afterMillis(100)).candidates.single().surface)
+            assertEquals(0, closes)
+        }
+        assertEquals(1, closes)
+    }
+
+    @Test
+    fun refreshingTheSameOwnerResetsItsDeadlineCircuit() {
+        val owner = AutoCloseable {}
+        LiveSwipeModelSlot(DeadlineCircuitBreaker(maximumOverruns = 1)).use { slot ->
+            slot.install(SwipeDecoder { _, _ -> SwipeDecodeResult(EngineAvailability.TIMEOUT) }, owner)
+            assertEquals(EngineAvailability.TIMEOUT, slot.decode(request(), Deadline.afterMillis(100)).availability)
+            assertEquals(EngineAvailability.CIRCUIT_OPEN, slot.decode(request(), Deadline.afterMillis(100)).availability)
+
+            slot.install(decoder("recovered"), owner)
+            assertEquals("recovered", slot.decode(request(), Deadline.afterMillis(100)).candidates.single().surface)
+        }
+    }
+
+    @Test
     fun nonCooperativeDecoderTimesOutOpensCircuitAndDefersClose() {
         val entered = CountDownLatch(1)
         val release = CountDownLatch(1)
@@ -97,4 +125,11 @@ class LiveSwipeModelSlotTest {
         inputStyle = InputStyle.SWIPE,
         sequenceId = 1,
     )
+
+    private fun decoder(surface: String) = SwipeDecoder { _, _ ->
+        SwipeDecodeResult(
+            EngineAvailability.AVAILABLE,
+            listOf(Candidate(surface, languageTag = "en-US", sources = setOf(CandidateSource.CTC_SWIPE))),
+        )
+    }
 }
