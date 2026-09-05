@@ -25,6 +25,12 @@ require idempotent removal without deleting clipboard, model, or explicit dictio
 verifier. It also locks the ONNX Runtime source-build schema, ABI set, SDK levels, CPU-only flags,
 and strict reduced-operator configuration parser. These tests run for every pull request.
 
+The optional context-model package is built separately and receives the same fail-closed release
+inspection. `tools/tests/test_verify_release.py` covers its bounded archive schema and payload hash
+checks; a release candidate must additionally run `tools/verify_release.py --model-pack-apk` against
+the built APK. The APK check proves that the sidecar requests no permissions, exposes only its fixed
+read-only provider, stores exactly one uncompressed `.lbmodel` asset, and contains no native code.
+
 ## Android instrumentation
 
 `./gradlew assembleDebugNoMinifyAndroidTest --max-workers=1` compiles the on-device suite in CI.

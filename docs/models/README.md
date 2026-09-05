@@ -58,6 +58,28 @@ models own separate CE activation/rollback slots, so installing or wiping one ca
 other. No ZIP entry is ever loaded as code. A production signing public key and accepted model still
 need to pass the Phase 0 gate.
 
+The official English/German context archive is distributed through the opt-in `modelpack-en-de`
+Android module. The resulting `org.libreboard.model.en_de` APK has no permissions, activity,
+service, receiver, native library, or networking dependency. Its sole exported component is a
+read-only provider for `content://org.libreboard.model.en_de/model.lbmodel`; the core app copies that
+stream through the same untrusted `.lbmodel` verifier used for manual imports. It is unavailable
+before first unlock and therefore cannot weaken Direct Boot behavior. Build it only with a real,
+signed archive:
+
+```sh
+./gradlew \
+  -PlibreboardIncludeModelPack=true \
+  -PlibreboardContextModelArchive=/absolute/path/context-en-de-v1.lbmodel \
+  :modelpack-en-de:assembleRelease
+
+python3 tools/verify_release.py \
+  --model-pack-apk modelpack-en-de/build/outputs/apk/release/modelpack-en-de-release-unsigned.apk
+```
+
+The verifier checks the merged zero-permission/component manifest, fixed authority, uncompressed
+single asset, absence of native code, bounded archive entries, hashes, en/de model contract, license,
+and provenance. The project signature is still rechecked by `ModelRegistry` on the device.
+
 When the verified source-built runtime is packaged, LibreBoard opens the model by local filesystem
 path and validates the runtime-reported input/output names, element types, and static or required
 dynamic dimensions against the contracts above before the first inference. Inputs use bounded direct

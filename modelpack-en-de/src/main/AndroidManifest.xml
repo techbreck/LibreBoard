@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:directBootAware="false"
+        android:fullBackupContent="@xml/backup_rules"
+        android:hasCode="true"
+        android:icon="@drawable/ic_model_pack"
+        android:label="LibreBoard English and German Context Model"
+        android:usesCleartextTraffic="false">
+        <provider
+            android:name="org.libreboard.model.en_de.ContextModelProvider"
+            android:authorities="org.libreboard.model.en_de"
+            android:directBootAware="false"
+            android:exported="true"
+            android:grantUriPermissions="false"
+            tools:ignore="ExportedContentProvider" />
+    </application>
+</manifest>

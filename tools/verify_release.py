@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import math
 import os
@@ -25,6 +26,7 @@ EXPECTED_APPLICATION_IDS = {
 }
 EXPECTED_MIN_SDK = "26"
 EXPECTED_TARGET_SDK = "36"
+EXPECTED_APP_VERSION_CODE = 1
 LATIN_IME_CLASS = "helium314.keyboard.latin.LatinIME"
 CLIPBOARD_PROVIDER_CLASS = "helium314.keyboard.latin.database.ClipboardContentProvider"
 FORBIDDEN_PERMISSIONS = {
@@ -96,6 +98,37 @@ PHASE0_ENVIRONMENTS = {
     "low_ram_emulator",
 }
 ONNXRUNTIME_COMMIT = "8c546c37b43caaca1fa25db430dab94b901cf277"
+MODEL_PACK_APPLICATION_ID = "org.libreboard.model.en_de"
+MODEL_PACK_AUTHORITY = "org.libreboard.model.en_de"
+MODEL_PACK_PROVIDER_CLASS = "org.libreboard.model.en_de.ContextModelProvider"
+MODEL_PACK_ASSET = "assets/model.lbmodel"
+MODEL_PACK_MAXIMUM_BYTES = 28 * 1024 * 1024
+CONTEXT_MODEL_MAXIMUM_BYTES = 24 * 1024 * 1024
+MODEL_TOKENIZER_MAXIMUM_BYTES = 2 * 1024 * 1024
+MODEL_MANIFEST_MAXIMUM_BYTES = 256 * 1024
+MODEL_SIGNATURE_MAXIMUM_BYTES = 16 * 1024
+MODEL_ARCHIVE_ENTRIES = {
+    "manifest.json",
+    "model.onnx",
+    "tokenizer.json",
+    "signature.der",
+}
+MODEL_MANIFEST_FIELDS = {
+    "schemaVersion",
+    "engineAbi",
+    "modelKind",
+    "tensorAbi",
+    "locales",
+    "architecture",
+    "parameterCount",
+    "quantization",
+    "modelSha256",
+    "tokenizerSha256",
+    "requiredOnnxOperators",
+    "license",
+    "provenance",
+    "minimumAppVersionCode",
+}
 
 
 def fail(errors: list[str], message: str) -> None:
@@ -137,6 +170,90 @@ def validate_backup_exclusions(errors: list[str]) -> None:
             }
             if not BACKUP_DOMAINS.issubset(exclusions):
                 fail(errors, f"{section_name} rules must exclude every app-data domain")
+
+
+def validate_model_pack_source(errors: list[str]) -> None:
+    manifest_path = ROOT / "modelpack-en-de/src/main/AndroidManifest.xml"
+    build_path = ROOT / "modelpack-en-de/build.gradle.kts"
+    provider_path = (
+        ROOT / "modelpack-en-de/src/main/java/org/libreboard/model/en_de/ContextModelProvider.java"
+    )
+    settings_path = ROOT / "settings.gradle"
+    try:
+        manifest = ET.parse(manifest_path).getroot()
+    except (OSError, ET.ParseError) as exc:
+        fail(errors, f"cannot read model-pack source manifest: {exc}")
+        return
+
+    if any(node.tag.startswith("uses-permission") for node in manifest):
+        fail(errors, "model-pack source manifest must request no permissions")
+    application = manifest.find("application")
+    if application is None:
+        fail(errors, "model-pack source manifest has no application element")
+    else:
+        required_attributes = {
+            "allowBackup": "false",
+            "usesCleartextTraffic": "false",
+            "directBootAware": "false",
+            "hasCode": "true",
+            "fullBackupContent": "@xml/backup_rules",
+            "dataExtractionRules": "@xml/data_extraction_rules",
+        }
+        for name, expected in required_attributes.items():
+            if android_attribute(application, name) != expected:
+                fail(errors, f"model-pack application android:{name} must be {expected}")
+        components = [
+            node for node in application
+            if node.tag in {"activity", "activity-alias", "service", "receiver", "provider"}
+        ]
+        providers = [node for node in components if node.tag == "provider"]
+        if len(components) != 1 or len(providers) != 1:
+            fail(errors, "model-pack source must expose exactly one provider and no active components")
+        else:
+            provider = providers[0]
+            expected = {
+                "name": MODEL_PACK_PROVIDER_CLASS,
+                "authorities": MODEL_PACK_AUTHORITY,
+                "exported": "true",
+                "grantUriPermissions": "false",
+                "directBootAware": "false",
+            }
+            for name, value in expected.items():
+                if android_attribute(provider, name) != value:
+                    fail(errors, f"model-pack provider android:{name} must be {value}")
+
+    try:
+        settings_text = settings_path.read_text(encoding="utf-8")
+        build_text = build_path.read_text(encoding="utf-8")
+        provider_text = provider_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        fail(errors, f"cannot read model-pack build/provider source: {exc}")
+        return
+    if ("libreboardIncludeModelPack" not in settings_text
+            or "include ':modelpack-en-de'" not in settings_text):
+        fail(errors, "model-pack module must remain explicitly opt-in")
+    required_build_markers = (
+        'applicationId = "org.libreboard.model.en_de"',
+        'minSdk = 26',
+        'targetSdk = 36',
+        'libreboardContextModelArchive',
+        'noCompress += "lbmodel"',
+    )
+    if any(marker not in build_text for marker in required_build_markers):
+        fail(errors, "model-pack build does not retain its fixed ID, SDKs, archive input, and storage rule")
+    provider_markers = (
+        'content://" + AUTHORITY + "/model.lbmodel',
+        'application/vnd.org.libreboard.model',
+        '"r".equals(mode)',
+    )
+    if any(marker not in provider_text for marker in provider_markers):
+        fail(errors, "model-pack provider no longer exposes one fixed read-only archive contract")
+    committed_assets = [
+        path for path in (ROOT / "modelpack-en-de/src").rglob("*")
+        if path.is_file() and path.suffix.lower() in {".lbmodel", ".onnx", ".aar", ".so"}
+    ]
+    if committed_assets:
+        fail(errors, "generated model-pack binaries must not be committed as source")
 
 
 def sdk_path() -> pathlib.Path | None:
@@ -205,7 +322,16 @@ def source_checks(errors: list[str]) -> None:
         elif android_attribute(clipboard_provider, "exported") != "false":
             fail(errors, "clipboard content provider must not be exported")
 
+    queries = manifest.find("queries")
+    queried_model_providers = [] if queries is None else [
+        provider for provider in queries.findall("provider")
+        if android_attribute(provider, "authorities") == MODEL_PACK_AUTHORITY
+    ]
+    if len(queried_model_providers) != 1:
+        fail(errors, "core manifest must query exactly the official model-pack provider")
+
     validate_backup_exclusions(errors)
+    validate_model_pack_source(errors)
 
     source_root = ROOT / "app/src/main/java"
     dynamic_load = re.compile(r"System\s*\.\s*load\s*\(")
@@ -472,6 +598,202 @@ def evidence_checks(
                 fail(errors, f"GrapheneOS device evidence disagrees with Phase 0 on {report_field}")
 
 
+def model_archive_checks(errors: list[str], archive_bytes: bytes, label: str = "model archive") -> None:
+    if not archive_bytes or len(archive_bytes) > MODEL_PACK_MAXIMUM_BYTES:
+        fail(errors, f"{label} must be non-empty and at most {MODEL_PACK_MAXIMUM_BYTES} bytes")
+        return
+    try:
+        with zipfile.ZipFile(io.BytesIO(archive_bytes)) as archive:
+            entries = archive.infolist()
+            names = [entry.filename for entry in entries]
+            if (len(entries) != len(MODEL_ARCHIVE_ENTRIES)
+                    or len(names) != len(set(names))
+                    or set(names) != MODEL_ARCHIVE_ENTRIES
+                    or any(entry.is_dir() for entry in entries)):
+                fail(errors, f"{label} must contain exactly the four approved data entries")
+                return
+            sizes = {entry.filename: entry.file_size for entry in entries}
+            maximums = {
+                "manifest.json": MODEL_MANIFEST_MAXIMUM_BYTES,
+                "model.onnx": CONTEXT_MODEL_MAXIMUM_BYTES,
+                "tokenizer.json": MODEL_TOKENIZER_MAXIMUM_BYTES,
+                "signature.der": MODEL_SIGNATURE_MAXIMUM_BYTES,
+            }
+            if any(sizes[name] <= 0 or sizes[name] > maximum for name, maximum in maximums.items()):
+                fail(errors, f"{label} contains an empty or oversized entry")
+                return
+            manifest_bytes = archive.read("manifest.json")
+            model_bytes = archive.read("model.onnx")
+            tokenizer_bytes = archive.read("tokenizer.json")
+            archive.read("signature.der")  # CRC-check the signature before accepting the container.
+    except (OSError, RuntimeError, zipfile.BadZipFile, zipfile.LargeZipFile) as exc:
+        fail(errors, f"cannot read {label}: {exc}")
+        return
+
+    try:
+        manifest = json.loads(manifest_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        fail(errors, f"cannot parse {label} manifest: {exc}")
+        return
+    if not isinstance(manifest, dict) or set(manifest) != MODEL_MANIFEST_FIELDS:
+        fail(errors, f"{label} manifest must contain exactly the supported schema fields")
+        return
+    if manifest.get("schemaVersion") != 1 or manifest.get("engineAbi") != 1:
+        fail(errors, f"{label} has an unsupported schema or engine ABI")
+    if (manifest.get("modelKind") != "context-rescorer"
+            or manifest.get("tensorAbi") != "context-en-de-v1"):
+        fail(errors, f"{label} is not the official context-en-de tensor contract")
+    locales = manifest.get("locales")
+    if (not isinstance(locales, list) or len(locales) != 2
+            or any(not isinstance(locale, str) for locale in locales)
+            or set(locales) != {"en-US", "de"}):
+        fail(errors, f"{label} must contain exactly the en-US and de locales")
+    if (not isinstance(manifest.get("architecture"), str)
+            or not manifest["architecture"] or len(manifest["architecture"]) > 128):
+        fail(errors, f"{label} has no architecture")
+    parameter_count = manifest.get("parameterCount")
+    if (isinstance(parameter_count, bool) or not isinstance(parameter_count, int)
+            or parameter_count <= 0 or parameter_count > 50_000_000):
+        fail(errors, f"{label} has an invalid parameter count")
+    if (not isinstance(manifest.get("quantization"), str)
+            or not manifest["quantization"] or len(manifest["quantization"]) > 32):
+        fail(errors, f"{label} has no quantization")
+    minimum_version = manifest.get("minimumAppVersionCode")
+    if (isinstance(minimum_version, bool) or not isinstance(minimum_version, int)
+            or minimum_version < 1 or minimum_version > EXPECTED_APP_VERSION_CODE):
+        fail(errors, f"{label} has an invalid minimum app version")
+    if manifest.get("license") != "Apache-2.0":
+        fail(errors, f"{label} model license must be Apache-2.0")
+
+    operators = manifest.get("requiredOnnxOperators")
+    if (not isinstance(operators, list) or not operators or len(operators) > 256
+            or any(not isinstance(value, str) or not value or len(value) > 256
+                   or any(character.isspace() for character in value) for value in operators)
+            or len(operators) != len(set(operators))):
+        fail(errors, f"{label} has an invalid ONNX operator declaration")
+    provenance = manifest.get("provenance")
+    if (not isinstance(provenance, list) or not provenance or len(provenance) > 64
+            or any(not isinstance(item, dict)
+                   or set(item) != {"name", "revision", "license", "source_url"}
+                   or any(not isinstance(item.get(key), str) or not item[key]
+                          for key in ("name", "revision", "license"))
+                   or not isinstance(item.get("source_url"), str)
+                   or not item["source_url"].startswith("https://")
+                   for item in provenance)):
+        fail(errors, f"{label} has invalid model provenance")
+
+    model_hash = manifest.get("modelSha256")
+    tokenizer_hash = manifest.get("tokenizerSha256")
+    if not isinstance(model_hash, str) or not SHA256.fullmatch(model_hash):
+        fail(errors, f"{label} has an invalid model hash")
+    elif hashlib.sha256(model_bytes).hexdigest() != model_hash:
+        fail(errors, f"{label} model hash does not match its payload")
+    if not isinstance(tokenizer_hash, str) or not SHA256.fullmatch(tokenizer_hash):
+        fail(errors, f"{label} has an invalid tokenizer hash")
+    elif hashlib.sha256(tokenizer_bytes).hexdigest() != tokenizer_hash:
+        fail(errors, f"{label} tokenizer hash does not match its payload")
+
+
+def model_pack_apk_checks(errors: list[str], apk: pathlib.Path) -> None:
+    if not apk.is_file():
+        fail(errors, f"model-pack APK does not exist: {apk}")
+        return
+
+    apkanalyzer = newest_tool("apkanalyzer", "cmdline-tools/*/bin/apkanalyzer")
+    if apkanalyzer is None:
+        fail(errors, "apkanalyzer not found in the configured Android SDK")
+    else:
+        result = run([str(apkanalyzer), "manifest", "print", str(apk)])
+        if result.returncode != 0:
+            fail(errors, f"apkanalyzer failed for model-pack APK: {result.stderr.strip()}")
+        else:
+            try:
+                manifest = ET.fromstring(result.stdout)
+            except ET.ParseError as exc:
+                fail(errors, f"cannot parse merged model-pack manifest: {exc}")
+            else:
+                if manifest.attrib.get("package") != MODEL_PACK_APPLICATION_ID:
+                    fail(errors, "model-pack APK has an unexpected application ID")
+                uses_sdk = manifest.find("uses-sdk")
+                if (uses_sdk is None
+                        or android_attribute(uses_sdk, "minSdkVersion") != EXPECTED_MIN_SDK
+                        or android_attribute(uses_sdk, "targetSdkVersion") != EXPECTED_TARGET_SDK):
+                    fail(errors, "model-pack APK must use the core min/target SDK contract")
+                if any(node.tag.startswith("uses-permission") for node in manifest):
+                    fail(errors, "model-pack APK must request no permissions")
+                application = manifest.find("application")
+                if application is None:
+                    fail(errors, "merged model-pack manifest has no application element")
+                else:
+                    required_attributes = {
+                        "allowBackup": "false",
+                        "usesCleartextTraffic": "false",
+                        "directBootAware": "false",
+                        "hasCode": "true",
+                    }
+                    for name, expected in required_attributes.items():
+                        if android_attribute(application, name) != expected:
+                            fail(errors, f"merged model-pack application android:{name} must be {expected}")
+                    for name in ("fullBackupContent", "dataExtractionRules"):
+                        if not android_attribute(application, name):
+                            fail(errors, f"merged model-pack application must retain android:{name}")
+                    components = [
+                        node for node in application
+                        if node.tag in {"activity", "activity-alias", "service", "receiver", "provider"}
+                    ]
+                    providers = [node for node in components if node.tag == "provider"]
+                    if len(components) != 1 or len(providers) != 1:
+                        fail(errors, "model-pack APK must expose exactly one provider and no active components")
+                    else:
+                        provider = providers[0]
+                        expected = {
+                            "name": MODEL_PACK_PROVIDER_CLASS,
+                            "authorities": MODEL_PACK_AUTHORITY,
+                            "exported": "true",
+                            "grantUriPermissions": "false",
+                            "directBootAware": "false",
+                        }
+                        for name, value in expected.items():
+                            if android_attribute(provider, name) != value:
+                                fail(errors, f"merged model-pack provider android:{name} must be {value}")
+
+    zipalign = newest_tool("zipalign", "build-tools/*/zipalign")
+    if zipalign is None:
+        fail(errors, "zipalign not found in the configured Android SDK")
+    else:
+        result = run([str(zipalign), "-c", "-P", "16", "4", str(apk)])
+        if result.returncode != 0:
+            fail(errors, "model-pack APK fails 16 KiB ZIP alignment")
+
+    try:
+        with zipfile.ZipFile(apk) as archive:
+            model_assets = [name for name in archive.namelist() if name.endswith(".lbmodel")]
+            if model_assets != [MODEL_PACK_ASSET]:
+                fail(errors, "model-pack APK must contain exactly assets/model.lbmodel")
+            else:
+                asset = archive.getinfo(MODEL_PACK_ASSET)
+                if asset.compress_type != zipfile.ZIP_STORED:
+                    fail(errors, "model-pack archive asset must be stored uncompressed")
+                if asset.file_size <= 0 or asset.file_size > MODEL_PACK_MAXIMUM_BYTES:
+                    fail(errors, "model-pack archive asset is empty or oversized")
+                else:
+                    model_archive_checks(errors, archive.read(asset), "packaged model archive")
+            dex_entries = [name for name in archive.namelist() if name.endswith(".dex")]
+            if dex_entries != ["classes.dex"]:
+                fail(errors, "model-pack APK must contain exactly one provider DEX")
+            native_entries = [name for name in archive.namelist() if name.endswith(".so")]
+            if native_entries:
+                fail(errors, "model-pack APK must not contain native code")
+            for dex_entry in dex_entries:
+                dex = archive.read(dex_entry).lower()
+                for marker in FORBIDDEN_DEPENDENCY_MARKERS:
+                    if (marker.encode("ascii") in dex
+                            or marker.replace(".", "/").encode("ascii") in dex):
+                        fail(errors, f"model-pack DEX contains forbidden dependency marker {marker}")
+    except (OSError, zipfile.BadZipFile, zipfile.LargeZipFile) as exc:
+        fail(errors, f"cannot inspect model-pack APK: {exc}")
+
+
 def apk_checks(errors: list[str], apk: pathlib.Path) -> None:
     if not apk.is_file():
         fail(errors, f"APK does not exist: {apk}")
@@ -550,6 +872,14 @@ def apk_checks(errors: list[str], apk: pathlib.Path) -> None:
                     elif android_attribute(clipboard_provider, "exported") != "false":
                         fail(errors, "merged clipboard content provider must not be exported")
 
+                queries = manifest.find("queries")
+                queried_model_providers = [] if queries is None else [
+                    provider for provider in queries.findall("provider")
+                    if android_attribute(provider, "authorities") == MODEL_PACK_AUTHORITY
+                ]
+                if len(queried_model_providers) != 1:
+                    fail(errors, "merged core APK must query exactly the official model-pack provider")
+
     zipalign = newest_tool("zipalign", "build-tools/*/zipalign")
     if zipalign is None:
         fail(errors, "zipalign not found in the configured Android SDK")
@@ -607,6 +937,13 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", action="store_true", help="verify source privacy and dependency rules")
     parser.add_argument("--apk", action="append", type=pathlib.Path, default=[], help="verify a built APK")
+    parser.add_argument(
+        "--model-pack-apk",
+        action="append",
+        type=pathlib.Path,
+        default=[],
+        help="verify the separately built English/German context-model APK",
+    )
     parser.add_argument("--rebuilt-apk", type=pathlib.Path, help="independent clean rebuild of the release APK")
     parser.add_argument("--phase0-report", type=pathlib.Path, help="passing Phase 0 JSON report for the APK")
     parser.add_argument("--grapheneos-evidence", type=pathlib.Path, help="physical GrapheneOS JSON evidence")
@@ -618,8 +955,8 @@ def main() -> int:
     args = parser.parse_args()
     evidence_values = (args.rebuilt_apk, args.phase0_report, args.grapheneos_evidence, args.instrumentation_output)
     has_evidence = any(value is not None for value in evidence_values)
-    if not args.source and not args.apk and not has_evidence:
-        parser.error("select --source and/or at least one --apk")
+    if not args.source and not args.apk and not args.model_pack_apk and not has_evidence:
+        parser.error("select --source, --apk, and/or --model-pack-apk")
     if has_evidence and (len(args.apk) != 1 or any(value is None for value in evidence_values)):
         parser.error(
             "GrapheneOS evidence requires exactly one --apk plus --rebuilt-apk, "
@@ -631,6 +968,8 @@ def main() -> int:
         source_checks(errors)
     for apk in args.apk:
         apk_checks(errors, apk.resolve())
+    for model_pack_apk in args.model_pack_apk:
+        model_pack_apk_checks(errors, model_pack_apk.resolve())
     if has_evidence:
         evidence_checks(
             errors,

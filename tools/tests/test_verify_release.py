@@ -2,19 +2,103 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import pathlib
 import sys
 import tempfile
 import unittest
+import zipfile
 
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from verify_release import GRAPHENEOS_CHECKS, PHASE0_CHECKS, evidence_checks  # noqa: E402
+from verify_release import (  # noqa: E402
+    GRAPHENEOS_CHECKS,
+    PHASE0_CHECKS,
+    evidence_checks,
+    model_archive_checks,
+)
 
 
 def sha256(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
+
+
+def context_model_archive(**manifest_overrides) -> bytes:
+    model = b"fixture onnx"
+    tokenizer = b'{"fixture":true}'
+    manifest = {
+        "schemaVersion": 1,
+        "engineAbi": 1,
+        "modelKind": "context-rescorer",
+        "tensorAbi": "context-en-de-v1",
+        "locales": ["en-US", "de"],
+        "architecture": "fixture",
+        "parameterCount": 1,
+        "quantization": "fixture",
+        "modelSha256": sha256(model),
+        "tokenizerSha256": sha256(tokenizer),
+        "requiredOnnxOperators": ["MatMul"],
+        "license": "Apache-2.0",
+        "provenance": [{
+            "name": "fixture",
+            "revision": "1",
+            "license": "Apache-2.0",
+            "source_url": "https://example.invalid/model",
+        }],
+        "minimumAppVersionCode": 1,
+    }
+    manifest.update(manifest_overrides)
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as archive:
+        archive.writestr("manifest.json", json.dumps(manifest, separators=(",", ":")))
+        archive.writestr("model.onnx", model)
+        archive.writestr("tokenizer.json", tokenizer)
+        archive.writestr("signature.der", b"fixture signature")
+    return output.getvalue()
+
+
+class VerifyModelArchiveTest(unittest.TestCase):
+    def test_accepts_bounded_context_pack_contract(self):
+        errors = []
+        model_archive_checks(errors, context_model_archive())
+        self.assertEqual([], errors)
+
+    def test_rejects_wrong_model_kind_and_payload_hash(self):
+        errors = []
+        model_archive_checks(
+            errors,
+            context_model_archive(modelKind="swipe-ctc", modelSha256="a" * 64),
+        )
+        self.assertIn("model archive is not the official context-en-de tensor contract", errors)
+        self.assertIn("model archive model hash does not match its payload", errors)
+
+    def test_rejects_extra_archive_entry(self):
+        original = context_model_archive()
+        input_archive = zipfile.ZipFile(io.BytesIO(original))
+        output = io.BytesIO()
+        with input_archive, zipfile.ZipFile(output, "w") as archive:
+            for info in input_archive.infolist():
+                archive.writestr(info.filename, input_archive.read(info))
+            archive.writestr("unexpected.bin", b"no")
+        errors = []
+        model_archive_checks(errors, output.getvalue())
+        self.assertEqual(
+            ["model archive must contain exactly the four approved data entries"],
+            errors,
+        )
+
+    def test_malformed_operator_and_locale_values_fail_closed(self):
+        errors = []
+        model_archive_checks(
+            errors,
+            context_model_archive(
+                locales=[{"not": "a locale"}, "de"],
+                requiredOnnxOperators=[["not hashable"]],
+            ),
+        )
+        self.assertIn("model archive must contain exactly the en-US and de locales", errors)
+        self.assertIn("model archive has an invalid ONNX operator declaration", errors)
 
 
 class VerifyReleaseEvidenceTest(unittest.TestCase):

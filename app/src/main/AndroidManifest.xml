@@ -129,6 +129,9 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
     </application>
 
     <queries>
+        <!-- The optional F-Droid context-model package. Its provider exposes signed data only. -->
+        <provider android:authorities="org.libreboard.model.en_de" />
+
         <!-- To detect other IMEs -->
         <intent>
             <!-- changed to * as it's supposed to help with finding other keyboard apps, see https://github.com/HeliBorg/HeliBoard/issues/1340 -->

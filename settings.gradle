@@ -1,2 +1,8 @@
 include ':app'
 include ':tools:make-emoji-keys'
+
+// The official context model is built as a separate, zero-permission APK. Keep it out of normal
+// core-only builds until a real signed .lbmodel archive is supplied explicitly.
+if (providers.gradleProperty('libreboardIncludeModelPack').orNull == 'true') {
+    include ':modelpack-en-de'
+}
