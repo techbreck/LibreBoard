@@ -22,6 +22,77 @@ class OnnxRuntimeBuildTest(unittest.TestCase):
             with self.assertRaisesRegex(builder.BuildConfigurationError, "cannot start command"):
                 builder.run(["fixture"], cwd=pathlib.Path.cwd())
 
+    def test_build_command_retries_only_bounded_process_exhaustion(self):
+        exhausted = builder.subprocess.CompletedProcess(
+            ["fixture"],
+            1,
+            stdout="",
+            stderr="ninja: fatal: posix_spawn: Resource temporarily unavailable",
+        )
+        succeeded = builder.subprocess.CompletedProcess(
+            ["fixture"],
+            0,
+            stdout="resumed",
+            stderr="",
+        )
+        with (
+            mock.patch.object(builder.subprocess, "run", side_effect=[exhausted, succeeded]) as process,
+            mock.patch.object(builder.time, "sleep") as sleep,
+        ):
+            self.assertEqual(
+                "resumed",
+                builder.run(
+                    ["fixture"],
+                    cwd=pathlib.Path.cwd(),
+                    process_exhaustion_retries=1,
+                    retry_delay_seconds=0.25,
+                ),
+            )
+        self.assertEqual(2, process.call_count)
+        sleep.assert_called_once_with(0.25)
+
+        ordinary_failure = builder.subprocess.CompletedProcess(
+            ["fixture"],
+            1,
+            stdout="",
+            stderr="compiler error",
+        )
+        with (
+            mock.patch.object(builder.subprocess, "run", return_value=ordinary_failure) as process,
+            mock.patch.object(builder.time, "sleep") as sleep,
+        ):
+            with self.assertRaisesRegex(builder.BuildConfigurationError, "compiler error"):
+                builder.run(
+                    ["fixture"],
+                    cwd=pathlib.Path.cwd(),
+                    process_exhaustion_retries=12,
+                )
+        process.assert_called_once()
+        sleep.assert_not_called()
+
+        with (
+            mock.patch.object(
+                builder.subprocess,
+                "run",
+                side_effect=[
+                    BlockingIOError(35, "Resource temporarily unavailable"),
+                    succeeded,
+                ],
+            ) as process,
+            mock.patch.object(builder.time, "sleep") as sleep,
+        ):
+            self.assertEqual(
+                "resumed",
+                builder.run(
+                    ["fixture"],
+                    cwd=pathlib.Path.cwd(),
+                    process_exhaustion_retries=1,
+                    retry_delay_seconds=0.5,
+                ),
+            )
+        self.assertEqual(2, process.call_count)
+        sleep.assert_called_once_with(0.5)
+
     def test_python_build_toolchain_is_exact_and_rejects_drift(self):
         builder.validate_python_toolchain(
             python_version=(3, 11),

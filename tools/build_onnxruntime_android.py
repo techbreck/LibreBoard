@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import hashlib
 import importlib.metadata
 import io
@@ -15,6 +16,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import zipfile
 
 
@@ -62,6 +64,12 @@ EXPECTED_PYTHON_PACKAGES = {
 }
 OPS_LINE = re.compile(r"^[A-Za-z0-9_.-]+;[1-9][0-9]*;[A-Za-z0-9_.,-]+$")
 CANONICAL_ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
+PROCESS_EXHAUSTION_MARKERS = (
+    "resource temporarily unavailable",
+    "posix_spawn",
+)
+PROCESS_EXHAUSTION_RETRIES = 12
+PROCESS_EXHAUSTION_RETRY_SECONDS = 10.0
 
 
 class BuildConfigurationError(RuntimeError):
@@ -92,17 +100,55 @@ def validate_python_toolchain(
         )
 
 
-def run(command: list[str], *, cwd: pathlib.Path, env: dict[str, str] | None = None) -> str:
-    try:
-        result = subprocess.run(command, cwd=cwd, env=env, text=True, capture_output=True, check=False)
-    except OSError as exc:
-        raise BuildConfigurationError(
-            f"cannot start command {' '.join(command)}: {exc}"
-        ) from exc
-    if result.returncode != 0:
+def _is_process_exhaustion(detail: str) -> bool:
+    lowered = detail.lower()
+    return all(marker in lowered for marker in PROCESS_EXHAUSTION_MARKERS)
+
+
+def run(
+    command: list[str],
+    *,
+    cwd: pathlib.Path,
+    env: dict[str, str] | None = None,
+    process_exhaustion_retries: int = 0,
+    retry_delay_seconds: float = PROCESS_EXHAUSTION_RETRY_SECONDS,
+) -> str:
+    if process_exhaustion_retries < 0:
+        raise BuildConfigurationError("process-exhaustion retries cannot be negative")
+    for attempt in range(process_exhaustion_retries + 1):
+        try:
+            result = subprocess.run(command, cwd=cwd, env=env, text=True, capture_output=True, check=False)
+        except OSError as exc:
+            detail = str(exc)
+            if (
+                attempt < process_exhaustion_retries
+                and (exc.errno == errno.EAGAIN or _is_process_exhaustion(detail))
+            ):
+                print(
+                    "ONNX Runtime command hit transient process exhaustion; "
+                    f"retrying {attempt + 1}/{process_exhaustion_retries}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                time.sleep(retry_delay_seconds)
+                continue
+            raise BuildConfigurationError(
+                f"cannot start command {' '.join(command)}: {exc}"
+            ) from exc
+        if result.returncode == 0:
+            return result.stdout.strip()
         detail = result.stderr.strip() or result.stdout.strip() or f"exit status {result.returncode}"
+        if attempt < process_exhaustion_retries and _is_process_exhaustion(detail):
+            print(
+                "ONNX Runtime command hit transient process exhaustion; "
+                f"retrying {attempt + 1}/{process_exhaustion_retries}",
+                file=sys.stderr,
+                flush=True,
+            )
+            time.sleep(retry_delay_seconds)
+            continue
         raise BuildConfigurationError(f"command failed: {' '.join(command)}\n{detail}")
-    return result.stdout.strip()
+    raise AssertionError("bounded command retry loop exhausted without a result")
 
 
 def sha256(path: pathlib.Path) -> str:
@@ -316,7 +362,12 @@ def build_aar(
             f"--include_ops_by_config={ops_config}",
             f"--build_dir={abi_build}",
         ]
-        run(command, cwd=SOURCE, env=env)
+        run(
+            command,
+            cwd=SOURCE,
+            env=env,
+            process_exhaustion_retries=PROCESS_EXHAUSTION_RETRIES,
+        )
         native_dir = abi_build / settings["configuration"]
         destination = jni_root / abi
         destination.mkdir(parents=True, exist_ok=True)

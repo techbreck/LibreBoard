@@ -25,6 +25,10 @@ build/onnxruntime-venv/bin/python tools/build_onnxruntime_android.py \
 `--jobs` bounds native compilation parallelism without changing the audited build configuration or
 artifact contract. Lower it on a machine concurrently running model training.
 
+The wrapper resumes an ABI build through a bounded retry only when Ninja reports the exact
+`posix_spawn: Resource temporarily unavailable` process-exhaustion condition. Compiler, linker,
+configuration, verification, and all other build failures remain terminal.
+
 The builder verifies the source commit, clean source tree, initialized nested submodules, exact build
 settings, exact NDK 28.0.13004108, reduced-operator configuration, native size ceiling, and 16 KiB ELF
 alignment. It sets stable locale/time/path inputs, rewrites the AAR with canonical order, timestamps,
