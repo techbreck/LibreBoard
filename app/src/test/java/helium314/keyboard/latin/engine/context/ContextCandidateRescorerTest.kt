@@ -71,11 +71,11 @@ class ContextCandidateRescorerTest {
     }
 
     @Test
-    fun unsupportedLanguageAndUnboundedTokenizerAreIncompatible() {
+    fun unsupportedLanguageFallsBackWhileUnboundedTokenizerIsIncompatible() {
         val session = ContextInferenceSession { _, _ -> error("must not infer") }
         val rescorer = ContextCandidateRescorer(tokenizer, session)
         assertEquals(
-            EngineAvailability.INCOMPATIBLE,
+            EngineAvailability.AVAILABLE,
             rescorer.score(
                 request("", FieldPolicy.NORMAL, FieldClass.PLAIN),
                 listOf(candidate("bonjour", "fr")),
@@ -85,7 +85,7 @@ class ContextCandidateRescorerTest {
 
         val unbounded = ContextCandidateRescorer(object : ContextTokenizer by tokenizer {
             override fun encode(text: String, maximumTokens: Int, truncation: TokenTruncation) =
-                IntArray(maximumTokens + 1) { 2 }
+                ContextTokenization(IntArray(maximumTokens + 1) { 2 }, truncated = false)
         }, session)
         assertEquals(
             EngineAvailability.INCOMPATIBLE,
@@ -130,6 +130,37 @@ class ContextCandidateRescorerTest {
         assertEquals(-1.0, result.scoresByCandidate[CandidateKey("libreboard", "de")]!!, 0.0001)
     }
 
+    @Test
+    fun truncatedCandidateIsNotScoredFromOnlyItsPrefix() {
+        var rows = 0
+        val truncatingTokenizer = object : ContextTokenizer by tokenizer {
+            override fun encode(text: String, maximumTokens: Int, truncation: TokenTruncation): ContextTokenization {
+                if (text == "Datenschutzgrundverordnung") {
+                    return ContextTokenization(IntArray(maximumTokens) { 12 }, truncated = true)
+                }
+                return tokenizer.encode(text, maximumTokens, truncation)
+            }
+        }
+        val rescorer = ContextCandidateRescorer(truncatingTokenizer) { batch, _ ->
+            rows = batch.batchSize
+            ContextInferenceResult(EngineAvailability.AVAILABLE, floatArrayOf(-0.25f))
+        }
+
+        val result = rescorer.score(
+            request("die", FieldPolicy.NORMAL, FieldClass.PLAIN),
+            listOf(
+                candidate("Datenschutzgrundverordnung", "de"),
+                candidate("Regelung", "de"),
+            ),
+            Deadline.afterMillis(100),
+        )
+
+        assertEquals(EngineAvailability.AVAILABLE, result.availability)
+        assertEquals(1, rows)
+        assertTrue(CandidateKey("datenschutzgrundverordnung", "de") !in result.scoresByCandidate)
+        assertEquals(-0.25, result.scoresByCandidate[CandidateKey("regelung", "de")]!!, 0.0001)
+    }
+
     private fun candidate(surface: String, language: String) = Candidate(
         surface = surface,
         languageTag = language,
@@ -156,12 +187,13 @@ class ContextCandidateRescorerTest {
             else -> null
         }
 
-        override fun encode(text: String, maximumTokens: Int, truncation: TokenTruncation): IntArray {
+        override fun encode(text: String, maximumTokens: Int, truncation: TokenTruncation): ContextTokenization {
             val tokens = text.split(Regex("\\s+")).filter(String::isNotEmpty)
-            return when (truncation) {
+            val selected = when (truncation) {
                 TokenTruncation.KEEP_START -> tokens.take(maximumTokens)
                 TokenTruncation.KEEP_END -> tokens.takeLast(maximumTokens)
             }.mapIndexed { index, _ -> 10 + index }.toIntArray()
+            return ContextTokenization(selected, truncated = tokens.size > maximumTokens)
         }
     }
 }

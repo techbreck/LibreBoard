@@ -4,6 +4,8 @@ package helium314.keyboard.latin.engine
 import java.util.concurrent.ExecutorCompletionService
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.TimeoutException
 import java.util.concurrent.TimeUnit
 
 fun interface CandidateSourceProvider {
@@ -31,6 +33,9 @@ class FusedCandidatePipeline(
     private val swipeExecutor: ExecutorService = Executors.newFixedThreadPool(2) { runnable ->
         Thread(runnable, "LibreBoardSwipeDecoder").apply { isDaemon = true }
     },
+    private val neuralExecutor: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "LibreBoardContextRescorer").apply { isDaemon = true }
+    },
 ) : CandidatePipeline, AutoCloseable {
     override fun suggest(request: TypingRequest, deadline: Deadline): SuggestionBatch {
         if (!request.fieldPolicy.allowsSuggestions) {
@@ -54,7 +59,7 @@ class FusedCandidatePipeline(
             else -> EngineAvailability.AVAILABLE
         }
         if (neuralAvailability == EngineAvailability.AVAILABLE) {
-            val neural = neuralRescorer!!.score(request, candidates.take(MAX_CANDIDATES), deadline)
+            val neural = scoreNeuralWithDeadline(request, candidates.take(MAX_CANDIDATES), deadline)
             neuralAvailability = neural.availability
             if (neural.availability == EngineAvailability.TIMEOUT) circuitBreaker.recordOverrun()
             if (neural.availability == EngineAvailability.AVAILABLE) {
@@ -77,6 +82,30 @@ class FusedCandidatePipeline(
             autoCorrection = ranked.autoCorrection?.takeIf { request.fieldPolicy.allowsAutoCorrection },
             neuralAvailability = neuralAvailability,
         )
+    }
+
+    private fun scoreNeuralWithDeadline(
+        request: TypingRequest,
+        candidates: List<Candidate>,
+        deadline: Deadline,
+    ): NeuralScoreResult {
+        val remaining = deadline.remainingMillis
+        if (remaining <= 0) return NeuralScoreResult(EngineAvailability.TIMEOUT)
+        val future = neuralExecutor.submit<NeuralScoreResult> {
+            neuralRescorer!!.score(request, candidates, deadline)
+        }
+        return try {
+            future.get(remaining, TimeUnit.MILLISECONDS)
+        } catch (_: TimeoutException) {
+            future.cancel(true)
+            NeuralScoreResult(EngineAvailability.TIMEOUT)
+        } catch (_: ExecutionException) {
+            NeuralScoreResult(EngineAvailability.UNAVAILABLE)
+        } catch (_: InterruptedException) {
+            future.cancel(true)
+            Thread.currentThread().interrupt()
+            NeuralScoreResult(EngineAvailability.UNAVAILABLE)
+        }
     }
 
     private fun decodeSwipe(request: TypingRequest, deadline: Deadline): Pair<List<Candidate>, EngineAvailability> {
@@ -113,5 +142,8 @@ class FusedCandidatePipeline(
         return (ctc.candidates + geometric.candidates) to ctc.availability
     }
 
-    override fun close() = swipeExecutor.shutdownNow().let { Unit }
+    override fun close() {
+        swipeExecutor.shutdownNow()
+        neuralExecutor.shutdownNow()
+    }
 }

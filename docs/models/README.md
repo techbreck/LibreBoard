@@ -27,7 +27,9 @@ gesture emission while the lexicon retains the canonical surface form.
 candidate at eight wordpieces; the BOS/language prefix and bounded preceding context occupy the
 remaining positions. Context scoring is keyed by normalized surface **and language**, so identical
 English and German spellings cannot exchange scores. Restricted field policy is checked before
-tokenization or native inference.
+tokenization or native inference. A candidate requiring more than eight wordpieces is omitted from
+neural scoring instead of being ranked from a misleading prefix; the rest of the candidate slate is
+still scored normally.
 
 The context `tokenizer.json` is schema 1 `NFKC_LOWER` BPE data: a dense vocabulary of at most 16,384
 IDs, ranked two-symbol merge pairs, distinct padding/BOS/unknown tokens, and explicit language-token
@@ -51,8 +53,19 @@ tensor data are rejected. The runtime therefore cannot follow a model-supplied f
 Manual imports use a strict `.lbmodel` ZIP container with exactly `manifest.json`, `model.onnx`,
 optional `tokenizer.json`, and `signature.der`. `ModelRegistry` streams the blob into CE staging,
 enforces size and entry allowlists, verifies SHA-256 and the injected project ECDSA key, atomically
-activates it, and retains one last-known-good version for corruption rollback. No ZIP entry is ever
-loaded as code. A production signing public key and accepted model still need to pass the Phase 0 gate.
+activates it, and retains one last-known-good version for corruption rollback. Swipe and context
+models own separate CE activation/rollback slots, so installing or wiping one cannot replace the
+other. No ZIP entry is ever loaded as code. A production signing public key and accepted model still
+need to pass the Phase 0 gate.
+
+When the verified source-built runtime is packaged, LibreBoard opens the model by local filesystem
+path and validates the runtime-reported input/output names, element types, and static or required
+dynamic dimensions against the contracts above before the first inference. Inputs use bounded direct
+native-order buffers; outputs are shape-checked and copied into bounded Kotlin arrays before every
+native result/tensor wrapper is closed. Session options and the single session are retained and closed
+together. Missing classes/native libraries, malformed metadata, inference failure, and deadline expiry
+remain distinct degradation states. A non-cooperative context call runs behind a deadline-bound worker,
+so it cannot delay classic suggestion publication past the request budget.
 
 An accepted model directory must contain the ONNX blob, `model.json`, tokenizer where applicable,
 LICENSE, model card, deterministic export command, dataset revision manifest, split hashes, evaluation

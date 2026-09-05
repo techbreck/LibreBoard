@@ -8,6 +8,7 @@ import kotlinx.serialization.json.Json
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -136,23 +137,70 @@ class ModelRegistryTest {
         assertEquals("ONNX external tensor data is not permitted", failure.message)
     }
 
+    @Test
+    fun modelKindsUseIndependentActiveAndRollbackSlots() {
+        val swipeRegistry = ModelRegistry(
+            ApplicationProvider.getApplicationContext(),
+            ModelValidationLimits(
+                maximumBytes = 3L * 1024 * 1024,
+                allowedOperators = setOf("MatMul"),
+                acceptedModelKinds = setOf(ModelKind.SWIPE_CTC),
+                appVersionCode = 1,
+            ),
+            keyPair.public,
+        )
+        swipeRegistry.wipe()
+        val contextModel = model("MatMul", marker = "context")
+        val swipeModel = model("MatMul", marker = "swipe")
+        registry.activate(ByteArrayInputStream(archive(contextModel)))
+        swipeRegistry.activate(ByteArrayInputStream(archive(
+            swipeModel,
+            kind = ModelKind.SWIPE_CTC,
+        )))
+
+        assertArrayEquals(contextModel, registry.activeModel()!!.model.readBytes())
+        assertArrayEquals(swipeModel, swipeRegistry.activeModel()!!.model.readBytes())
+        swipeRegistry.wipe()
+        assertNull(swipeRegistry.activeModel())
+        assertArrayEquals(contextModel, registry.activeModel()!!.model.readBytes())
+    }
+
+    @Test
+    fun registryRejectsAmbiguousModelKindOwnership() {
+        assertFailsWith<IllegalArgumentException> {
+            ModelRegistry(
+                ApplicationProvider.getApplicationContext(),
+                ModelValidationLimits(
+                    allowedOperators = setOf("MatMul"),
+                    acceptedModelKinds = setOf(ModelKind.SWIPE_CTC, ModelKind.CONTEXT_RESCORER),
+                    appVersionCode = 1,
+                ),
+                keyPair.public,
+            )
+        }
+    }
+
     private fun archive(
         signedModel: ByteArray,
         modelOverride: ByteArray = signedModel,
         operators: List<String> = listOf("MatMul"),
+        kind: ModelKind = ModelKind.CONTEXT_RESCORER,
     ): ByteArray {
-        val tokenizer = "{}".encodeToByteArray()
+        val tokenizer = "{}".encodeToByteArray().takeIf { kind == ModelKind.CONTEXT_RESCORER }
         val manifest = ModelManifest(
             schemaVersion = 1,
             engineAbi = 1,
-            modelKind = ModelKind.CONTEXT_RESCORER,
-            tensorAbi = "context-en-de-v1",
+            modelKind = kind,
+            tensorAbi = when (kind) {
+                ModelKind.SWIPE_CTC -> "swipe-latin-v1"
+                ModelKind.CONTEXT_RESCORER -> "context-en-de-v1"
+            },
             locales = listOf("en-US", "de"),
             architecture = "fixture",
             parameterCount = 1,
             quantization = "fixture",
             modelSha256 = sha256(signedModel),
-            tokenizerSha256 = sha256(tokenizer),
+            tokenizerSha256 = tokenizer?.let(::sha256),
             requiredOnnxOperators = operators,
             license = "Apache-2.0",
             provenance = listOf(ProvenanceEntry("fixture", "1", "Apache-2.0", "https://example.invalid/model")),
@@ -166,12 +214,12 @@ class ModelRegistryTest {
         }
         return ByteArrayOutputStream().also { output ->
             ZipOutputStream(output).use { zip ->
-                listOf(
-                    "manifest.json" to manifestBytes,
-                    "model.onnx" to modelOverride,
-                    "tokenizer.json" to tokenizer,
-                    "signature.der" to signature,
-                ).forEach { (name, bytes) ->
+                buildList {
+                    add("manifest.json" to manifestBytes)
+                    add("model.onnx" to modelOverride)
+                    tokenizer?.let { add("tokenizer.json" to it) }
+                    add("signature.der" to signature)
+                }.forEach { (name, bytes) ->
                     zip.putNextEntry(ZipEntry(name))
                     zip.write(bytes)
                     zip.closeEntry()

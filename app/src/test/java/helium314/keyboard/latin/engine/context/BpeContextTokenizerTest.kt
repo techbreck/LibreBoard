@@ -14,7 +14,7 @@ class BpeContextTokenizerTest {
     fun appliesRankedMergesNfkcAndLanguageFallback() {
         val tokenizer = BpeContextTokenizer.fromJson(document())
 
-        assertArrayEquals(intArrayOf(11), tokenizer.encode("ＨELLO", 8, TokenTruncation.KEEP_START))
+        assertArrayEquals(intArrayOf(11), tokenizer.encode("ＨELLO", 8, TokenTruncation.KEEP_START).tokenIds)
         assertEquals(3, tokenizer.languageTokenId("en-US"))
         assertEquals(4, tokenizer.languageTokenId("de-DE"))
         assertEquals(0, tokenizer.paddingTokenId)
@@ -27,13 +27,15 @@ class BpeContextTokenizerTest {
 
         assertArrayEquals(
             intArrayOf(11, 11),
-            tokenizer.encode("hello hello hello", 2, TokenTruncation.KEEP_START),
+            tokenizer.encode("hello hello hello", 2, TokenTruncation.KEEP_START).tokenIds,
         )
         assertArrayEquals(
             intArrayOf(11, 11),
-            tokenizer.encode("x hello hello", 2, TokenTruncation.KEEP_END),
+            tokenizer.encode("x hello hello", 2, TokenTruncation.KEEP_END).tokenIds,
         )
-        assertArrayEquals(intArrayOf(5, 2), tokenizer.encode("x", 8, TokenTruncation.KEEP_START))
+        assertArrayEquals(intArrayOf(5, 2), tokenizer.encode("x", 8, TokenTruncation.KEEP_START).tokenIds)
+        assertEquals(true, tokenizer.encode("hello hello hello", 2, TokenTruncation.KEEP_START).truncated)
+        assertEquals(false, tokenizer.encode("hello", 2, TokenTruncation.KEEP_START).truncated)
     }
 
     @Test

@@ -36,12 +36,12 @@ class BpeContextTokenizer private constructor(
     override fun languageTokenId(languageTag: String): Int? =
         languageTokenIds[languageTag] ?: languageTokenIds[languageTag.substringBefore('-')]
 
-    override fun encode(text: String, maximumTokens: Int, truncation: TokenTruncation): IntArray {
+    override fun encode(text: String, maximumTokens: Int, truncation: TokenTruncation): ContextTokenization {
         require(maximumTokens >= 0)
-        if (maximumTokens == 0 || text.isBlank()) return IntArray(0)
         require(text.codePointCount(0, text.length) <= MAX_INPUT_CODE_POINTS) {
             "tokenizer input is too long"
         }
+        if (text.isBlank()) return ContextTokenization(IntArray(0), truncated = false)
         val normalized = Normalizer.normalize(text, Normalizer.Form.NFKC).lowercase(Locale.ROOT)
         val tokenIds = ArrayList<Int>()
         normalized.split(WHITESPACE).filter(String::isNotEmpty).forEach { word ->
@@ -60,7 +60,7 @@ class BpeContextTokenizer private constructor(
             TokenTruncation.KEEP_START -> tokenIds.take(maximumTokens)
             TokenTruncation.KEEP_END -> tokenIds.takeLast(maximumTokens)
         }
-        return selected.toIntArray()
+        return ContextTokenization(selected.toIntArray(), truncated = tokenIds.size > maximumTokens)
     }
 
     private fun applyMerges(symbols: MutableList<String>) {

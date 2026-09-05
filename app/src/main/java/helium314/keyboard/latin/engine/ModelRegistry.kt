@@ -23,9 +23,12 @@ class ModelRegistry(
     private val limits: ModelValidationLimits,
     private val trustedProjectKey: PublicKey,
 ) {
+    private val modelKind = requireNotNull(limits.acceptedModelKinds.singleOrNull()) {
+        "A model registry must own exactly one model kind"
+    }
     private val privateContext = CredentialEncryptedStorage.contextOrNull(context)
         ?: throw IllegalStateException("Models are unavailable before first unlock")
-    private val root = File(privateContext.filesDir, "models")
+    private val root = File(File(privateContext.filesDir, "models"), modelKind.storageSlot)
     private val json = Json { ignoreUnknownKeys = false }
 
     data class ActiveModel(val manifest: ModelManifest, val model: File, val tokenizer: File?)
@@ -65,6 +68,7 @@ class ModelRegistry(
             val rawManifest = requireNotNull(manifestBytes) { "Missing model manifest" }
             val rawSignature = requireNotNull(signatureBytes) { "Missing model signature" }
             val manifest = json.decodeFromString<ModelManifest>(rawManifest.decodeToString())
+            require(manifest.modelKind == modelKind) { "Model kind does not match registry slot" }
             val validation = ModelManifestValidator.validate(manifest, modelSize, limits)
             require(validation is ModelValidationResult.Valid) {
                 (validation as ModelValidationResult.Invalid).reason
@@ -105,6 +109,7 @@ class ModelRegistry(
         return runCatching {
             val rawManifest = manifestFile.inputStream().use { readBounded(it, MAX_MANIFEST_BYTES) }
             val manifest = json.decodeFromString<ModelManifest>(rawManifest.decodeToString())
+            require(manifest.modelKind == modelKind)
             require(ModelManifestValidator.validate(manifest, modelFile.length(), limits) is ModelValidationResult.Valid)
             require(sha256(modelFile) == manifest.modelSha256)
             val tokenizer = File(directory, TOKENIZER).takeIf(File::isFile)

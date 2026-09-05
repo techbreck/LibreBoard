@@ -113,6 +113,31 @@ class FusedCandidatePipelineTest {
         assertEquals(-4.0, batch.candidates.single { it.languageTag == "de" && it.normalized == "gift" }.components.context)
     }
 
+    @Test
+    fun nonCooperativeNeuralRuntimeCannotHoldSuggestionPublicationPastDeadline() {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val neural = object : NeuralRescorer {
+            override fun score(request: TypingRequest, candidates: List<Candidate>, deadline: Deadline): NeuralScoreResult {
+                entered.countDown()
+                release.await(1, TimeUnit.SECONDS)
+                return NeuralScoreResult(EngineAvailability.AVAILABLE)
+            }
+        }
+        val classic = CandidateSourceProvider { _, _ -> listOf(
+            Candidate("this", languageTag = "en-US", sources = setOf(CandidateSource.STATIC_DICTIONARY)),
+        ) }
+
+        FusedCandidatePipeline(classic, null, neural, null, emptySwipe).use { pipeline ->
+            val batch = pipeline.suggest(request("thsi"), Deadline.afterMillis(25))
+            assertTrue(entered.await(100, TimeUnit.MILLISECONDS))
+            assertEquals(EngineAvailability.TIMEOUT, batch.neuralAvailability)
+            assertEquals("thsi", batch.candidates.first().surface)
+            assertTrue(batch.candidates.any { it.surface == "this" })
+            release.countDown()
+        }
+    }
+
     private fun request(
         raw: String,
         policy: FieldPolicy = FieldPolicy.NORMAL,

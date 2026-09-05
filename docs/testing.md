@@ -10,7 +10,10 @@ language lock, geometric swipe, CTC feature tensors and lexicon beam decoding, m
 ONNX validation, bounded context tensors, persistence, deadlines, and stale-result handling. Context
 tests enforce field-policy gates, candidate/language score identity, masks, field classes, tokenizer
 bounds, strict BPE schema/merge/special-token validation, Unicode normalization, and malformed/runtime
-fallback. Lexical tests require contractions, split/join hypotheses, and German compound evidence to
+fallback. Runtime adapter tests lock exact tensor names/types/shapes, dynamic batch dimensions,
+direct-buffer invocation, output bounds, native-wrapper cleanup, core-only absence, and hard deadline
+fallback. Registry tests prove swipe/context activation and rollback slots cannot collide. Lexical
+tests require contractions, split/join hypotheses, and German compound evidence to
 stay within one explicitly tagged dictionary; they also cover casing, language locks, deadline exits,
 generated provenance, raw-word vetoes, and multilingual source-order invariance. CTC tests cover
 double letters, return-trip words, canonical contractions, language locks, malformed tensors,

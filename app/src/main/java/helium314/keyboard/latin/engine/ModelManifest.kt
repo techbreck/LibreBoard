@@ -5,12 +5,12 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
-enum class ModelKind {
+enum class ModelKind(val storageSlot: String) {
     @SerialName("swipe-ctc")
-    SWIPE_CTC,
+    SWIPE_CTC("swipe-ctc"),
 
     @SerialName("context-rescorer")
-    CONTEXT_RESCORER,
+    CONTEXT_RESCORER("context-rescorer"),
 }
 
 @Serializable

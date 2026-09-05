@@ -32,6 +32,12 @@ Gradle rejects a lone artifact, an altered AAR, a non-pinned source revision, or
 produced from settings other than the audited file in this directory. Ordinary development builds
 omit both properties and exercise the always-available classic/geometric path.
 
+The application refers to the optional AAR through fixed internal class names rather than a Maven
+compile dependency, allowing the same source tree to build the core-only fallback. The adapter never
+accepts a class or library path from a model. At session creation it compares ORT's model metadata to
+the committed `swipe-latin-v1` or `context-en-de-v1` tensor contract and rejects any extra, missing,
+mistyped, or reshaped input/output before inference.
+
 Two independent clean Linux invocations must produce byte-identical AARs before the runtime is
 enabled in a release APK. The final APK verifier remains authoritative for packaged permissions,
 native-library allowlists, 16 KiB ELF segments, and ZIP alignment.

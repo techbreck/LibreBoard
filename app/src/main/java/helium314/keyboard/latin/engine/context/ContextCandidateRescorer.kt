@@ -39,8 +39,10 @@ interface ContextTokenizer {
     val paddingTokenId: Int
     val beginningOfSequenceTokenId: Int
     fun languageTokenId(languageTag: String): Int?
-    fun encode(text: String, maximumTokens: Int, truncation: TokenTruncation): IntArray
+    fun encode(text: String, maximumTokens: Int, truncation: TokenTruncation): ContextTokenization
 }
+
+data class ContextTokenization(val tokenIds: IntArray, val truncated: Boolean)
 
 enum class TokenTruncation { KEEP_START, KEEP_END }
 
@@ -64,58 +66,61 @@ class ContextCandidateRescorer(
         }
         if (candidates.isEmpty()) return NeuralScoreResult(EngineAvailability.AVAILABLE)
         if (deadline.expired) return NeuralScoreResult(EngineAvailability.TIMEOUT)
-        val boundedCandidates = candidates.take(MAX_CANDIDATES)
-        val batch = runCatching { createBatch(request, boundedCandidates) }
+        val prepared = runCatching { createBatch(request, candidates.take(MAX_CANDIDATES)) }
             .getOrElse { return NeuralScoreResult(EngineAvailability.INCOMPATIBLE) }
+        if (prepared == null) return NeuralScoreResult(EngineAvailability.AVAILABLE)
         if (deadline.expired) return NeuralScoreResult(EngineAvailability.TIMEOUT)
-        val inference = runCatching { inferenceSession.infer(batch, deadline) }
+        val inference = runCatching { inferenceSession.infer(prepared.batch, deadline) }
             .getOrElse { return NeuralScoreResult(EngineAvailability.UNAVAILABLE) }
         if (inference.availability != EngineAvailability.AVAILABLE) {
             return NeuralScoreResult(inference.availability)
         }
         val scores = inference.candidateLogLikelihoods
-        if (scores == null || scores.size != boundedCandidates.size || !scores.all(Float::isFinite)) {
+        if (scores == null || scores.size != prepared.candidates.size || !scores.all(Float::isFinite)) {
             return NeuralScoreResult(EngineAvailability.INCOMPATIBLE)
         }
         if (deadline.expired) return NeuralScoreResult(EngineAvailability.TIMEOUT)
         val byCandidate = LinkedHashMap<CandidateKey, Double>()
-        boundedCandidates.forEachIndexed { index, candidate ->
+        prepared.candidates.forEachIndexed { index, candidate ->
             byCandidate.merge(CandidateKey(candidate.normalized, candidate.languageTag), scores[index].toDouble(), ::maxOf)
         }
         return NeuralScoreResult(EngineAvailability.AVAILABLE, byCandidate)
     }
 
-    private fun createBatch(request: TypingRequest, candidates: List<Candidate>): ContextModelBatch {
+    private fun createBatch(request: TypingRequest, candidates: List<Candidate>): PreparedContextBatch? {
         val paddingToken = tokenizer.paddingTokenId.requireTokenId()
         val beginningToken = tokenizer.beginningOfSequenceTokenId.requireTokenId()
-        val rows = candidates.size
+        val tokenizedCandidates = candidates.mapNotNull { candidate ->
+            val languageToken = tokenizer.languageTokenId(candidate.languageTag)?.requireTokenId()
+                ?: return@mapNotNull null
+            val tokenization = tokenizer.encode(
+                candidate.surface,
+                MAX_CANDIDATE_TOKENS,
+                TokenTruncation.KEEP_START,
+            )
+            if (tokenization.truncated || tokenization.tokenIds.isEmpty()) return@mapNotNull null
+            require(tokenization.tokenIds.size <= MAX_CANDIDATE_TOKENS) { "candidate tokenization is unbounded" }
+            tokenization.tokenIds.forEach { it.requireTokenId() }
+            TokenizedCandidate(candidate, languageToken, tokenization.tokenIds)
+        }
+        if (tokenizedCandidates.isEmpty()) return null
+        val rows = tokenizedCandidates.size
         val inputIds = LongArray(rows * SEQUENCE_LENGTH) { paddingToken.toLong() }
         val attentionMask = LongArray(rows * SEQUENCE_LENGTH)
         val candidateMask = FloatArray(rows * SEQUENCE_LENGTH)
         val fieldClasses = LongArray(rows) { request.fieldClass.modelId }
 
-        candidates.forEachIndexed { row, candidate ->
-            val languageToken = requireNotNull(tokenizer.languageTokenId(candidate.languageTag)) {
-                "context model does not support ${candidate.languageTag}"
-            }.requireTokenId()
-            val candidateTokens = tokenizer.encode(
-                candidate.surface,
-                MAX_CANDIDATE_TOKENS,
-                TokenTruncation.KEEP_START,
-            )
-            require(candidateTokens.isNotEmpty() && candidateTokens.size <= MAX_CANDIDATE_TOKENS) {
-                "candidate tokenization is invalid"
-            }
-            candidateTokens.forEach { it.requireTokenId() }
+        tokenizedCandidates.forEachIndexed { row, tokenized ->
+            val candidateTokens = tokenized.tokenIds
             val maximumContext = SEQUENCE_LENGTH - candidateTokens.size - PREFIX_TOKENS
             val contextTokens = tokenizer.encode(
                 request.precedingContext,
                 maximumContext,
                 TokenTruncation.KEEP_END,
-            )
+            ).tokenIds
             require(contextTokens.size <= maximumContext) { "context tokenization is unbounded" }
             contextTokens.forEach { it.requireTokenId() }
-            val tokens = intArrayOf(beginningToken, languageToken) + contextTokens + candidateTokens
+            val tokens = intArrayOf(beginningToken, tokenized.languageToken) + contextTokens + candidateTokens
             val candidateStart = tokens.size - candidateTokens.size
             tokens.forEachIndexed { column, token ->
                 val offset = row * SEQUENCE_LENGTH + column
@@ -124,15 +129,29 @@ class ContextCandidateRescorer(
                 if (column >= candidateStart) candidateMask[offset] = 1f
             }
         }
-        return ContextModelBatch(
-            batchSize = rows,
-            sequenceLength = SEQUENCE_LENGTH,
-            inputIds = inputIds,
-            attentionMask = attentionMask,
-            candidateMask = candidateMask,
-            fieldClasses = fieldClasses,
+        return PreparedContextBatch(
+            candidates = tokenizedCandidates.map(TokenizedCandidate::candidate),
+            batch = ContextModelBatch(
+                batchSize = rows,
+                sequenceLength = SEQUENCE_LENGTH,
+                inputIds = inputIds,
+                attentionMask = attentionMask,
+                candidateMask = candidateMask,
+                fieldClasses = fieldClasses,
+            ),
         )
     }
+
+    private data class TokenizedCandidate(
+        val candidate: Candidate,
+        val languageToken: Int,
+        val tokenIds: IntArray,
+    )
+
+    private data class PreparedContextBatch(
+        val candidates: List<Candidate>,
+        val batch: ContextModelBatch,
+    )
 
     private fun Int.requireTokenId(): Int {
         require(this >= 0) { "token IDs must be non-negative" }
