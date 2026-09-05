@@ -62,6 +62,9 @@ release artifact:
 - `tools/assemble_runtime_operator_config.py` independently checks both exported model hashes and
   signed operator inventories, then emits the deterministic union consumed by the reduced runtime
   build. A development mode permits source-build smoke tests but can never produce a release config.
+- `models/training/requirements-onnxruntime-build-linux-x86_64.lock` hashes the small Python-only
+  source-build environment; the builder rejects an unpinned interpreter or dependency version before
+  invoking the native build.
 
 Synthetic end-to-end smoke tests prove corpus preparation, one-step training, FP16 ONNX export,
 operator enumeration, the 2.5 MiB model ceiling, and manifest/hash binding. A smoke artifact retains

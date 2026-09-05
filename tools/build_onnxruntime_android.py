@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.metadata
 import json
 import os
 import pathlib
@@ -50,11 +51,41 @@ FORBIDDEN_PARAMETER_FRAGMENTS = (
     "vcpkg_ms_internal",
 )
 EXPECTED_LIBRARIES = {"libonnxruntime.so", "libonnxruntime4j_jni.so"}
+EXPECTED_PYTHON_PACKAGES = {
+    "flatbuffers": "25.12.19",
+    "numpy": "2.2.6",
+    "packaging": "26.3",
+    "protobuf": "7.36.1",
+}
 OPS_LINE = re.compile(r"^[A-Za-z0-9_.-]+;[1-9][0-9]*;[A-Za-z0-9_.,-]+$")
 
 
 class BuildConfigurationError(RuntimeError):
     pass
+
+
+def validate_python_toolchain(
+    *,
+    python_version: tuple[int, int] | None = None,
+    package_versions: dict[str, str] | None = None,
+) -> None:
+    version = python_version or sys.version_info[:2]
+    if version != (3, 11):
+        raise BuildConfigurationError(f"Python 3.11 is required, found {version[0]}.{version[1]}")
+    if package_versions is None:
+        try:
+            package_versions = {
+                package: importlib.metadata.version(package)
+                for package in EXPECTED_PYTHON_PACKAGES
+            }
+        except importlib.metadata.PackageNotFoundError as failure:
+            raise BuildConfigurationError(
+                "install the hash-locked ONNX Runtime Python build requirements"
+            ) from failure
+    if package_versions != EXPECTED_PYTHON_PACKAGES:
+        raise BuildConfigurationError(
+            f"ONNX Runtime Python build requirements do not match the lock: {package_versions}"
+        )
 
 
 def run(command: list[str], *, cwd: pathlib.Path, env: dict[str, str] | None = None) -> str:
@@ -315,6 +346,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     try:
+        validate_python_toolchain()
         settings = load_settings()
         ops_config = args.ops_config.resolve()
         validate_ops_config(ops_config)

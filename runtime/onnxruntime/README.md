@@ -12,9 +12,12 @@ union. After those artifacts pass Phase 0, initialize all source dependencies an
 with:
 
 ```sh
+uv venv --python 3.11 build/onnxruntime-venv
+uv pip install --python build/onnxruntime-venv/bin/python \
+  --require-hashes -r models/training/requirements-onnxruntime-build-linux-x86_64.lock
 git submodule update --init --recursive third_party/onnxruntime
 python3 tools/assemble_runtime_operator_config.py
-python3 tools/build_onnxruntime_android.py \
+build/onnxruntime-venv/bin/python tools/build_onnxruntime_android.py \
   --ops-config build/model-export/onnxruntime/required_operators.config \
   --jobs 4
 ```

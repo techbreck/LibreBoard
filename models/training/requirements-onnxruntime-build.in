@@ -1,0 +1,5 @@
+# Build-time only. None of these packages enter an Android APK or model-pack APK.
+flatbuffers==25.12.19
+numpy==2.2.6
+packaging==26.3
+protobuf==7.36.1

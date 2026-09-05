@@ -10,6 +10,24 @@ import build_onnxruntime_android as builder
 
 
 class OnnxRuntimeBuildTest(unittest.TestCase):
+    def test_python_build_toolchain_is_exact_and_rejects_drift(self):
+        builder.validate_python_toolchain(
+            python_version=(3, 11),
+            package_versions=dict(builder.EXPECTED_PYTHON_PACKAGES),
+        )
+        drifted = dict(builder.EXPECTED_PYTHON_PACKAGES)
+        drifted["flatbuffers"] = "0.0.0"
+        with self.assertRaises(builder.BuildConfigurationError):
+            builder.validate_python_toolchain(
+                python_version=(3, 11),
+                package_versions=drifted,
+            )
+        with self.assertRaises(builder.BuildConfigurationError):
+            builder.validate_python_toolchain(
+                python_version=(3, 12),
+                package_versions=dict(builder.EXPECTED_PYTHON_PACKAGES),
+            )
+
     def test_committed_settings_are_the_exact_cpu_only_configuration(self):
         settings = builder.load_settings()
         self.assertEqual(builder.EXPECTED_ABIS, settings["abis"])
