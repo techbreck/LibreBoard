@@ -12,21 +12,32 @@ import java.nio.file.StandardOpenOption
  * validation independent from the inference runtime and avoids loading a model into native code
  * before its signed manifest has been checked.
  *
- * The parser intentionally covers nodes in the inference graph, graph-valued attributes, and
- * model-local functions. Training graphs are rejected: LibreBoard model packs are inference-only.
+ * The parser intentionally covers nodes and tensors in the inference graph, graph/tensor-valued
+ * attributes, sparse tensors, and model-local functions. Training graphs and external tensor data
+ * are rejected: LibreBoard model packs are self-contained and inference-only.
  */
 object OnnxOperatorInspector {
     private const val MODEL_GRAPH_FIELD = 7
     private const val MODEL_TRAINING_INFO_FIELD = 20
     private const val MODEL_FUNCTIONS_FIELD = 25
     private const val GRAPH_NODE_FIELD = 1
+    private const val GRAPH_INITIALIZER_FIELD = 5
+    private const val GRAPH_SPARSE_INITIALIZER_FIELD = 15
     private const val NODE_OPERATOR_FIELD = 4
     private const val NODE_ATTRIBUTE_FIELD = 5
     private const val NODE_DOMAIN_FIELD = 7
     private const val ATTRIBUTE_GRAPH_FIELD = 6
+    private const val ATTRIBUTE_TENSOR_FIELD = 5
+    private const val ATTRIBUTE_TENSORS_FIELD = 10
     private const val ATTRIBUTE_GRAPHS_FIELD = 11
+    private const val ATTRIBUTE_SPARSE_TENSOR_FIELD = 22
+    private const val ATTRIBUTE_SPARSE_TENSORS_FIELD = 23
     private const val FUNCTION_NODE_FIELD = 7
     private const val FUNCTION_ATTRIBUTE_FIELD = 11
+    private const val TENSOR_EXTERNAL_DATA_FIELD = 13
+    private const val TENSOR_DATA_LOCATION_FIELD = 14
+    private const val SPARSE_TENSOR_VALUES_FIELD = 1
+    private const val SPARSE_TENSOR_INDICES_FIELD = 2
     private const val LENGTH_DELIMITED = 2
     private const val MAX_NESTED_GRAPH_DEPTH = 32
     private const val MAX_NODE_COUNT = 100_000
@@ -74,11 +85,20 @@ object OnnxOperatorInspector {
         require(depth <= MAX_NESTED_GRAPH_DEPTH) { "ONNX graph nesting is too deep" }
         while (reader.hasRemaining()) {
             val tag = reader.readTag()
-            if (tag.fieldNumber == GRAPH_NODE_FIELD) {
-                requireWireType(tag, LENGTH_DELIMITED)
-                parseNode(reader.readMessage(), state, depth)
-            } else {
-                reader.skip(tag.wireType)
+            when (tag.fieldNumber) {
+                GRAPH_NODE_FIELD -> {
+                    requireWireType(tag, LENGTH_DELIMITED)
+                    parseNode(reader.readMessage(), state, depth)
+                }
+                GRAPH_INITIALIZER_FIELD -> {
+                    requireWireType(tag, LENGTH_DELIMITED)
+                    parseTensor(reader.readMessage())
+                }
+                GRAPH_SPARSE_INITIALIZER_FIELD -> {
+                    requireWireType(tag, LENGTH_DELIMITED)
+                    parseSparseTensor(reader.readMessage())
+                }
+                else -> reader.skip(tag.wireType)
             }
         }
     }
@@ -121,11 +141,50 @@ object OnnxOperatorInspector {
         while (reader.hasRemaining()) {
             val tag = reader.readTag()
             when (tag.fieldNumber) {
+                ATTRIBUTE_TENSOR_FIELD, ATTRIBUTE_TENSORS_FIELD -> {
+                    requireWireType(tag, LENGTH_DELIMITED)
+                    parseTensor(reader.readMessage())
+                }
                 ATTRIBUTE_GRAPH_FIELD, ATTRIBUTE_GRAPHS_FIELD -> {
                     requireWireType(tag, LENGTH_DELIMITED)
                     parseGraph(reader.readMessage(), state, depth + 1)
                 }
+                ATTRIBUTE_SPARSE_TENSOR_FIELD, ATTRIBUTE_SPARSE_TENSORS_FIELD -> {
+                    requireWireType(tag, LENGTH_DELIMITED)
+                    parseSparseTensor(reader.readMessage())
+                }
                 else -> reader.skip(tag.wireType)
+            }
+        }
+    }
+
+    private fun parseTensor(reader: ProtoReader) {
+        while (reader.hasRemaining()) {
+            val tag = reader.readTag()
+            when (tag.fieldNumber) {
+                TENSOR_EXTERNAL_DATA_FIELD -> {
+                    requireWireType(tag, LENGTH_DELIMITED)
+                    throw IllegalArgumentException("ONNX external tensor data is not permitted")
+                }
+                TENSOR_DATA_LOCATION_FIELD -> {
+                    requireWireType(tag, 0)
+                    require(reader.readScalarVarint() == 0L) {
+                        "ONNX external tensor data is not permitted"
+                    }
+                }
+                else -> reader.skip(tag.wireType)
+            }
+        }
+    }
+
+    private fun parseSparseTensor(reader: ProtoReader) {
+        while (reader.hasRemaining()) {
+            val tag = reader.readTag()
+            if (tag.fieldNumber == SPARSE_TENSOR_VALUES_FIELD || tag.fieldNumber == SPARSE_TENSOR_INDICES_FIELD) {
+                requireWireType(tag, LENGTH_DELIMITED)
+                parseTensor(reader.readMessage())
+            } else {
+                reader.skip(tag.wireType)
             }
         }
     }
@@ -182,6 +241,8 @@ object OnnxOperatorInspector {
             buffer.position(buffer.position() + length)
             return ProtoReader(nested)
         }
+
+        fun readScalarVarint(): Long = readVarint()
 
         fun readUtf8(maximumBytes: Int, label: String): String {
             val length = readLength()

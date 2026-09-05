@@ -20,7 +20,8 @@ Operator validation is independent of the signed declaration. Before native infe
 maps the bounded ONNX protobuf, enumerates nodes in the inference graph, graph-valued attributes,
 repeated graph attributes, and model-local function bodies, and requires that discovered set to
 exactly match the manifest. Non-standard domains use `domain::Operator`; training graphs, malformed
-wire data, undeclared operators, and declared-but-absent operators are rejected.
+wire data, undeclared operators, declared-but-absent operators, and every form of ONNX external
+tensor data are rejected. The runtime therefore cannot follow a model-supplied filesystem path.
 
 Manual imports use a strict `.lbmodel` ZIP container with exactly `manifest.json`, `model.onnx`,
 optional `tokenizer.json`, and `signature.der`. `ModelRegistry` streams the blob into CE staging,

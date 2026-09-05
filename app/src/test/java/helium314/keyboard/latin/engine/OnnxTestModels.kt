@@ -7,10 +7,12 @@ internal object OnnxTestModels {
         functions: List<ByteArray> = emptyList(),
         marker: String = "fixture",
         trainingInfo: ByteArray? = null,
+        initializers: List<ByteArray> = emptyList(),
+        sparseInitializers: List<ByteArray> = emptyList(),
     ): ByteArray = concat(
         varintField(1, 9),
         messageField(2, marker.encodeToByteArray()),
-        messageField(7, graph(nodes)),
+        messageField(7, graph(nodes, initializers, sparseInitializers)),
         messageField(8, varintField(2, 18)),
         *functions.map { messageField(25, it) }.toTypedArray(),
         trainingInfo?.let { messageField(20, it) } ?: byteArrayOf(),
@@ -26,13 +28,43 @@ internal object OnnxTestModels {
         if (domain.isEmpty()) byteArrayOf() else messageField(7, domain.encodeToByteArray()),
     )
 
-    fun graph(nodes: List<ByteArray>): ByteArray =
-        concat(*nodes.map { messageField(1, it) }.toTypedArray())
+    fun graph(
+        nodes: List<ByteArray>,
+        initializers: List<ByteArray> = emptyList(),
+        sparseInitializers: List<ByteArray> = emptyList(),
+    ): ByteArray = concat(
+        *nodes.map { messageField(1, it) }.toTypedArray(),
+        *initializers.map { messageField(5, it) }.toTypedArray(),
+        *sparseInitializers.map { messageField(15, it) }.toTypedArray(),
+    )
 
     fun graphAttribute(nodes: List<ByteArray>): ByteArray = messageField(6, graph(nodes))
 
     fun graphsAttribute(vararg graphs: List<ByteArray>): ByteArray =
         concat(*graphs.map { messageField(11, graph(it)) }.toTypedArray())
+
+    fun tensorAttribute(tensor: ByteArray, repeated: Boolean = false): ByteArray =
+        messageField(if (repeated) 10 else 5, tensor)
+
+    fun sparseTensorAttribute(sparseTensor: ByteArray, repeated: Boolean = false): ByteArray =
+        messageField(if (repeated) 23 else 22, sparseTensor)
+
+    fun externalTensor(useLocationOnly: Boolean = false): ByteArray = if (useLocationOnly) {
+        varintField(14, 1)
+    } else {
+        concat(
+            messageField(13, concat(
+                messageField(1, "location".encodeToByteArray()),
+                messageField(2, "../outside.bin".encodeToByteArray()),
+            )),
+            varintField(14, 1),
+        )
+    }
+
+    fun sparseTensor(values: ByteArray, indices: ByteArray = byteArrayOf()): ByteArray = concat(
+        messageField(1, values),
+        messageField(2, indices),
+    )
 
     fun function(nodes: List<ByteArray>, attributes: List<ByteArray> = emptyList()): ByteArray = concat(
         messageField(1, "fixture_function".encodeToByteArray()),

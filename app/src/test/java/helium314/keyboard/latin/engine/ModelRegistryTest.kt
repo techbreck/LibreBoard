@@ -123,6 +123,18 @@ class ModelRegistryTest {
         }
     }
 
+    @Test
+    fun rejectsSignedModelWithExternalTensorReference() {
+        val external = OnnxTestModels.model(
+            nodes = listOf(OnnxTestModels.node("MatMul")),
+            initializers = listOf(OnnxTestModels.externalTensor()),
+        )
+        val failure = assertFailsWith<IllegalArgumentException> {
+            registry.activate(ByteArrayInputStream(archive(external)))
+        }
+        assertEquals("ONNX external tensor data is not permitted", failure.message)
+    }
+
     private fun archive(
         signedModel: ByteArray,
         modelOverride: ByteArray = signedModel,

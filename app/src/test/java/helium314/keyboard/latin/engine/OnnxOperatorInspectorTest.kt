@@ -61,6 +61,61 @@ class OnnxOperatorInspectorTest {
         assertFailsWith<IllegalArgumentException> { inspect(model) }
     }
 
+    @Test
+    fun rejectsExternalTopLevelAndAttributeTensors() {
+        val topLevel = OnnxTestModels.model(
+            nodes = listOf(OnnxTestModels.node("MatMul")),
+            initializers = listOf(OnnxTestModels.externalTensor()),
+        )
+        val attribute = OnnxTestModels.model(
+            nodes = listOf(OnnxTestModels.node(
+                "Constant",
+                attributes = listOf(OnnxTestModels.tensorAttribute(OnnxTestModels.externalTensor())),
+            )),
+        )
+        val repeatedAttribute = OnnxTestModels.model(
+            nodes = listOf(OnnxTestModels.node(
+                "Custom",
+                attributes = listOf(OnnxTestModels.tensorAttribute(
+                    OnnxTestModels.externalTensor(useLocationOnly = true),
+                    repeated = true,
+                )),
+            )),
+        )
+
+        listOf(topLevel, attribute, repeatedAttribute).forEach { model ->
+            val failure = assertFailsWith<IllegalArgumentException> { inspect(model) }
+            assertEquals("ONNX external tensor data is not permitted", failure.message)
+        }
+    }
+
+    @Test
+    fun rejectsExternalSparseTensorValuesAndIndices() {
+        val sparseInitializer = OnnxTestModels.model(
+            nodes = listOf(OnnxTestModels.node("Add")),
+            sparseInitializers = listOf(
+                OnnxTestModels.sparseTensor(OnnxTestModels.externalTensor()),
+            ),
+        )
+        val sparseAttribute = OnnxTestModels.model(
+            nodes = listOf(OnnxTestModels.node(
+                "Custom",
+                attributes = listOf(OnnxTestModels.sparseTensorAttribute(
+                    OnnxTestModels.sparseTensor(
+                        values = byteArrayOf(),
+                        indices = OnnxTestModels.externalTensor(useLocationOnly = true),
+                    ),
+                    repeated = true,
+                )),
+            )),
+        )
+
+        listOf(sparseInitializer, sparseAttribute).forEach { model ->
+            val failure = assertFailsWith<IllegalArgumentException> { inspect(model) }
+            assertEquals("ONNX external tensor data is not permitted", failure.message)
+        }
+    }
+
     private fun inspect(bytes: ByteArray): Set<String> {
         val file = Files.createTempFile("libreboard-onnx", ".onnx").toFile()
         return try {
