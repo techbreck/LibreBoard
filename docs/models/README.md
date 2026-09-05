@@ -21,6 +21,20 @@ lexicon-constrained prefix beam search, language filtering, and candidate constr
 Kotlin rather than inside the model or runtime bridge. Apostrophes and hyphens may be absent from a
 gesture emission while the lexicon retains the canonical surface form.
 
+`context-en-de-v1.onnx` also has a fixed candidate-scoring ABI. It receives `input_ids`
+`int64[N,32]`, `attention_mask` `int64[N,32]`, `candidate_mask` `float32[N,32]`, and `field_class`
+`int64[N]`, then returns one finite `candidate_log_likelihood` per row. `N` is capped at 32 and each
+candidate at eight wordpieces; the BOS/language prefix and bounded preceding context occupy the
+remaining positions. Context scoring is keyed by normalized surface **and language**, so identical
+English and German spellings cannot exchange scores. Restricted field policy is checked before
+tokenization or native inference.
+
+The context `tokenizer.json` is schema 1 `NFKC_LOWER` BPE data: a dense vocabulary of at most 16,384
+IDs, ranked two-symbol merge pairs, distinct padding/BOS/unknown tokens, and explicit language-token
+mappings. LibreBoard parses it with unknown fields disabled, caps it at 2 MiB, validates merge outputs
+and special IDs, applies Unicode NFKC deterministically, and makes start-versus-end truncation
+explicit. No tokenizer code is loaded from a model pack.
+
 No stock Maven AAR, ORT Extensions, NNAPI/Play delegate, GGUF runtime, downloaded executable, or
 arbitrary model signature is permitted. `ModelManifestValidator` is fail-closed on schema, engine ABI,
 model kind, exact tensor ABI, app version, size, hashes, required tokenizer, operator allowlist,

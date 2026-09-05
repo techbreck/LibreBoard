@@ -19,7 +19,7 @@ class FusedCandidatePipelineTest {
                 components = ScoreComponents(spatial = 1.0)))
         }
         val neural = object : NeuralRescorer {
-            override fun score(context: String, candidates: List<Candidate>, deadline: Deadline) =
+            override fun score(request: TypingRequest, candidates: List<Candidate>, deadline: Deadline) =
                 NeuralScoreResult(EngineAvailability.TIMEOUT)
         }
         val pipeline = FusedCandidatePipeline(classic, null, neural, null, emptySwipe)
@@ -80,14 +80,48 @@ class FusedCandidatePipelineTest {
         }
     }
 
+    @Test
+    fun neuralScoresRemainScopedToCandidateLanguage() {
+        val english = Candidate(
+            "gift",
+            languageTag = "en-US",
+            sources = setOf(CandidateSource.STATIC_DICTIONARY),
+            components = ScoreComponents(spatial = 1.0),
+        )
+        val german = english.copy(surface = "Gift", languageTag = "de")
+        val neural = object : NeuralRescorer {
+            override fun score(request: TypingRequest, candidates: List<Candidate>, deadline: Deadline) =
+                NeuralScoreResult(
+                    EngineAvailability.AVAILABLE,
+                    mapOf(english.key to 4.0, german.key to -4.0),
+                )
+        }
+        val pipeline = FusedCandidatePipeline(
+            CandidateSourceProvider { _, _ -> listOf(english, german) },
+            null,
+            neural,
+            null,
+            emptySwipe,
+        )
+
+        val batch = pipeline.suggest(
+            request("gif", enabledLanguages = listOf("en-US", "de")),
+            Deadline.afterMillis(100),
+        )
+
+        assertEquals(4.0, batch.candidates.single { it.languageTag == "en-US" && it.normalized == "gift" }.components.context)
+        assertEquals(-4.0, batch.candidates.single { it.languageTag == "de" && it.normalized == "gift" }.components.context)
+    }
+
     private fun request(
         raw: String,
         policy: FieldPolicy = FieldPolicy.NORMAL,
         style: InputStyle = InputStyle.TAP,
+        enabledLanguages: List<String> = listOf("en-US"),
     ) = TypingRequest.bounded(
         rawText = raw,
         geometry = geometry,
-        enabledLanguages = listOf("en-US"),
+        enabledLanguages = enabledLanguages,
         fieldPolicy = policy,
         inputStyle = style,
         sequenceId = 1,

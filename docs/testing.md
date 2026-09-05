@@ -7,7 +7,10 @@ correct, fast, and compatible with GrapheneOS.
 
 `./gradlew testRunTestsUnitTest` exercises engine contracts, field policy, candidate fusion,
 language lock, geometric swipe, CTC feature tensors and lexicon beam decoding, model-manifest and
-ONNX validation, persistence, deadlines, and stale-result handling. CTC tests cover double letters,
+ONNX validation, bounded context tensors, persistence, deadlines, and stale-result handling. Context
+tests enforce field-policy gates, candidate/language score identity, masks, field classes, tokenizer
+bounds, strict BPE schema/merge/special-token validation, Unicode normalization, and malformed/runtime
+fallback. CTC tests cover double letters,
 return-trip words, canonical contractions, language locks, malformed tensors, runtime failure, and
 deadline fallback. Backup tests additionally exercise ZIP path traversal, canonical aliases,
 entry and expanded-size limits, strict typed-settings parsing, preservation of excluded private

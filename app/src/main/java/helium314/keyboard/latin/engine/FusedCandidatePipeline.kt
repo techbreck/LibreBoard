@@ -54,12 +54,12 @@ class FusedCandidatePipeline(
             else -> EngineAvailability.AVAILABLE
         }
         if (neuralAvailability == EngineAvailability.AVAILABLE) {
-            val neural = neuralRescorer!!.score(request.precedingContext, candidates.take(MAX_CANDIDATES), deadline)
+            val neural = neuralRescorer!!.score(request, candidates.take(MAX_CANDIDATES), deadline)
             neuralAvailability = neural.availability
             if (neural.availability == EngineAvailability.TIMEOUT) circuitBreaker.recordOverrun()
             if (neural.availability == EngineAvailability.AVAILABLE) {
                 candidates.replaceAll { candidate ->
-                    candidate.copy(components = candidate.components.copy(context = neural.scoresByNormalizedCandidate[candidate.normalized]))
+                    candidate.copy(components = candidate.components.copy(context = neural.scoresByCandidate[candidate.key]))
                 }
             }
         }

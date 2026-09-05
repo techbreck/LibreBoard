@@ -5,13 +5,17 @@ interface CandidatePipeline {
     fun suggest(request: TypingRequest, deadline: Deadline): SuggestionBatch
 }
 
+data class CandidateKey(val normalized: String, val languageTag: String)
+
 data class NeuralScoreResult(
     val availability: EngineAvailability,
-    val scoresByNormalizedCandidate: Map<String, Double> = emptyMap(),
+    val scoresByCandidate: Map<CandidateKey, Double> = emptyMap(),
 )
 
+val Candidate.key: CandidateKey get() = CandidateKey(normalized, languageTag)
+
 interface NeuralRescorer {
-    fun score(context: String, candidates: List<Candidate>, deadline: Deadline): NeuralScoreResult
+    fun score(request: TypingRequest, candidates: List<Candidate>, deadline: Deadline): NeuralScoreResult
 }
 
 data class SwipeDecodeResult(
