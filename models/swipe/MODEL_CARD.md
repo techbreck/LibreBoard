@@ -47,6 +47,14 @@ build/model-venv/bin/python tools/train_swipe_model.py --device cpu
 build/model-venv/bin/python tools/export_swipe_model.py
 ```
 
+Complete training atomically updates `build/model-training/swipe-latin-v1/checkpoint.safetensors`
+after every validated epoch. Resume an interrupted run only with the explicit, hash-checked command:
+
+```sh
+build/model-venv/bin/python tools/train_swipe_model.py --device cpu \
+  --resume-checkpoint build/model-training/swipe-latin-v1/checkpoint.safetensors
+```
+
 The reviewed preparation accepted 1,020,528 gestures and rejected 2.23%; its exact source,
 policy, tool, output, session, and stratum hashes are committed in `corpus-manifest.json`.
 

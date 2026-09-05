@@ -19,7 +19,8 @@ The swipe build path is now implemented without committing or pretending to acce
   release-eligible training run refuses any prepared split whose manifest is not byte-identical.
 - `models/swipe/model-spec.json` fixes the 821,121-parameter layout-conditioned architecture and
   tensor ABI. `tools/train_swipe_model.py` uses deterministic CTC training and writes hash-bound
-  safetensors. `tools/export_swipe_model.py` stores learned initializers as FP16, retains float32
+  safetensors, with atomic epoch checkpoints that restore model, optimizer, and RNG state only when
+  every execution binding still matches. `tools/export_swipe_model.py` stores learned initializers as FP16, retains float32
   external tensors/CPU compute, runs the full ONNX checker, rejects external data/custom domains,
   and derives the reduced-operator file from the exact graph.
 - `models/training/requirements-linux-x86_64.lock` pins and hashes the build-only CPU toolchain. These

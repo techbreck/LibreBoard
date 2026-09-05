@@ -31,6 +31,21 @@ class SwipeTrainingError(ValueError):
     pass
 
 
+CHECKPOINT_METADATA_KEYS = {
+    "schemaVersion",
+    "appCommit",
+    "dataManifestSha256",
+    "modelSpecSha256",
+    "trainingToolSha256",
+    "modelImplementationSha256",
+    "completedEpoch",
+    "epochReports",
+    "deviceType",
+    "torchVersion",
+    "threads",
+}
+
+
 def _dependencies():
     try:
         import torch
@@ -242,6 +257,152 @@ def _evaluate(model, path, split, layout, spec, device, batch_size, maximum_step
     }
 
 
+def _checkpoint_bindings(
+    *,
+    app_commit: str,
+    data_manifest_sha256: str,
+    model_spec_sha256: str,
+    device_type: str,
+    torch_version: str,
+    threads: int,
+) -> dict[str, str]:
+    return {
+        "schemaVersion": "1",
+        "appCommit": app_commit,
+        "dataManifestSha256": data_manifest_sha256,
+        "modelSpecSha256": model_spec_sha256,
+        "trainingToolSha256": model_sources.file_sha256(pathlib.Path(__file__)),
+        "modelImplementationSha256": model_sources.file_sha256(
+            ROOT / "models" / "training" / "swipe_model.py"
+        ),
+        "deviceType": device_type,
+        "torchVersion": torch_version,
+        "threads": str(threads),
+    }
+
+
+def _save_checkpoint(
+    path: pathlib.Path,
+    *,
+    model,
+    optimizer,
+    epoch_reports: list[dict[str, Any]],
+    bindings: dict[str, str],
+    device,
+    torch,
+    save_file,
+) -> None:
+    tensors = {
+        f"model.{name}": tensor.detach().cpu().contiguous()
+        for name, tensor in sorted(model.state_dict().items())
+    }
+    for name, parameter in sorted(model.named_parameters()):
+        state = optimizer.state.get(parameter)
+        if not isinstance(state, dict) or set(state) != {"step", "exp_avg", "exp_avg_sq"}:
+            raise SwipeTrainingError(f"optimizer checkpoint state is incomplete for {name}")
+        for state_name in ("step", "exp_avg", "exp_avg_sq"):
+            value = state[state_name]
+            if not isinstance(value, torch.Tensor) or not torch.isfinite(value).all():
+                raise SwipeTrainingError(f"optimizer checkpoint state is invalid for {name}.{state_name}")
+            tensors[f"optimizer.{name}.{state_name}"] = value.detach().cpu().contiguous()
+    tensors["rng.cpu"] = torch.get_rng_state().cpu().contiguous()
+    if device.type == "cuda":
+        tensors["rng.cuda"] = torch.cuda.get_rng_state(device).cpu().contiguous()
+
+    metadata = dict(bindings)
+    metadata.update({
+        "completedEpoch": str(len(epoch_reports)),
+        "epochReports": json.dumps(epoch_reports, separators=(",", ":"), sort_keys=True),
+    })
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = tempfile.NamedTemporaryFile(dir=path.parent, suffix=".safetensors", delete=False)
+    temporary_path = pathlib.Path(temporary.name)
+    temporary.close()
+    try:
+        save_file(tensors, temporary_path, metadata=metadata)
+        os.replace(temporary_path, path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+
+
+def _restore_checkpoint(
+    path: pathlib.Path,
+    *,
+    model,
+    optimizer,
+    expected_bindings: dict[str, str],
+    device,
+    torch,
+) -> tuple[int, list[dict[str, Any]], str]:
+    try:
+        from safetensors import safe_open
+
+        if not path.is_file() or path.is_symlink() or path.stat().st_size > 128 * 1024 * 1024:
+            raise SwipeTrainingError("training checkpoint is missing, linked, or too large")
+        with safe_open(path, framework="pt", device="cpu") as checkpoint:
+            metadata = checkpoint.metadata()
+            tensor_names = set(checkpoint.keys())
+            tensors = {name: checkpoint.get_tensor(name) for name in tensor_names}
+    except SwipeTrainingError:
+        raise
+    except Exception as failure:
+        raise SwipeTrainingError(f"cannot read training checkpoint: {failure}") from failure
+    if not isinstance(metadata, dict) or set(metadata) != CHECKPOINT_METADATA_KEYS:
+        raise SwipeTrainingError("training checkpoint metadata has an unexpected schema")
+    for key, value in expected_bindings.items():
+        if key == "appCommit":
+            continue
+        if metadata.get(key) != value:
+            raise SwipeTrainingError(f"training checkpoint binding does not match: {key}")
+    app_commit = metadata.get("appCommit", "")
+    if len(app_commit) not in {40, 64} or any(character not in "0123456789abcdef" for character in app_commit):
+        raise SwipeTrainingError("training checkpoint has an invalid app commit")
+    try:
+        completed_epoch = int(metadata["completedEpoch"])
+        epoch_reports = json.loads(metadata["epochReports"])
+    except (TypeError, ValueError, json.JSONDecodeError) as failure:
+        raise SwipeTrainingError("training checkpoint has invalid progress metadata") from failure
+    if (
+        not isinstance(epoch_reports, list)
+        or completed_epoch != len(epoch_reports)
+        or completed_epoch <= 0
+    ):
+        raise SwipeTrainingError("training checkpoint epoch reports do not match its progress")
+
+    model_state = model.state_dict()
+    expected_tensors = {f"model.{name}" for name in model_state}
+    for name, _parameter in model.named_parameters():
+        expected_tensors.update({
+            f"optimizer.{name}.step",
+            f"optimizer.{name}.exp_avg",
+            f"optimizer.{name}.exp_avg_sq",
+        })
+    expected_tensors.add("rng.cpu")
+    if device.type == "cuda":
+        expected_tensors.add("rng.cuda")
+    if tensor_names != expected_tensors:
+        raise SwipeTrainingError("training checkpoint tensor inventory does not match the model")
+
+    try:
+        model.load_state_dict(
+            {name: tensors[f"model.{name}"] for name in model_state},
+            strict=True,
+        )
+        optimizer.state.clear()
+        for name, parameter in model.named_parameters():
+            optimizer.state[parameter] = {
+                "step": tensors[f"optimizer.{name}.step"].cpu(),
+                "exp_avg": tensors[f"optimizer.{name}.exp_avg"].to(device),
+                "exp_avg_sq": tensors[f"optimizer.{name}.exp_avg_sq"].to(device),
+            }
+        torch.set_rng_state(tensors["rng.cpu"].to(dtype=torch.uint8, device="cpu"))
+        if device.type == "cuda":
+            torch.cuda.set_rng_state(tensors["rng.cuda"].to(dtype=torch.uint8, device="cpu"), device)
+    except (KeyError, RuntimeError, ValueError) as failure:
+        raise SwipeTrainingError(f"training checkpoint state is incompatible: {failure}") from failure
+    return completed_epoch, epoch_reports, app_commit
+
+
 def train(args: argparse.Namespace) -> dict[str, Any]:
     torch, safetensors, save_file, nn, DataLoader, IterableDataset = _dependencies()
     spec = swipe_model_contract.load_spec(args.spec)
@@ -311,8 +472,41 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
         num_workers=0,
         collate_fn=lambda values: _collate(values, torch),
     )
-    epoch_reports = []
-    for epoch in range(spec.training["epochs"]):
+    output_root = args.output_root.resolve()
+    output_root.mkdir(parents=True, exist_ok=True)
+    resume_checkpoint = getattr(args, "resume_checkpoint", None)
+    checkpoint_path = (
+        resume_checkpoint.resolve()
+        if resume_checkpoint is not None
+        else output_root / "checkpoint.safetensors"
+    )
+    if resume_checkpoint is not None and not release_attempt:
+        raise SwipeTrainingError("checkpoint resume is available only for complete release training")
+    if release_attempt and resume_checkpoint is None and checkpoint_path.exists():
+        raise SwipeTrainingError("release checkpoint already exists; pass --resume-checkpoint or use a clean output")
+    data_manifest_sha256 = model_sources.file_sha256(data_root / "split-manifest.json")
+    bindings = _checkpoint_bindings(
+        app_commit=commit,
+        data_manifest_sha256=data_manifest_sha256,
+        model_spec_sha256=spec.sha256,
+        device_type=device.type,
+        torch_version=str(torch.__version__),
+        threads=args.threads,
+    )
+    epoch_reports: list[dict[str, Any]] = []
+    start_epoch = 0
+    if resume_checkpoint is not None:
+        start_epoch, epoch_reports, commit = _restore_checkpoint(
+            checkpoint_path,
+            model=model,
+            optimizer=optimizer,
+            expected_bindings=bindings,
+            device=device,
+            torch=torch,
+        )
+        if start_epoch > spec.training["epochs"]:
+            raise SwipeTrainingError("training checkpoint exceeds the configured epoch count")
+    for epoch in range(start_epoch, spec.training["epochs"]):
         dataset.epoch = epoch
         generator = torch.Generator(device=device).manual_seed(spec.training["seed"] + epoch)
         model.train()
@@ -365,13 +559,24 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
             "meanCtcLoss": total_loss / examples,
             "validation": validation,
         })
+        if release_attempt:
+            checkpoint_bindings = dict(bindings)
+            checkpoint_bindings["appCommit"] = commit
+            _save_checkpoint(
+                checkpoint_path,
+                model=model,
+                optimizer=optimizer,
+                epoch_reports=epoch_reports,
+                bindings=checkpoint_bindings,
+                device=device,
+                torch=torch,
+                save_file=save_file,
+            )
         print(json.dumps(epoch_reports[-1], sort_keys=True), flush=True)
         if args.max_train_steps is not None:
             break
 
     model = model.to("cpu").eval()
-    output_root = args.output_root.resolve()
-    output_root.mkdir(parents=True, exist_ok=True)
     development = args.max_train_steps is not None or args.max_validation_steps is not None or dirty
     weights_name = "swipe-latin-v1-development.safetensors" if development else "swipe-latin-v1.weights.safetensors"
     weights_path = output_root / weights_name
@@ -428,6 +633,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--threads", type=int, default=1)
     parser.add_argument("--max-train-steps", type=int)
     parser.add_argument("--max-validation-steps", type=int)
+    parser.add_argument("--resume-checkpoint", type=pathlib.Path)
     parser.add_argument("--allow-dirty", action="store_true")
     args = parser.parse_args(argv)
     if args.threads <= 0 or args.max_train_steps == 0 or args.max_validation_steps == 0:

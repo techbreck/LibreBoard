@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib.util
 import pathlib
 import sys
+import tempfile
 import unittest
 
 
@@ -48,6 +49,80 @@ class TrainSwipeModelTest(unittest.TestCase):
         self.assertEqual(spec.raw["parameterCount"], trainable_parameter_count(model))
         self.assertEqual((1, 32, 65), tuple(output.shape))
         self.assertTrue(torch.isfinite(output).all())
+
+    @unittest.skipUnless(importlib.util.find_spec("torch") is not None, "optional model toolchain is not installed")
+    def test_atomic_checkpoint_restores_model_optimizer_and_rng(self):
+        import torch
+        from safetensors.torch import save_file
+
+        torch.manual_seed(7)
+        model = torch.nn.Linear(2, 2)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=0.01)
+        optimizer.zero_grad(set_to_none=True)
+        model(torch.ones((1, 2))).sum().backward()
+        optimizer.step()
+        expected_model = {name: value.detach().clone() for name, value in model.state_dict().items()}
+        expected_optimizer = {
+            name: {
+                key: value.detach().clone()
+                for key, value in optimizer.state[parameter].items()
+            }
+            for name, parameter in model.named_parameters()
+        }
+        expected_rng = torch.get_rng_state().clone()
+        bindings = trainer._checkpoint_bindings(
+            app_commit="a" * 40,
+            data_manifest_sha256="b" * 64,
+            model_spec_sha256="c" * 64,
+            device_type="cpu",
+            torch_version=str(torch.__version__),
+            threads=1,
+        )
+        reports = [{"epoch": 1, "meanCtcLoss": 1.25}]
+        with tempfile.TemporaryDirectory() as temporary:
+            path = pathlib.Path(temporary) / "checkpoint.safetensors"
+            trainer._save_checkpoint(
+                path,
+                model=model,
+                optimizer=optimizer,
+                epoch_reports=reports,
+                bindings=bindings,
+                device=torch.device("cpu"),
+                torch=torch,
+                save_file=save_file,
+            )
+            restored_model = torch.nn.Linear(2, 2)
+            restored_optimizer = torch.optim.AdamW(restored_model.parameters(), lr=0.01)
+            completed, restored_reports, app_commit = trainer._restore_checkpoint(
+                path,
+                model=restored_model,
+                optimizer=restored_optimizer,
+                expected_bindings=bindings,
+                device=torch.device("cpu"),
+                torch=torch,
+            )
+
+            self.assertEqual(1, completed)
+            self.assertEqual(reports, restored_reports)
+            self.assertEqual("a" * 40, app_commit)
+            self.assertTrue(torch.equal(expected_rng, torch.get_rng_state()))
+            for name, value in restored_model.state_dict().items():
+                self.assertTrue(torch.equal(expected_model[name], value))
+            for name, parameter in restored_model.named_parameters():
+                for key, value in restored_optimizer.state[parameter].items():
+                    self.assertTrue(torch.equal(expected_optimizer[name][key], value))
+
+            mismatched = dict(bindings)
+            mismatched["threads"] = "2"
+            with self.assertRaisesRegex(trainer.SwipeTrainingError, "threads"):
+                trainer._restore_checkpoint(
+                    path,
+                    model=restored_model,
+                    optimizer=restored_optimizer,
+                    expected_bindings=mismatched,
+                    device=torch.device("cpu"),
+                    torch=torch,
+                )
 
 
 if __name__ == "__main__":
