@@ -10,7 +10,9 @@ may be measured only outside the repository as a black-box reference.
 
 `tools/evaluate_engine.py` implements the fail-closed metric and threshold checks over prediction
 JSONL. Its versioned input contract is documented in `docs/phase-0-dataset-schema.md`, and its own
-tests run in CI. The required held-out dataset and trained model measurements do not yet exist.
+tests run in CI. Reports are cryptographically bound by SHA-256 to the APK and both models and must
+identify stock hardware, physical GrapheneOS hardware without sandboxed Google Play, and a low-RAM
+emulator. The required held-out dataset and trained model measurements do not yet exist.
 
 Phase 1 remains blocked until all original gates pass: tap relative error reduction, context-sensitive
 and valid-word gains, false-correction ceiling, swipe top-1/top-3 strata, 80/200 ms p95 budgets, 64 MiB

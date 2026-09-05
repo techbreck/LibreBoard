@@ -15,8 +15,25 @@ these fields:
 - `shouldCorrect`: required for `valid_word`; false labels measure false corrections.
 
 Tap systems are `heliboard`, `fused`, `fused_personal`, and `fused_neural`. Swipe systems are
-`geometric`, `ctc`, and `fused_swipe`. Metadata is a JSON object containing `schemaVersion: 1` and
-the measured `peakAddedNeuralMemoryMiB`.
+`geometric`, `ctc`, and `fused_swipe`.
+
+Metadata is a JSON object that binds the report to the artifacts and required environments:
+
+- `schemaVersion`: `1`.
+- `appCommit`: the full lowercase Git commit tested.
+- `coreApkSha256`, `swipeModelSha256`, and `contextModelSha256`: lowercase SHA-256 values for the
+  exact APK and both models used for every reported prediction.
+- `peakAddedNeuralMemoryMiB`: the maximum measured added neural memory.
+- `environments`: exactly one `stock_android_hardware`, one `grapheneos_hardware`, and one
+  `low_ram_emulator` record. Every record includes `deviceModel`, `buildFingerprint`, `testRunId`,
+  `apiLevel`, and `physicalDevice`. Hardware must be physical and run Android 15 or newer. The
+  GrapheneOS record also includes `grapheneOsBuildNumber` and
+  `sandboxedGooglePlayInstalled: false`. The emulator includes `isLowRamDevice: true` and a
+  `memoryMiB` value no greater than 2048.
+
+The evaluator copies this normalized evidence into the output report. Missing device classes,
+placeholder artifact identifiers, a non-physical GrapheneOS run, or a GrapheneOS run with sandboxed
+Google Play cannot produce a passing report.
 
 ```sh
 python3 tools/evaluate_engine.py measurements.jsonl \

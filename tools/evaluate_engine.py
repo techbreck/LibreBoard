@@ -11,6 +11,7 @@ import argparse
 import json
 import math
 import pathlib
+import re
 import sys
 import unicodedata
 from collections import Counter, defaultdict
@@ -30,6 +31,13 @@ MINIMUM_COUNTS = {
     "lexical": 500,
     "swipe": 5_000,
 }
+REQUIRED_ENVIRONMENTS = {
+    "stock_android_hardware",
+    "grapheneos_hardware",
+    "low_ram_emulator",
+}
+SHA256 = re.compile(r"^[0-9a-f]{64}$")
+GIT_COMMIT = re.compile(r"^[0-9a-f]{40,64}$")
 
 
 class EvaluationError(ValueError):
@@ -193,6 +201,74 @@ def check_dataset(examples: list[Example], enforce_minimum_counts: bool) -> tupl
     return test, dict(sorted(counts.items()))
 
 
+def validate_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+    if metadata.get("schemaVersion") != SCHEMA_VERSION:
+        raise EvaluationError("metadata has unsupported schemaVersion")
+    peak_memory = metadata.get("peakAddedNeuralMemoryMiB")
+    if isinstance(peak_memory, bool) or not isinstance(peak_memory, (int, float)) or peak_memory < 0:
+        raise EvaluationError("metadata requires non-negative peakAddedNeuralMemoryMiB")
+
+    app_commit = metadata.get("appCommit")
+    if not isinstance(app_commit, str) or not GIT_COMMIT.fullmatch(app_commit):
+        raise EvaluationError("metadata requires a full lowercase appCommit")
+    hashes: dict[str, str] = {}
+    for field in ("coreApkSha256", "swipeModelSha256", "contextModelSha256"):
+        value = metadata.get(field)
+        if not isinstance(value, str) or not SHA256.fullmatch(value):
+            raise EvaluationError(f"metadata requires lowercase {field}")
+        hashes[field] = value
+
+    environments = metadata.get("environments")
+    if not isinstance(environments, list) or len(environments) != len(REQUIRED_ENVIRONMENTS):
+        raise EvaluationError("metadata requires exactly the three reference environments")
+    validated_environments: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for index, environment in enumerate(environments):
+        location = f"metadata environment {index + 1}"
+        if not isinstance(environment, dict):
+            raise EvaluationError(f"{location} must be an object")
+        kind = environment.get("kind")
+        if kind not in REQUIRED_ENVIRONMENTS or kind in seen:
+            raise EvaluationError(f"{location} has an invalid or duplicate kind")
+        seen.add(kind)
+        required_strings = ["deviceModel", "buildFingerprint", "testRunId"]
+        if kind == "grapheneos_hardware":
+            required_strings.append("grapheneOsBuildNumber")
+        for field in required_strings:
+            value = environment.get(field)
+            if not isinstance(value, str) or not value or len(value) > 512:
+                raise EvaluationError(f"{location} requires {field}")
+        api_level = environment.get("apiLevel")
+        if isinstance(api_level, bool) or not isinstance(api_level, int) or api_level < 26 or api_level > 100:
+            raise EvaluationError(f"{location} has an invalid apiLevel")
+
+        if kind.endswith("_hardware"):
+            if environment.get("physicalDevice") is not True or api_level < 35:
+                raise EvaluationError(f"{location} must identify Android 15+ physical hardware")
+        else:
+            memory = environment.get("memoryMiB")
+            if (environment.get("physicalDevice") is not False
+                    or environment.get("isLowRamDevice") is not True
+                    or isinstance(memory, bool)
+                    or not isinstance(memory, int)
+                    or memory <= 0
+                    or memory > 2_048):
+                raise EvaluationError(f"{location} must identify a low-RAM emulator")
+
+        if kind == "grapheneos_hardware" and environment.get("sandboxedGooglePlayInstalled") is not False:
+            raise EvaluationError(f"{location} must run without sandboxed Google Play")
+        validated_environments.append(environment)
+
+    if seen != REQUIRED_ENVIRONMENTS:
+        raise EvaluationError("metadata is missing a reference environment")
+    return {
+        "appCommit": app_commit,
+        **hashes,
+        "environments": validated_environments,
+        "peakAddedNeuralMemoryMiB": float(peak_memory),
+    }
+
+
 def evaluate(
     examples: list[Example],
     metadata: dict[str, Any],
@@ -200,17 +276,19 @@ def evaluate(
     enforce_minimum_counts: bool = True,
 ) -> dict[str, Any]:
     test, counts = check_dataset(examples, enforce_minimum_counts)
-    if metadata.get("schemaVersion") != SCHEMA_VERSION:
-        raise EvaluationError("metadata has unsupported schemaVersion")
-    peak_memory = metadata.get("peakAddedNeuralMemoryMiB")
-    if isinstance(peak_memory, bool) or not isinstance(peak_memory, (int, float)) or peak_memory < 0:
-        raise EvaluationError("metadata requires non-negative peakAddedNeuralMemoryMiB")
+    evidence = validate_metadata(metadata)
+    peak_memory = evidence["peakAddedNeuralMemoryMiB"]
 
     tap_error = [row for row in test if row.category == "tap_error"]
     valid_word = [row for row in test if row.category == "valid_word"]
     swipe = [row for row in test if row.category == "swipe"]
     tap_all = [row for row in test if row.category in TAP_CATEGORIES]
-    metrics: dict[str, Any] = {"counts": counts, "systems": {}}
+    metrics: dict[str, Any] = {
+        "schemaVersion": SCHEMA_VERSION,
+        "evidence": evidence,
+        "counts": counts,
+        "systems": {},
+    }
     for system in TAP_SYSTEMS:
         relevant = tap_all
         metrics["systems"][system] = {
