@@ -50,6 +50,16 @@ fallback contract must remain explicit, and inherited instructions for proprieta
 are rejected. Obsolete upstream changelogs and screenshots are intentionally not redistributed as
 LibreBoard release material.
 
+Gradle dependency verification is fail-closed through `gradle/verification-metadata.xml`. The
+committed inventory pins SHA-256 checksums for build plugins and every artifact resolved by the host
+and Android test graphs; `tools/verify_release.py --source` rejects a missing or implausibly small
+inventory, trust bypasses, malformed checksums, and omitted direct dependencies. To change a
+dependency, regenerate the inventory from the real verification graph with
+`./gradlew --write-verification-metadata sha256 testRunTestsUnitTest assembleDebugNoMinifyAndroidTest
+--max-workers=1`, review the coordinate and checksum diff, and then rerun the normal online and
+offline release commands. Generated checksums establish artifact integrity and reproducibility, not
+publisher identity, so unexplained coordinate or digest changes must not be accepted automatically.
+
 A second CI job installs the hash-locked Python 3.11 CPU model toolchain and runs the same suite with
 its optional checks enabled. It instantiates the real 821,121-parameter model, verifies finite
 `[1,32,65]` output, prepares a synthetic three-split corpus, trains one deterministic CTC step, stores

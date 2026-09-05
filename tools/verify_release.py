@@ -161,6 +161,31 @@ FORBIDDEN_STORE_METADATA_MARKERS = (
     "only with closed-source",
     "nur mit proprietärer",
 )
+GRADLE_VERIFICATION_NS = "{https://schema.gradle.org/dependency-verification}"
+REQUIRED_GRADLE_COMPONENTS = {
+    ("com.android.tools.build", "gradle", "8.13.2"),
+    ("com.android.tools", "desugar_jdk_libs", "2.1.5"),
+    ("org.jetbrains.kotlin", "kotlin-gradle-plugin", "2.3.20"),
+    ("org.jetbrains.kotlin", "kotlin-stdlib", "2.3.20"),
+    ("org.jetbrains.kotlin", "kotlin-test", "2.3.20"),
+    ("org.jetbrains.kotlinx", "kotlinx-serialization-json", "1.11.0"),
+    ("androidx.compose", "compose-bom", "2025.11.01"),
+    ("androidx.compose.material3", "material3", "1.4.0"),
+    ("androidx.compose.ui", "ui-tooling", "1.9.5"),
+    ("androidx.compose.ui", "ui-tooling-preview", "1.9.5"),
+    ("androidx.autofill", "autofill", "1.3.0"),
+    ("androidx.core", "core-ktx", "1.17.0"),
+    ("androidx.navigation", "navigation-compose", "2.9.8"),
+    ("androidx.recyclerview", "recyclerview", "1.4.0"),
+    ("androidx.test", "core", "1.7.0"),
+    ("androidx.test", "runner", "1.7.0"),
+    ("androidx.viewpager2", "viewpager2", "1.1.0"),
+    ("com.github.skydoves", "colorpicker-compose", "1.1.3"),
+    ("sh.calvin.reorderable", "reorderable", "3.1.0"),
+    ("junit", "junit", "4.13.2"),
+    ("org.mockito", "mockito-core", "5.23.0"),
+    ("org.robolectric", "robolectric", "4.16.1"),
+}
 
 
 def reject_duplicate_json_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -272,6 +297,80 @@ def validate_store_metadata(
     for required in ("internet", "access_network_state", "geometric"):
         if required not in combined:
             fail(errors, f"store metadata omits the release contract marker: {required}")
+
+
+def validate_gradle_dependency_verification(
+    errors: list[str],
+    path: pathlib.Path = ROOT / "gradle/verification-metadata.xml",
+) -> None:
+    try:
+        root = ET.parse(path).getroot()
+    except (OSError, ET.ParseError) as exc:
+        fail(errors, f"cannot read Gradle dependency verification metadata: {exc}")
+        return
+    if root.tag != GRADLE_VERIFICATION_NS + "verification-metadata":
+        fail(errors, "Gradle dependency verification metadata has an unexpected root")
+        return
+    configuration = root.find(GRADLE_VERIFICATION_NS + "configuration")
+    components = root.find(GRADLE_VERIFICATION_NS + "components")
+    if configuration is None or components is None:
+        fail(errors, "Gradle dependency verification metadata is incomplete")
+        return
+    expected_configuration = {
+        GRADLE_VERIFICATION_NS + "verify-metadata",
+        GRADLE_VERIFICATION_NS + "verify-signatures",
+    }
+    configuration_children = list(configuration)
+    if any(node.tag not in expected_configuration for node in configuration_children):
+        fail(errors, "Gradle dependency verification must not contain trust bypasses")
+    if (
+        len(configuration_children) != len(expected_configuration)
+        or {node.tag for node in configuration_children} != expected_configuration
+        or configuration.findtext(GRADLE_VERIFICATION_NS + "verify-metadata") != "true"
+        or configuration.findtext(GRADLE_VERIFICATION_NS + "verify-signatures") != "false"
+    ):
+        fail(errors, "Gradle dependency checksum verification must remain enabled")
+
+    coordinates: set[tuple[str, str, str]] = set()
+    artifact_count = 0
+    for component in components:
+        if component.tag != GRADLE_VERIFICATION_NS + "component":
+            fail(errors, "Gradle verification components contain an unexpected element")
+            continue
+        coordinate = tuple(component.attrib.get(name, "") for name in ("group", "name", "version"))
+        if (
+            set(component.attrib) != {"group", "name", "version"}
+            or any(not value for value in coordinate)
+            or coordinate in coordinates
+        ):
+            fail(errors, "Gradle verification metadata contains an invalid or duplicate component")
+        coordinates.add(coordinate)
+        for artifact in component:
+            artifact_count += 1
+            if (
+                artifact.tag != GRADLE_VERIFICATION_NS + "artifact"
+                or set(artifact.attrib) != {"name"}
+                or not artifact.attrib["name"]
+                or "/" in artifact.attrib["name"]
+                or "\\" in artifact.attrib["name"]
+                or artifact.attrib["name"] in {".", ".."}
+            ):
+                fail(errors, "Gradle verification metadata contains an invalid artifact")
+                continue
+            hashes = list(artifact)
+            if (
+                len(hashes) != 1
+                or hashes[0].tag != GRADLE_VERIFICATION_NS + "sha256"
+                or not SHA256.fullmatch(hashes[0].attrib.get("value", ""))
+                or set(hashes[0].attrib) - {"value", "origin"}
+            ):
+                fail(errors, "Gradle verification artifact does not have exactly one SHA-256 checksum")
+    if artifact_count < 100:
+        fail(errors, "Gradle dependency verification metadata is implausibly incomplete")
+    missing = REQUIRED_GRADLE_COMPONENTS - coordinates
+    if missing:
+        rendered = ", ".join(":".join(coordinate) for coordinate in sorted(missing))
+        fail(errors, f"Gradle verification metadata omits required components: {rendered}")
 
 
 def validate_context_distillation_manifest(
@@ -632,6 +731,7 @@ def source_checks(errors: list[str]) -> None:
     validate_backup_exclusions(errors)
     validate_model_pack_source(errors)
     validate_store_metadata(errors)
+    validate_gradle_dependency_verification(errors)
 
     source_root = ROOT / "app/src/main/java"
     dynamic_load = re.compile(r"System\s*\.\s*load\s*\(")

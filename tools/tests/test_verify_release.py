@@ -10,6 +10,7 @@ import sys
 import tempfile
 import unittest
 import zipfile
+import xml.etree.ElementTree as ET
 from unittest import mock
 
 
@@ -312,6 +313,61 @@ class VerifyStoreMetadataTest(unittest.TestCase):
             errors = []
             verify_release.validate_store_metadata(errors, root)
             self.assertTrue(any(error.startswith("cannot read de-DE store metadata title.txt") for error in errors))
+
+
+class VerifyGradleDependenciesTest(unittest.TestCase):
+    def setUp(self):
+        self.source = pathlib.Path(__file__).resolve().parents[2] / "gradle/verification-metadata.xml"
+
+    def test_accepts_committed_checksum_inventory(self):
+        errors = []
+        verify_release.validate_gradle_dependency_verification(errors, self.source)
+        self.assertEqual([], errors)
+
+    def test_rejects_trust_bypass_and_missing_required_component(self):
+        tree = ET.parse(self.source)
+        root = tree.getroot()
+        namespace = verify_release.GRADLE_VERIFICATION_NS
+        configuration = root.find(namespace + "configuration")
+        components = root.find(namespace + "components")
+        ET.SubElement(configuration, namespace + "trusted-artifacts")
+        required = next(
+            component
+            for component in components
+            if component.attrib == {
+                "group": "junit",
+                "name": "junit",
+                "version": "4.13.2",
+            }
+        )
+        components.remove(required)
+        with tempfile.TemporaryDirectory() as temporary:
+            path = pathlib.Path(temporary) / "verification-metadata.xml"
+            tree.write(path, encoding="utf-8", xml_declaration=True)
+            errors = []
+            verify_release.validate_gradle_dependency_verification(errors, path)
+        self.assertIn("Gradle dependency verification must not contain trust bypasses", errors)
+        self.assertIn(
+            "Gradle verification metadata omits required components: junit:junit:4.13.2",
+            errors,
+        )
+
+    def test_rejects_malformed_checksum_and_artifact_path(self):
+        tree = ET.parse(self.source)
+        namespace = verify_release.GRADLE_VERIFICATION_NS
+        artifacts = tree.getroot().findall(f".//{namespace}artifact")
+        artifacts[0][0].set("value", "0" * 63)
+        artifacts[1].set("name", "../escaped.module")
+        with tempfile.TemporaryDirectory() as temporary:
+            path = pathlib.Path(temporary) / "verification-metadata.xml"
+            tree.write(path, encoding="utf-8", xml_declaration=True)
+            errors = []
+            verify_release.validate_gradle_dependency_verification(errors, path)
+        self.assertIn("Gradle verification metadata contains an invalid artifact", errors)
+        self.assertIn(
+            "Gradle verification artifact does not have exactly one SHA-256 checksum",
+            errors,
+        )
 
 
 class VerifyDependencyLockTest(unittest.TestCase):
