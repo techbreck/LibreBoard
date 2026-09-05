@@ -8,6 +8,9 @@ import android.content.pm.PackageManager
 import android.text.InputType
 import android.view.inputmethod.EditorInfo
 import androidx.test.core.app.ApplicationProvider
+import helium314.keyboard.latin.database.ClipboardDao
+import helium314.keyboard.latin.database.ClipboardHistoryPolicy
+import helium314.keyboard.keyboard.clipboard.ClipboardSearchActivity
 import helium314.keyboard.latin.engine.personal.PersonalizationRuntime
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -34,11 +37,13 @@ class OnDevicePrivacyInstrumentedTest {
         context = ApplicationProvider.getApplicationContext()
         assertFalse("instrumentation must use credential-encrypted app storage", context.isDeviceProtectedStorage)
         PersonalizationRuntime.wipe(context)
+        ClipboardDao.getInstance(context)?.clear()
     }
 
     @After
     fun tearDown() {
         PersonalizationRuntime.wipe(context)
+        ClipboardDao.getInstance(context)?.clear()
     }
 
     @Suppress("DEPRECATION")
@@ -46,7 +51,7 @@ class OnDevicePrivacyInstrumentedTest {
     fun installedPackageHasNoNetworkOrBackupAndImeIsDirectBootAware() {
         val packageInfo = context.packageManager.getPackageInfo(
             context.packageName,
-            PackageManager.GET_PERMISSIONS or PackageManager.GET_SERVICES,
+            PackageManager.GET_PERMISSIONS or PackageManager.GET_SERVICES or PackageManager.GET_ACTIVITIES,
         )
         val requestedPermissions = packageInfo.requestedPermissions.orEmpty().toSet()
         assertFalse(Manifest.permission.INTERNET in requestedPermissions)
@@ -62,6 +67,11 @@ class OnDevicePrivacyInstrumentedTest {
         }
         assertEquals(Manifest.permission.BIND_INPUT_METHOD, imeService.permission)
         assertTrue("IME service must be available before first unlock", imeService.directBootAware)
+
+        val clipboardSearch = packageInfo.activities.orEmpty().single {
+            it.name == ClipboardSearchActivity::class.java.name
+        }
+        assertFalse("clipboard search must not be externally launchable", clipboardSearch.exported)
     }
 
     @Test
@@ -99,6 +109,13 @@ class OnDevicePrivacyInstrumentedTest {
             assertFalse(allowsClipboardCapture)
             assertFalse(allowsPersistence)
         }
+
+
+        val clipboardSearch = editor(InputType.TYPE_CLASS_TEXT).apply {
+            privateImeOptions = "$PRIVATE_IME_OPTION_CLIPBOARD_SEARCH.240,"
+        }
+        assertEquals(FieldPolicy.NO_LEARNING, FieldPolicyResolver.resolve(clipboardSearch))
+        assertFullyRestricted(clipboardSearch)
     }
 
     @Test
@@ -159,6 +176,44 @@ class OnDevicePrivacyInstrumentedTest {
         assertTrue(exported.contains("Breck"))
         assertFalse(exported.contains("NeverPersistIncognito"))
         assertFalse(exported.contains("NeverPersistSensitive"))
+    }
+
+    @Test
+    fun clipboardDatabaseIsBoundedSearchableAndSafeAgainstStaleIds() {
+        val dao = requireNotNull(ClipboardDao.getInstance(context))
+        val now = System.currentTimeMillis()
+        dao.addClip(now, pinned = true, text = "GrapheneOS release checklist")
+        dao.addClip(now + 1, pinned = false, text = "German compound validation")
+
+        assertEquals("GrapheneOS release checklist", dao.search("graph RELEASE").single().text)
+        assertTrue(dao.search("missing").isEmpty())
+        assertFalse(dao.addClip(now + 2, false, "x".repeat(ClipboardHistoryPolicy.MAX_TEXT_CHARS + 1)))
+        assertEquals(2, dao.count())
+
+        dao.addClip(now - 20_000, pinned = false, text = "expired-unpinned")
+        dao.addClip(now - 20_000, pinned = true, text = "expired-but-pinned")
+        dao.clearExpiredBefore(now - 10_000)
+        assertTrue(dao.search("expired-unpinned").isEmpty())
+        assertEquals("expired-but-pinned", dao.search("expired-but-pinned").single().text)
+
+        repeat(ClipboardHistoryPolicy.MAX_UNPINNED_ENTRIES + 5) { index ->
+            dao.addClip(now + 10 + index, pinned = false, text = "bounded-$index")
+        }
+        assertEquals(ClipboardHistoryPolicy.MAX_UNPINNED_ENTRIES, dao.getAll().count { !it.isPinned })
+        assertTrue(dao.getAll().size <= ClipboardHistoryPolicy.MAX_TOTAL_ENTRIES)
+        assertTrue(dao.search("bounded-0").isEmpty())
+        assertEquals("bounded-104", dao.search("bounded-104").single().text)
+
+        val removableId = dao.search("bounded-104").single().id
+        dao.deleteClip(removableId)
+        assertEquals(null, dao.get(removableId))
+        dao.deleteClip(removableId) // stale UI events are idempotent
+
+        dao.clearNonPinned()
+        assertEquals(
+            setOf("GrapheneOS release checklist", "expired-but-pinned"),
+            dao.getAll().mapNotNull { it.text }.toSet(),
+        )
     }
 
     private fun assertFullyRestricted(editorInfo: EditorInfo) {

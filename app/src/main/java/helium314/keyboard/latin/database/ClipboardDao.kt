@@ -29,6 +29,7 @@ class ClipboardDao private constructor(private val db: Database) {
         fun onClipInserted(position: Int)
         fun onClipsRemoved(position: Int, count: Int)
         fun onClipMoved(oldPosition: Int, newPosition: Int)
+        fun onClipsChanged()
     }
 
     var listener: Listener? = null
@@ -61,19 +62,33 @@ class ClipboardDao private constructor(private val db: Database) {
         sort()
     }
 
-    fun addClip(timestamp: Long, pinned: Boolean, text: String) = synchronized(this) {
+    private val searchIndex = cache.associateTo(HashMap()) { it.id to ClipboardHistoryPolicy.searchDocument(it) }
+
+    init {
+        // Old databases predate the hard limits. Fail closed during migration instead of carrying
+        // oversized clipboard payloads forward indefinitely.
+        val invalid = cache.filter {
+            if (it.filename == null) it.text == null || !ClipboardHistoryPolicy.acceptsText(it.text)
+            else !ClipboardHistoryPolicy.acceptsAttachment(it.filename, it.text, it.mimeTypes)
+        }
+        delete(invalid, notify = false)
+        enforceExistingEntryLimits(notify = false)
+    }
+
+    fun addClip(timestamp: Long, pinned: Boolean, text: String): Boolean = synchronized(this) {
+        if (!ClipboardHistoryPolicy.acceptsText(text)) return@synchronized false
         clearOldClips()
         val existingIndex = cache.indexOfFirst { it.text == text }
         if (existingIndex >= 0 && cache[existingIndex].timeStamp == timestamp)
-            return@synchronized // nothing to do
+            return@synchronized true // nothing to do
         if (existingIndex >= 0) {
             updateTimestampAt(existingIndex, timestamp)
-            return@synchronized
+            return@synchronized true
         }
         insertNewEntry(timestamp, pinned, text, null, null, null)
     }
 
-    fun addClipUri(timestamp: Long, pinned: Boolean, uri: Uri, description: ClipDescription, context: Context) = synchronized(this) {
+    fun addClipUri(timestamp: Long, pinned: Boolean, uri: Uri, description: ClipDescription, context: Context): Boolean = synchronized(this) {
         clearOldClips()
         val extension = if (description.mimeTypeCount == 0) ""
             else ".${MimeTypeMap.getSingleton().getExtensionFromMimeType(description.getMimeType(0))}"
@@ -81,7 +96,10 @@ class ClipboardDao private constructor(private val db: Database) {
         // device protected so it must never be used for private clipboard payloads.
         val tempFile = File(clipFilesDir, "temp_clip")
         tempFile.delete()
-        runCatching { FileUtils.copyContentUriToNewFile(uri, context, tempFile) }.onFailure { return@synchronized }
+        runCatching { FileUtils.copyContentUriToNewFile(uri, context, tempFile) }.onFailure {
+            tempFile.delete()
+            return@synchronized false
+        }
 
         // we set the file name to the sha256 of the content to have virtually unique names and an easy way to find duplicates
         val sha256 = ChecksumCalculator.checksum(tempFile)
@@ -92,12 +110,17 @@ class ClipboardDao private constructor(private val db: Database) {
             if (cache[existingIndex].timeStamp != timestamp)
                 updateTimestampAt(existingIndex, timestamp)
             tempFile.delete()
-            return@synchronized
+            return@synchronized true
         }
-        tempFile.renameTo(file)
+        if (!tempFile.renameTo(file)) {
+            tempFile.delete()
+            return@synchronized false
+        }
         // we could try getting a thumbnail using context.contentResolver.loadThumbnail(uri, Size(a, b), null)
         // but currently we don't cache them anyway, so no use for that
-        insertNewEntry(timestamp, pinned, description.label?.toString(), file.name, description.getMimeTypes(), context)
+        val inserted = insertNewEntry(timestamp, pinned, description.label?.toString(), file.name, description.getMimeTypes(), context)
+        if (!inserted) file.delete()
+        inserted
     }
 
     // keep pinned and the first non-pinned, others can be deleted
@@ -121,7 +144,10 @@ class ClipboardDao private constructor(private val db: Database) {
     }
 
     /** only public for restoring backups */
-    fun insertNewEntry(timestamp: Long, pinned: Boolean, text: String?, filename: String?, mimeTypes: List<String>?, context: Context?) {
+    fun insertNewEntry(timestamp: Long, pinned: Boolean, text: String?, filename: String?, mimeTypes: List<String>?, context: Context?): Boolean = synchronized(this) {
+        if (filename == null && (text == null || !ClipboardHistoryPolicy.acceptsText(text))) return@synchronized false
+        if (filename != null && !ClipboardHistoryPolicy.acceptsAttachment(filename, text, mimeTypes)) return@synchronized false
+        if (!makeRoomForEntry(pinned)) return@synchronized false
         val cv = ContentValues(5)
         cv.put(COLUMN_TIMESTAMP, timestamp)
         cv.put(COLUMN_PINNED, pinned)
@@ -131,12 +157,52 @@ class ClipboardDao private constructor(private val db: Database) {
         cv.put(COLUMN_MIME_TYPE, mimeTypes?.joinToString("§"))
         val rowId = db.writableDatabase.insert(TABLE, null, cv)
 
+        if (rowId < 0) return@synchronized false
+
         val entry = ClipboardHistoryEntry(rowId, timestamp, pinned, text, filename, mimeTypes)
-        if (filename != null && context != null)
-            deleteIfSizeExceeded(context.prefs())
         cache.add(entry)
+        searchIndex[entry.id] = ClipboardHistoryPolicy.searchDocument(entry)
         cache.sort()
         listener?.onClipInserted(cache.indexOf(entry))
+        if (filename != null && context != null)
+            deleteIfSizeExceeded(context.prefs())
+        true
+    }
+
+    private fun makeRoomForEntry(incomingPinned: Boolean): Boolean {
+        val removeCount = ClipboardHistoryPolicy.requiredUnpinnedEvictions(
+            totalEntries = cache.size,
+            unpinnedEntries = cache.count { !it.isPinned },
+            incomingPinned = incomingPinned,
+        )
+        if (removeCount == 0) return true
+        val removable = cache.asSequence()
+            .filter { !it.isPinned }
+            .sortedBy { it.timeStamp }
+            .take(removeCount)
+            .toList()
+        if (removable.size != removeCount) return false
+        delete(removable)
+        return true
+    }
+
+    /** Brings databases created by older versions under the current absolute limits. */
+    private fun enforceExistingEntryLimits(notify: Boolean) {
+        val removals = LinkedHashSet<ClipboardHistoryEntry>()
+        val unpinnedOldestFirst = cache.filter { !it.isPinned }.sortedBy { it.timeStamp }
+        val unpinnedOverflow = (unpinnedOldestFirst.size - ClipboardHistoryPolicy.MAX_UNPINNED_ENTRIES).coerceAtLeast(0)
+        removals.addAll(unpinnedOldestFirst.take(unpinnedOverflow))
+
+        val totalOverflow = (cache.size - removals.size - ClipboardHistoryPolicy.MAX_TOTAL_ENTRIES).coerceAtLeast(0)
+        if (totalOverflow > 0) {
+            val remainingOldestFirst = cache.asSequence()
+                .filterNot(removals::contains)
+                .sortedBy { it.timeStamp }
+                .take(totalOverflow)
+                .toList()
+            removals.addAll(remainingOldestFirst)
+        }
+        delete(removals.toList(), notify)
     }
 
     private fun updateTimestampAt(index: Int, timestamp: Long) {
@@ -149,20 +215,22 @@ class ClipboardDao private constructor(private val db: Database) {
         db.writableDatabase.update(TABLE, cv, "$COLUMN_ID = ${entry.id}", null)
     }
 
-    fun isPinned(index: Int) = cache[index].isPinned
+    fun get(id: Long) = synchronized(this) { cache.firstOrNull { it.id == id } }
 
-    fun getAt(index: Int) = cache[index]
+    fun getAll(): List<ClipboardHistoryEntry> = synchronized(this) { cache.toList() }
 
-    fun get(id: Long) = cache.first { it.id == id }
+    fun search(query: String): List<ClipboardHistoryEntry> = synchronized(this) {
+        val tokens = ClipboardHistoryPolicy.normalizeQuery(query)
+        if (tokens.isEmpty()) cache.toList()
+        else cache.filter { ClipboardHistoryPolicy.matches(searchIndex[it.id].orEmpty(), tokens) }
+    }
 
-    fun getAll(): List<ClipboardHistoryEntry> = cache
+    fun count() = synchronized(this) { cache.size }
 
-    fun count() = cache.size
-
-    fun sort() = cache.sort()
+    fun sort() = synchronized(this) { cache.sort() }
 
     fun togglePinned(id: Long) = synchronized(this) {
-        val entry = cache.first { it.id == id }
+        val entry = cache.firstOrNull { it.id == id } ?: return@synchronized
         entry.isPinned = !entry.isPinned
         entry.timeStamp = System.currentTimeMillis()
         if (listener != null) {
@@ -179,49 +247,56 @@ class ClipboardDao private constructor(private val db: Database) {
         db.writableDatabase.update(TABLE, cv, "$COLUMN_ID = ${entry.id}", null)
     }
 
-    // RecyclerView initiates this, so we don't call listener (or we'll get an IndexOutOfRangeException from RecyclerView)
-    fun deleteClipAt(index: Int) {
-        delete(listOf(cache[index]))
+    fun deleteClip(id: Long) = synchronized(this) {
+        cache.firstOrNull { it.id == id }?.let { delete(listOf(it)) }
     }
 
-    private fun delete(entries: List<ClipboardHistoryEntry>) = synchronized(this) {
+    private fun delete(entries: List<ClipboardHistoryEntry>, notify: Boolean = true) = synchronized(this) {
         if (entries.isEmpty()) return@synchronized
         cache.removeAll(entries)
+        entries.forEach { searchIndex.remove(it.id) }
         db.writableDatabase.delete(TABLE, "$COLUMN_ID IN (${entries.joinToString(",") { it.id.toString() }})", null)
-        entries.forEach { if (it.filename != null) File(clipFilesDir, it.filename).delete() }
+        entries.forEach { entry ->
+            entry.filename?.takeIf(ClipboardHistoryPolicy::isSafeLeafFilename)?.let { File(clipFilesDir, it).delete() }
+        }
+        if (notify) listener?.onClipsChanged()
     }
 
-    fun clearOldClips(now: Boolean = false) {
+    fun clearOldClips(now: Boolean = false) = synchronized(this) {
         if (listener != null)
-            return // never clear when clipboard is visible
+            return@synchronized // never clear when clipboard is visible
         if (!now && lastClearOldClips > SystemClock.elapsedRealtime() - 5 * 1000)
-            return
+            return@synchronized
 
         lastClearOldClips = SystemClock.elapsedRealtime()
         val retentionTime = Settings.getValues()?.mClipboardHistoryRetentionTime ?: 121L
-        if (retentionTime > 120) return
+        if (retentionTime > 120) return@synchronized
         val minTime = System.currentTimeMillis() - retentionTime * 60 * 1000L
-        val toRemove = cache.filter { it.timeStamp < minTime && !it.isPinned }
+        clearExpiredBefore(minTime)
+    }
+
+    /** Public for deterministic device verification; normal callers use [clearOldClips]. */
+    fun clearExpiredBefore(minTime: Long) = synchronized(this) {
+        delete(cache.filter { it.timeStamp < minTime && !it.isPinned })
+    }
+
+    fun clearNonPinned() = synchronized(this) {
+        val toRemove = cache.filter { !it.isPinned }
+        if (toRemove.isEmpty())
+            return@synchronized // nothing to remove
         delete(toRemove)
     }
 
-    fun clearNonPinned() {
-        val indicesToRemove = mutableListOf<Int>()
-        cache.forEachIndexed { idx, clip ->
-            if (!clip.isPinned)
-                indicesToRemove.add(idx)
-        }
-        if (indicesToRemove.isEmpty())
-            return // nothing to remove
-        delete(cache.filter { !it.isPinned })
-        listener?.onClipsRemoved(indicesToRemove[0], indicesToRemove.size)
-    }
-
-    fun clear() {
-        if (count() == 0) return
+    fun clear() = synchronized(this) {
+        if (cache.isEmpty()) return@synchronized
+        val entries = cache.toList()
         cache.clear()
-        listener?.onClipsRemoved(0, count())
+        searchIndex.clear()
         db.writableDatabase.delete(TABLE, null, null)
+        entries.forEach { entry ->
+            entry.filename?.takeIf(ClipboardHistoryPolicy::isSafeLeafFilename)?.let { File(clipFilesDir, it).delete() }
+        }
+        listener?.onClipsRemoved(0, entries.size)
     }
 
     fun cleanupFiles(prefs: SharedPreferences) {
@@ -281,10 +356,10 @@ class ClipboardDao private constructor(private val db: Database) {
         fun getInstance(context: Context): ClipboardDao? {
             if (instance == null)
                 try {
-                    instance = ClipboardDao(Database.getInstance(context))
                     val privateContext = CredentialEncryptedStorage.contextOrNull(context) ?: return null
                     clipFilesDir = File(privateContext.filesDir, "clipboard")
                     clipFilesDir.mkdirs()
+                    instance = ClipboardDao(Database.getInstance(context))
                     instance?.cleanupFiles(context.prefs())
                 } catch (e: Throwable) {
                     Log.e(TAG, "can't create ClipboardDao", e)

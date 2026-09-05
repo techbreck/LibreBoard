@@ -17,12 +17,14 @@ and release-evidence verifier. These tests run for every pull request.
 Android device or emulator. Serial Gradle workers avoid races in the inherited multi-ABI `ndk-build`
 archive tasks.
 The suite checks the installed package rather than only source XML: merged permissions, backup and
-cleartext flags, the IME service permission/direct-boot flag, the Android `EditorInfo` policy matrix,
-and real credential-encrypted SQLite personalization behavior.
+cleartext flags, the IME service permission/direct-boot flag, the non-exported clipboard-search
+activity, the Android `EditorInfo` policy matrix, and real credential-encrypted SQLite behavior for
+personalization plus clipboard search, storage limits, pruning, and stale-id handling.
 
 The connected suite must expand with editor fixtures for composing reconciliation, cursor movement,
 correction rejection, WebView, terminal single-commit behavior, model failure, clipboard expiry,
-backup/wipe, language lock, and latency collection as those paths land.
+backup/wipe, the clipboard-search interaction flow, language lock, and latency collection as those
+paths land.
 
 ## Physical GrapheneOS acceptance
 

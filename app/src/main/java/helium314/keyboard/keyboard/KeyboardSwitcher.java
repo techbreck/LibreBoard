@@ -124,7 +124,7 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions {
             if (mKeyboardView != null)
                 mLatinIME.setInputView(onCreateInputView(displayContext, mIsHardwareAcceleratedDrawingEnabled));
         } else if (mCurrentInputView != null && mLatinIME.hasSuggestionStripView()
-                    == (Settings.getValues().mToolbarMode == ToolbarMode.HIDDEN || mLatinIME.isEmojiSearch())) {
+                    == (Settings.getValues().mToolbarMode == ToolbarMode.HIDDEN || mLatinIME.isSearchOverlay())) {
             mLatinIME.updateSuggestionStripView(mCurrentInputView);
         }
     }

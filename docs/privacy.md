@@ -30,6 +30,12 @@ tests count every underlying surrounding-text call and require zero reads for ea
 - Layouts and safe settings needed at boot explicitly use device-protected storage.
 - Clipboard files/database, personalization, rejection history, models, and caches use the normal
   credential-protected application context.
+- Clipboard text entries are capped at 100,000 UTF-16 characters, history at 100 unpinned and 200
+  total entries, and attachment metadata is strictly bounded. Oldest unpinned entries are pruned
+  first; an all-pinned full store rejects new captures. Attachment filenames must be safe leaf names.
+- Clipboard search uses a bounded in-memory index. Its internal editor is non-exported and receives
+  the `NO_LEARNING` field policy, so query text is neither persisted nor exposed to suggestion,
+  context, capture, or personalization paths.
 - Private stores return unavailable before first unlock; the static keyboard still types.
 - `android:allowBackup` is false. Explicit SAF export excludes clipboard unless the user selects it.
 - Personal facts are normalized tokens, preferred token casing, 1–4-token n-grams, counts,

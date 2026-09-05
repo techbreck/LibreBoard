@@ -42,6 +42,7 @@ import helium314.keyboard.event.HapticEvent;
 import helium314.keyboard.keyboard.KeyboardActionListener;
 import helium314.keyboard.keyboard.KeyboardActionListenerImpl;
 import helium314.keyboard.keyboard.KeyboardMode;
+import helium314.keyboard.keyboard.clipboard.ClipboardSearchActivity;
 import helium314.keyboard.keyboard.emoji.EmojiPalettesView;
 import helium314.keyboard.keyboard.emoji.EmojiSearchActivity;
 import helium314.keyboard.keyboard.internal.KeyboardIconsSet;
@@ -762,7 +763,7 @@ public class LatinIME extends InputMethodService implements
     }
 
     public void updateSuggestionStripView(View view) {
-        mSuggestionStripView = mSettings.getCurrent().mToolbarMode == ToolbarMode.HIDDEN || isEmojiSearch()?
+        mSuggestionStripView = mSettings.getCurrent().mToolbarMode == ToolbarMode.HIDDEN || isSearchOverlay()?
                         null : view.findViewById(R.id.suggestion_strip_view);
         if (hasSuggestionStripView()) {
             mSuggestionStripView.setRtl(mRichImm.getCurrentSubtype().isRtlSubtype());
@@ -1218,7 +1219,7 @@ public class LatinIME extends InputMethodService implements
         }
 
         // Has to be subtracted after calculating touchableRegion
-        visibleTopY -= getEmojiSearchActivityHeight();
+        visibleTopY -= getSearchOverlayActivityHeight();
 
         outInsets.contentTopInsets = visibleTopY;
         outInsets.visibleTopInsets = visibleTopY;
@@ -1732,6 +1733,15 @@ public class LatinIME extends InputMethodService implements
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        if (intent != null && ClipboardSearchActivity.CLIPBOARD_SEARCH_DONE_ACTION.equals(intent.getAction())) {
+            if (intent.getBooleanExtra(ClipboardSearchActivity.IME_CLOSED_KEY, false)) {
+                requestHideSelf(0);
+                stopSelf(startId);
+            } else {
+                finishClipboardSearchWhenHostEditorReturns(intent, startId, 0);
+            }
+            return START_NOT_STICKY;
+        }
         if (intent != null && EmojiSearchActivity.EMOJI_SEARCH_DONE_ACTION.equals(intent.getAction()) && ! isEmojiSearch()) {
             if (intent.getBooleanExtra(EmojiSearchActivity.IME_CLOSED_KEY, false)) {
                 requestHideSelf(0);
@@ -1749,8 +1759,35 @@ public class LatinIME extends InputMethodService implements
         return super.onStartCommand(intent, flags, startId);
     }
 
+    private void finishClipboardSearchWhenHostEditorReturns(Intent intent, int startId, int attempt) {
+        final int clipboardOverlayHeight = ClipboardSearchActivity.Companion
+                .decodePrivateImeOptions(getCurrentInputEditorInfo()).height();
+        if (clipboardOverlayHeight > 0 && attempt < 20) {
+            mHandler.postDelayed(() -> finishClipboardSearchWhenHostEditorReturns(intent, startId, attempt + 1), 50);
+            return;
+        }
+
+        mKeyboardSwitcher.setClipboardKeyboard();
+        // Never commit into the search editor itself if Android has not restored the host editor.
+        if (clipboardOverlayHeight == 0 && intent.hasExtra(ClipboardSearchActivity.CLIP_ID_KEY)) {
+            mClipboardHistoryManager.pasteHistoryEntry(
+                    intent.getLongExtra(ClipboardSearchActivity.CLIP_ID_KEY, -1L),
+                    mKeyboardActionListener);
+        }
+        stopSelf(startId);
+    }
+
     public boolean isEmojiSearch() {
         return getEmojiSearchActivityHeight() > 0;
+    }
+
+    public boolean isSearchOverlay() {
+        return getSearchOverlayActivityHeight() > 0;
+    }
+
+    private int getSearchOverlayActivityHeight() {
+        return Math.max(getEmojiSearchActivityHeight(),
+                ClipboardSearchActivity.Companion.decodePrivateImeOptions(getCurrentInputEditorInfo()).height());
     }
 
     private int getEmojiSearchActivityHeight() {

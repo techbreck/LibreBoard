@@ -18,6 +18,7 @@ import androidx.core.view.inputmethod.InputContentInfoCompat
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
 import helium314.keyboard.keyboard.KeyboardTypeface
+import helium314.keyboard.keyboard.KeyboardActionListener
 import helium314.keyboard.compat.ClipboardManagerCompat
 import helium314.keyboard.event.Event
 import helium314.keyboard.event.HapticEvent
@@ -150,11 +151,11 @@ class ClipboardHistoryManager(
         removeClipboardSuggestion()
     }
 
-    fun canRemove(index: Int) = clipboardDao?.isPinned(index) == false
+    fun canRemove(id: Long) = clipboardDao?.get(id)?.isPinned == false
 
-    fun removeEntry(index: Int) {
-        if (canRemove(index))
-            clipboardDao?.deleteClipAt(index)
+    fun removeEntry(id: Long) {
+        if (canRemove(id))
+            clipboardDao?.deleteClip(id)
     }
 
     fun sortHistoryEntries() {
@@ -165,11 +166,17 @@ class ClipboardHistoryManager(
     // when history is about to be shown
     fun prepareClipboardHistory() = clipboardDao?.clearOldClips(true)
 
-    fun getHistorySize() = clipboardDao?.count() ?: 0
-
-    fun getHistoryEntry(position: Int) = clipboardDao?.getAt(position)
+    fun getHistoryEntries(query: String = "") = clipboardDao?.search(query).orEmpty()
 
     fun getHistoryEntryContent(id: Long) = clipboardDao?.get(id)
+
+    /** Commits one stable clipboard entry. Missing/stale ids are harmless. */
+    fun pasteHistoryEntry(id: Long, listener: KeyboardActionListener): Boolean {
+        val clipContent = getHistoryEntryContent(id) ?: return false
+        if (clipContent.filename != null) listener.onContent(clipContent.getContentInfo(latinIME))
+        else listener.onTextInput(clipContent.text)
+        return true
+    }
 
     fun setHistoryChangeListener(listener: ClipboardDao.Listener?) {
         clipboardDao?.listener = listener

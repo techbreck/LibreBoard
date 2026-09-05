@@ -4,6 +4,8 @@ package helium314.keyboard.latin.engine
 import android.text.InputType
 import android.view.inputmethod.EditorInfo
 
+const val PRIVATE_IME_OPTION_CLIPBOARD_SEARCH = "org.libreboard.keyboard.clipboard.search"
+
 /**
  * A single, auditable decision about which IME behaviours are safe for the current editor.
  * Callers must use these capabilities instead of repeating InputType checks.
@@ -38,6 +40,11 @@ object FieldPolicyResolver {
         }
         if (!allowNoSuggestionsOverride && inputType and InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS != 0) {
             return FieldPolicy.NO_SUGGESTIONS
+        }
+        // This is LibreBoard's own transient search editor. Its query is useful only to the
+        // clipboard UI and must never be captured, learned, or read back as language-model context.
+        if (editorInfo.privateImeOptions.orEmpty().startsWith(PRIVATE_IME_OPTION_CLIPBOARD_SEARCH)) {
+            return FieldPolicy.NO_LEARNING
         }
         if (inputType == InputType.TYPE_NULL || isTerminal(editorInfo)) return FieldPolicy.TERMINAL
         return FieldPolicy.NORMAL

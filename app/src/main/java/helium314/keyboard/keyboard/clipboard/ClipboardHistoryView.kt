@@ -198,6 +198,11 @@ class ClipboardHistoryView @JvmOverloads constructor(
 
     override fun onClick(view: View) {
         if (view.tag is ToolbarKey) {
+            if (view.tag == ToolbarKey.SEARCH_CLIPBOARD) {
+                onClickToolbarKey(view) { }
+                ClipboardSearchActivity.launch(context)
+                return
+            }
             onClickToolbarKey(view) {
                 keyboardActionListener.onCodeInput(it, Constants.NOT_A_COORDINATE, Constants.NOT_A_COORDINATE, false)
             }
@@ -219,28 +224,27 @@ class ClipboardHistoryView @JvmOverloads constructor(
     }
 
     override fun onKeyUp(clipId: Long) {
-        val clipContent = clipboardHistoryManager.getHistoryEntryContent(clipId)
-        if (clipContent?.filename != null) keyboardActionListener.onContent(clipContent.getContentInfo(context))
-        else keyboardActionListener.onTextInput(clipContent?.text)
+        val pasted = clipboardHistoryManager.pasteHistoryEntry(clipId, keyboardActionListener)
         keyboardActionListener.onReleaseKey(KeyCode.NOT_SPECIFIED, false)
-        if (Settings.getValues().mAlphaAfterClipHistoryEntry)
+        if (pasted && Settings.getValues().mAlphaAfterClipHistoryEntry)
             keyboardActionListener.onCodeInput(KeyCode.ALPHA, Constants.NOT_A_COORDINATE, Constants.NOT_A_COORDINATE, false)
     }
 
     override fun onClipInserted(position: Int) {
-        clipboardAdapter.notifyItemInserted(position)
-        clipboardRecyclerView.smoothScrollToPosition(position)
+        clipboardAdapter.refresh()
+        if (clipboardAdapter.itemCount > 0) clipboardRecyclerView.smoothScrollToPosition(0)
     }
 
     override fun onClipsRemoved(position: Int, count: Int) {
-        clipboardAdapter.notifyItemRangeRemoved(position, count)
+        clipboardAdapter.refresh()
     }
 
     override fun onClipMoved(oldPosition: Int, newPosition: Int) {
-        clipboardAdapter.notifyItemMoved(oldPosition, newPosition)
-        clipboardAdapter.notifyItemChanged(newPosition)
-        if (newPosition < oldPosition) clipboardRecyclerView.smoothScrollToPosition(newPosition)
+        clipboardAdapter.refresh()
+        if (newPosition < oldPosition && clipboardAdapter.itemCount > 0) clipboardRecyclerView.smoothScrollToPosition(0)
     }
+
+    override fun onClipsChanged() = clipboardAdapter.refresh()
 
     override fun onSharedPreferenceChanged(prefs: SharedPreferences?, key: String?) {
         setToolbarButtonsActivatedStateOnPrefChange(KeyboardSwitcher.getInstance().clipboardStrip, key)
@@ -250,7 +254,7 @@ class ClipboardHistoryView @JvmOverloads constructor(
             // Ensure settings are reloaded first
             Settings.getInstance().onSharedPreferenceChanged(prefs, key)
             clipboardHistoryManager.sortHistoryEntries()
-            clipboardAdapter.notifyDataSetChanged()
+            clipboardAdapter.refresh()
         }
     }
 }

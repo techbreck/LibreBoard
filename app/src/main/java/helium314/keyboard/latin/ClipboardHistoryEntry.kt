@@ -15,6 +15,7 @@ import helium314.keyboard.latin.settings.Settings
 import helium314.keyboard.latin.utils.Log
 import androidx.core.view.inputmethod.InputContentInfoCompat
 import helium314.keyboard.latin.database.ClipboardDao
+import helium314.keyboard.latin.database.ClipboardHistoryPolicy
 import helium314.keyboard.latin.BuildConfig
 import java.io.File
 
@@ -37,7 +38,7 @@ class ClipboardHistoryEntry(
     fun getContentInfo(context: Context): InputContentInfoCompat =
         InputContentInfoCompat(getContentUri(context)!!, ClipDescription(text, mimeTypes?.toTypedArray()), null)
 
-    fun getContentUri(context: Context) = filename?.let { FileProvider.getUriForFile(
+    fun getContentUri(context: Context) = filename?.takeIf(ClipboardHistoryPolicy::isSafeLeafFilename)?.let { FileProvider.getUriForFile(
         context,
         BuildConfig.APPLICATION_ID + ".clipprovider",
         File(ClipboardDao.clipFilesDir, it)
@@ -46,7 +47,7 @@ class ClipboardHistoryEntry(
     // todo: if slow we could decode images it in a coroutine, or use cached preview images
     @SuppressLint("SetTextI18n")
     fun setImageAndDescription(imageView: ImageView, textView: TextView) {
-        if (mimeTypes == null || filename == null) return // should never happen
+        if (mimeTypes == null || filename == null || !ClipboardHistoryPolicy.isSafeLeafFilename(filename)) return
         try {
             val path = File(ClipboardDao.clipFilesDir, filename).absolutePath
             val opt = BitmapFactory.Options()

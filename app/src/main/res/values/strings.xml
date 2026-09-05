@@ -332,6 +332,7 @@
     <string name="cut" tools:keep="@string/cut" translatable="false">@android:string/cut</string>
     <string name="clipboard" tools:keep="@string/clipboard">Clipboard</string>
     <string name="clear_clipboard" tools:keep="@string/clear_clipboard">Clear clipboard</string>
+    <string name="search_clipboard" tools:keep="@string/search_clipboard">Search clipboard</string>
     <string name="voice" tools:keep="@string/voice">Voice input</string>
     <string name="numpad" tools:keep="@string/numpad" translatable="false">@string/layout_numpad</string>
     <string name="dpad" tools:keep="@string/dpad" translatable="false">@string/layout_dpad</string>
@@ -959,6 +960,8 @@ New dictionary:
     <string name="emoji_search_title">Search emoji</string>
     <!-- Placeholder text for search field -->
     <string name="search_field_placeholder">Search</string>
+    <string name="clipboard_search_title">Search clipboard history</string>
+    <string name="clipboard_search_empty">No matching clips</string>
     <!-- Switch to toggle suggestions when using the spell checker -->
     <string name="spell_check_suggestions">Show spellchecker suggestions</string>
     <!-- Description for toggling suggestions when using the spell checker -->

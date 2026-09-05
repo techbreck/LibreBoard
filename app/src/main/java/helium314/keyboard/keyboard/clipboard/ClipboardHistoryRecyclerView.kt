@@ -18,18 +18,20 @@ class ClipboardHistoryRecyclerView @JvmOverloads constructor(
 ) : RecyclerView(context, attrs, defStyleAttr) {
 
     var placeholderView: View? = null
-    val historyManager: ClipboardHistoryManager? get() = (adapter as? ClipboardAdapter?)?.clipboardHistoryManager
+    private val clipboardAdapter: ClipboardAdapter? get() = adapter as? ClipboardAdapter
+    val historyManager: ClipboardHistoryManager? get() = clipboardAdapter?.clipboardHistoryManager
     @Suppress("unused")
     private val touchHelper = ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(0, ItemTouchHelper.LEFT) {
         override fun onMove(recyclerView: RecyclerView, viewHolder: ViewHolder, target: ViewHolder) = false
         override fun getSwipeDirs(recyclerView: RecyclerView, viewHolder: ViewHolder): Int {
-            if (historyManager?.canRemove(viewHolder.absoluteAdapterPosition) == false)
+            val id = clipboardAdapter?.getItem(viewHolder.absoluteAdapterPosition)?.id ?: return 0
+            if (historyManager?.canRemove(id) == false)
                 return 0 // block swipe for pinned items
             return super.getSwipeDirs(recyclerView, viewHolder)
         }
         override fun onSwiped(viewHolder: ViewHolder, dir: Int) {
-            historyManager?.removeEntry(viewHolder.absoluteAdapterPosition)
-            adapter?.notifyItemRemoved(viewHolder.absoluteAdapterPosition)
+            val id = clipboardAdapter?.getItem(viewHolder.absoluteAdapterPosition)?.id
+            if (id == null) clipboardAdapter?.refresh() else historyManager?.removeEntry(id)
         }
     }).attachToRecyclerView(this)
 

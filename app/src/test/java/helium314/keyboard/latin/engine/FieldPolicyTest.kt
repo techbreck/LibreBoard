@@ -4,6 +4,7 @@ package helium314.keyboard.latin.engine
 import android.text.InputType
 import android.view.inputmethod.EditorInfo
 import helium314.keyboard.latin.InputAttributes
+import helium314.keyboard.keyboard.clipboard.ClipboardSearchActivity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -36,6 +37,33 @@ class FieldPolicyTest {
             imeOptions = EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING
         }
         assertEquals(FieldPolicy.NO_LEARNING, FieldPolicyResolver.resolve(editor))
+    }
+
+    @Test
+    fun internalClipboardSearchNeverEntersLearningOrSuggestionPipelines() {
+        val editor = EditorInfo().apply {
+            inputType = InputType.TYPE_CLASS_TEXT
+            privateImeOptions = "$PRIVATE_IME_OPTION_CLIPBOARD_SEARCH.240,"
+        }
+        val policy = FieldPolicyResolver.resolve(editor)
+        assertEquals(FieldPolicy.NO_LEARNING, policy)
+        assertFalse(policy.allowsContextRead)
+        assertFalse(policy.allowsSuggestions)
+        assertFalse(policy.allowsClipboardCapture)
+        assertFalse(policy.allowsPersistence)
+    }
+
+    @Test
+    fun clipboardSearchOverlayHeightParserIsBoundedAndRejectsOtherEditors() {
+        fun height(options: String?) = ClipboardSearchActivity.decodePrivateImeOptions(
+            EditorInfo().apply { privateImeOptions = options },
+        ).height
+
+        assertEquals(240, height("$PRIVATE_IME_OPTION_CLIPBOARD_SEARCH.240,"))
+        assertEquals(0, height("$PRIVATE_IME_OPTION_CLIPBOARD_SEARCH.-1,"))
+        assertEquals(4_096, height("$PRIVATE_IME_OPTION_CLIPBOARD_SEARCH.999999,"))
+        assertEquals(0, height("third.party.search.240,"))
+        assertEquals(0, height(null))
     }
 
     @Test

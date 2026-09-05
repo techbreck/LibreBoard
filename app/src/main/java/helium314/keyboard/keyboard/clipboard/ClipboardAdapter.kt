@@ -24,6 +24,11 @@ class ClipboardAdapter(
 ) : RecyclerView.Adapter<ClipboardAdapter.ViewHolder>() {
 
     var clipboardHistoryManager: ClipboardHistoryManager? = null
+        set(value) {
+            field = value
+            refresh()
+        }
+    private var visibleEntries = emptyList<ClipboardHistoryEntry>()
 
     var pinnedIconResId = 0
     var itemBackgroundId = 0
@@ -37,13 +42,21 @@ class ClipboardAdapter(
         return ViewHolder(view)
     }
 
-    override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        holder.setContent(getItem(position))
+    init { setHasStableIds(true) }
+
+    override fun onBindViewHolder(holder: ViewHolder, position: Int) = holder.setContent(getItem(position))
+
+    fun getItem(position: Int) = visibleEntries.getOrNull(position)
+
+    override fun getItemId(position: Int) = getItem(position)?.id ?: RecyclerView.NO_ID
+
+    override fun getItemCount() = visibleEntries.size
+
+    @SuppressLint("NotifyDataSetChanged")
+    fun refresh() {
+        visibleEntries = clipboardHistoryManager?.getHistoryEntries().orEmpty()
+        notifyDataSetChanged()
     }
-
-    private fun getItem(position: Int) = clipboardHistoryManager?.getHistoryEntry(position)
-
-    override fun getItemCount() = clipboardHistoryManager?.getHistorySize() ?: 0
 
     inner class ViewHolder(
             view: View

@@ -16,7 +16,7 @@ temporarily to keep upstream review practical; the Android application ID is `or
 - Pure-Kotlin geometric swipe fallback using live keyboard geometry.
 - Immutable engine contracts for candidate fusion, language lock, deadlines, model validation,
   neural availability, and stale-result sequencing.
-- Credential-encrypted clipboard and personal stores with Direct-Boot-safe degradation.
+- Bounded, searchable credential-encrypted clipboard and personal stores with Direct-Boot-safe degradation.
 - Central field policy for passwords, PINs, email/URI fields, terminals,
   `IME_FLAG_NO_PERSONALIZED_LEARNING`, and `TYPE_TEXT_FLAG_NO_SUGGESTIONS`.
 - Enforced `InputConnection` context boundary: restricted fields and incognito never query
