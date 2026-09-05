@@ -46,6 +46,7 @@ REQUIRED_PARAMETERS = {
     "--cmake_extra_defines=onnxruntime_BUILD_UNIT_TESTS=OFF",
     "--disable_ml_ops",
     "--enable_lto",
+    "--skip_submodule_sync",
     "--skip_tests",
 }
 FORBIDDEN_PARAMETER_FRAGMENTS = (

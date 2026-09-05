@@ -32,9 +32,11 @@ configuration, verification, and all other build failures remain terminal.
 
 The builder verifies the source commit, clean source tree, initialized nested submodules, exact build
 settings, exact NDK 28.0.13004108, reduced-operator configuration, native size ceiling, and 16 KiB ELF
-alignment. It sets stable locale/time/path inputs, rewrites the AAR with canonical order, timestamps,
-metadata and compression, and writes a schema-2 hash/toolchain manifest beside it under
-`build/onnxruntime/output`. Generated binaries are never committed as source.
+alignment. After that validation, each upstream ABI build skips the redundant submodule sync so it
+cannot fetch or rewrite source while compiling. The wrapper sets stable locale/time/path inputs,
+rewrites the AAR with canonical order, timestamps, metadata and compression, and writes a schema-2
+hash/toolchain manifest beside it under `build/onnxruntime/output`. Generated binaries are never
+committed as source.
 
 For a model-qualified integration build, pass the verified AAR, build manifest, and exact composed
 operator configuration to Gradle:
