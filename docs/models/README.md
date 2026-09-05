@@ -29,6 +29,17 @@ The swipe build path is now implemented without committing or pretending to acce
 The context-model architecture/export path is also executable without treating synthetic bytes as a
 release artifact:
 
+- `tools/prepare_context_dataset.py` verifies the pinned FUTO files in full, samples whole hashed
+  sessions into a fixed 90/5/5 split, retains only bounded public sentence text and coarse field
+  class, and combines it with the explicitly Apache-2.0 project-authored German templates. Raw
+  gestures, timestamps, source session IDs and surrounding prose are not emitted.
+- `models/context/corpus-manifest.json` pins 68,748 accepted bilingual sentences (49,872 English US
+  and 18,876 German), including 3,764 held-out sentences with 2,650 English and 1,114 German rows.
+  Release tokenizer or training runs reject a prepared corpus unless its manifest is byte-identical.
+- `tools/build_context_tokenizer.py` deterministically trains the fixed 16,384-token BPE only from
+  the training split and checks 256 probes against the dependency-free algorithm used by Android.
+  The pinned corpus produces a 530,571-byte tokenizer with SHA-256
+  `1395e285927bfbfa5888dc7c83e4f57dfcfbfeb54f29a3cf2437f5db3d71d6a2`.
 - `models/context/model-spec.json` fixes the 35,662,848-parameter en/de candidate-only Transformer,
   32-row dynamic tensor ABI, 24-token shared prefix, eight-token candidate suffix, and 24 MiB limit.
 - `tools/context_tokenizer_contract.py` mirrors the Android tokenizer's strict schema and adds the
@@ -136,5 +147,5 @@ The current swipe model card and exact reproduction commands are in
 `models/swipe/MODEL_CARD.md`; the context architecture and export contract are in
 `models/context/MODEL_CARD.md`. The pinned gesture inputs total roughly 5.7 GB, so fetching them remains
 an explicit operator action rather than a side effect of Gradle or tests. The context source and
-exporter are pinned, but its bilingual corpus preparation/distillation training and both accepted
-trained candidates still remain outstanding.
+deterministic bilingual corpus/tokenizer are pinned, but teacher scoring, context-student training and
+both accepted trained candidates still remain outstanding.

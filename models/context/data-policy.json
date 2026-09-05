@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "sourceId": "futo-swipe-dataset-v1",
+  "dataArtifacts": [
+    "train.jsonl",
+    "dev.jsonl",
+    "test.jsonl"
+  ],
+  "projectAuthoredData": "models/context/project-authored-de-v1.json",
+  "splitSalt": "libreboard-context-session-split-v1",
+  "splitBasisPoints": {
+    "train": 9000,
+    "validation": 500,
+    "test": 500
+  },
+  "sentenceSampleBasisPoints": 4500,
+  "maximumLineBytes": 2097152,
+  "maximumSentenceCodePoints": 256,
+  "maximumSentenceTokens": 64,
+  "minimumSentenceTokens": 2,
+  "maximumAuthoredExpansionsPerTemplate": 25000,
+  "minimumAcceptedSentences": 50000,
+  "minimumGermanSentences": 10000,
+  "maximumRejectedFraction": 0.25
+}

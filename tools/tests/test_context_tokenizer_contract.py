@@ -52,6 +52,14 @@ class ContextTokenizerContractTest(unittest.TestCase):
             self.assertEqual(8, len(tokenizer.raw["vocabulary"]))
             self.assertEqual(64, len(tokenizer.sha256))
 
+    def test_encoder_normalizes_merges_and_uses_unknown_tokens_like_android(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            tokenizer = contract.load_tokenizer(
+                self.write(pathlib.Path(temporary), tokenizer_document()),
+                expected_vocabulary_size=8,
+            )
+            self.assertEqual([7, 5, 2], contract.encode_text(tokenizer, " Ｈ x "))
+
     def test_rejects_sparse_ids_language_drift_and_missing_merge_outputs(self):
         mutations = []
         sparse = tokenizer_document()

@@ -17,8 +17,10 @@ import tempfile
 import xml.etree.ElementTree as ET
 import zipfile
 
+import build_context_tokenizer
 import context_model_contract
 import model_sources
+import prepare_context_dataset
 import prepare_swipe_dataset
 import swipe_model_contract
 
@@ -433,12 +435,22 @@ def source_checks(errors: list[str]) -> None:
     try:
         source_manifest = model_sources.load_manifest()
         swipe_policy = prepare_swipe_dataset.load_policy()
+        context_policy = prepare_context_dataset.load_policy()
+        context_project_path = (ROOT / context_policy.project_authored_data).resolve()
+        context_project = prepare_context_dataset.load_project_corpus(
+            context_project_path,
+            context_policy,
+        )
+        context_tokenizer_policy = build_context_tokenizer.load_policy()
         swipe_spec = swipe_model_contract.load_spec()
         context_spec = context_model_contract.load_spec()
         swipe_source = source_manifest.source(swipe_policy.source_id)
+        context_source = source_manifest.source(context_policy.source_id)
         teacher_source = source_manifest.source("hanse2-100m-base-teacher-v1")
     except (
+        build_context_tokenizer.ContextTokenizerBuildError,
         model_sources.ModelSourceError,
+        prepare_context_dataset.ContextDataError,
         prepare_swipe_dataset.SwipeDataError,
         swipe_model_contract.SwipeModelContractError,
         context_model_contract.ContextModelContractError,
@@ -449,6 +461,12 @@ def source_checks(errors: list[str]) -> None:
             fail(errors, "swipe training must remain pinned to the MIT FUTO gesture dataset")
         if teacher_source.repository != "Evicka/Hanse2-100M-Base" or teacher_source.license != "Apache-2.0":
             fail(errors, "context distillation teacher must remain the Apache-2.0 Hanse2 base model")
+        if (
+            context_source.identifier != swipe_source.identifier
+            or context_source.repository != "futo-org/swipe.futo.org"
+            or context_source.license != "MIT"
+        ):
+            fail(errors, "context sentences must remain pinned to the MIT FUTO gesture dataset")
         if any(
             source.repository.lower() == "futo-org/futo-swipe"
             or (source.repository.lower().startswith("futo-org/") and source.kind == "teacher-model")
@@ -503,6 +521,130 @@ def source_checks(errors: list[str]) -> None:
             ):
                 fail(errors, "swipe corpus test split is not adequately stratified")
 
+        if context_project_path != ROOT / "models/context/project-authored-de-v1.json":
+            fail(errors, "context data policy must retain the reviewed project-authored German corpus")
+        if context_policy.data_artifacts != ("train.jsonl", "dev.jsonl", "test.jsonl"):
+            fail(errors, "context data policy must retain every pinned FUTO sentence split")
+        if context_policy.split_basis_points != {"train": 9_000, "validation": 500, "test": 500}:
+            fail(errors, "context data policy must retain the session-separated 90/5/5 split")
+        if (
+            context_policy.minimum_accepted_sentences < 50_000
+            or context_policy.minimum_german_sentences < 10_000
+            or context_policy.maximum_rejected_fraction > 0.25
+        ):
+            fail(errors, "context data policy has weakened its corpus quality floors")
+        if (
+            context_tokenizer_policy.vocabulary_size != 16_384
+            or context_tokenizer_policy.minimum_frequency != 2
+            or context_tokenizer_policy.special_tokens
+            != ("<pad>", "<bos>", "<unk>", "<lang:en>", "<lang:de>")
+            or context_tokenizer_policy.languages != {"en": "<lang:en>", "de": "<lang:de>"}
+        ):
+            fail(errors, "context tokenizer policy has drifted from the Android model ABI")
+
+        context_corpus_path = prepare_context_dataset.DEFAULT_CORPUS_MANIFEST
+        try:
+            context_corpus = json.loads(context_corpus_path.read_bytes())
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            fail(errors, f"committed context corpus manifest is invalid: {exc}")
+        else:
+            if not isinstance(context_corpus, dict) or set(context_corpus) != prepare_context_dataset.PREPARED_MANIFEST_KEYS:
+                fail(errors, "context corpus manifest has an unexpected schema")
+            elif (
+                context_corpus.get("schemaVersion") != 1
+                or context_corpus.get("modelId") != "context-en-de-v1"
+                or context_corpus.get("minimumsEnforced") is not True
+            ):
+                fail(errors, "context corpus manifest is not a release-eligible v1 corpus")
+            else:
+                expected_sources = {
+                    "external": {
+                        "id": context_source.identifier,
+                        "license": context_source.license,
+                        "revision": context_source.revision,
+                        "sourceUrl": context_source.source_url,
+                    },
+                    "projectAuthored": {
+                        "id": context_project.raw["id"],
+                        "license": context_project.raw["license"],
+                        "path": context_policy.project_authored_data,
+                        "sha256": context_project.sha256,
+                    },
+                }
+                if context_corpus.get("sourceManifestSha256") != source_manifest.sha256:
+                    fail(errors, "context corpus manifest is not bound to the current source manifest")
+                if context_corpus.get("policySha256") != context_policy.sha256:
+                    fail(errors, "context corpus manifest is not bound to the current data policy")
+                if context_corpus.get("projectDataSha256") != context_project.sha256:
+                    fail(errors, "context corpus manifest is not bound to the project-authored data")
+                if context_corpus.get("toolSha256") != model_sources.file_sha256(
+                    ROOT / "tools/prepare_context_dataset.py"
+                ):
+                    fail(errors, "context corpus manifest is not bound to the current preparation tool")
+                if context_corpus.get("sources") != expected_sources:
+                    fail(errors, "context corpus manifest has unexpected source provenance")
+
+                counts = context_corpus.get("counts")
+                outputs = context_corpus.get("outputs")
+                if not isinstance(counts, dict):
+                    fail(errors, "context corpus manifest has invalid counts")
+                else:
+                    accepted = counts.get("acceptedSentences")
+                    german = counts.get("language:de")
+                    invalid_fraction = counts.get("invalidSourceFraction")
+                    if (
+                        isinstance(accepted, bool)
+                        or not isinstance(accepted, int)
+                        or accepted < context_policy.minimum_accepted_sentences
+                        or isinstance(german, bool)
+                        or not isinstance(german, int)
+                        or german < context_policy.minimum_german_sentences
+                        or not finite_number(invalid_fraction)
+                        or float(invalid_fraction) > context_policy.maximum_rejected_fraction
+                    ):
+                        fail(errors, "context corpus manifest does not satisfy its data quality floors")
+                expected_outputs = {
+                    "train.sentences.jsonl", "validation.sentences.jsonl", "test.sentences.jsonl",
+                }
+                if not isinstance(outputs, dict) or set(outputs) != expected_outputs:
+                    fail(errors, "context corpus manifest has incomplete outputs")
+                else:
+                    total_records = 0
+                    for filename, details in outputs.items():
+                        if (
+                            not isinstance(details, dict)
+                            or set(details) != prepare_context_dataset.PREPARED_OUTPUT_KEYS
+                            or isinstance(details.get("bytes"), bool)
+                            or not isinstance(details.get("bytes"), int)
+                            or details["bytes"] <= 0
+                            or not isinstance(details.get("sha256"), str)
+                            or not SHA256.fullmatch(details["sha256"])
+                            or isinstance(details.get("records"), bool)
+                            or not isinstance(details.get("records"), int)
+                            or details["records"] <= 0
+                            or isinstance(details.get("sessions"), bool)
+                            or not isinstance(details.get("sessions"), int)
+                            or details["sessions"] <= 0
+                            or not isinstance(details.get("languages"), dict)
+                            or set(details["languages"]) != {"en-US", "de"}
+                            or any(
+                                isinstance(value, bool) or not isinstance(value, int) or value <= 0
+                                for value in details["languages"].values()
+                            )
+                            or sum(details["languages"].values()) != details["records"]
+                        ):
+                            fail(errors, f"context corpus output metadata is invalid: {filename}")
+                            continue
+                        total_records += details["records"]
+                    if isinstance(counts, dict) and total_records != counts.get("acceptedSentences"):
+                        fail(errors, "context corpus output counts do not match accepted sentences")
+                    held_out = outputs.get("test.sentences.jsonl")
+                    if isinstance(held_out, dict) and (
+                        held_out.get("languages", {}).get("en-US", 0) < 2_000
+                        or held_out.get("languages", {}).get("de", 0) < 1_000
+                    ):
+                        fail(errors, "context corpus has insufficient bilingual held-out sentences")
+
     validate_hash_locked_requirements(
         errors,
         ROOT / "models/training/requirements-linux-x86_64.lock",
@@ -519,6 +661,7 @@ def source_checks(errors: list[str]) -> None:
             "onnx-ir==1.0.0",
             "onnxruntime==1.26.0",
             "safetensors==0.6.2",
+            "tokenizers==0.22.2",
             "torch==2.8.0+cpu",
             "transformers==4.57.6",
         ),

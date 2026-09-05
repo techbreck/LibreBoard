@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "modelId": "context-en-de-v1",
+  "normalization": "NFKC_LOWER",
+  "vocabularySize": 16384,
+  "minimumFrequency": 2,
+  "alphabetLimit": 1024,
+  "specialTokens": [
+    "<pad>",
+    "<bos>",
+    "<unk>",
+    "<lang:en>",
+    "<lang:de>"
+  ],
+  "languages": {
+    "en": "<lang:en>",
+    "de": "<lang:de>"
+  }
+}

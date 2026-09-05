@@ -1,0 +1,319 @@
+{
+  "schemaVersion": 1,
+  "id": "libreboard-project-authored-de-v1",
+  "locale": "de",
+  "license": "Apache-2.0",
+  "slots": {
+    "actor": [
+      "Der Nutzer",
+      "Die Nutzerin",
+      "Mein Bruder",
+      "Meine Schwester",
+      "Der Nachbar",
+      "Die Kollegin",
+      "Unser Kunde",
+      "Unsere Freundin"
+    ],
+    "singular_action": [
+      "öffnet",
+      "prüft",
+      "speichert",
+      "sendet",
+      "bearbeitet",
+      "findet",
+      "verschiebt",
+      "löscht",
+      "kopiert",
+      "teilt"
+    ],
+    "object_accusative": [
+      "die Nachricht",
+      "das Dokument",
+      "den Entwurf",
+      "die Einstellung",
+      "das Foto",
+      "den Termin",
+      "die Datei",
+      "das Passwort",
+      "den Ordner",
+      "die Adresse"
+    ],
+    "time": [
+      "heute",
+      "morgen",
+      "später",
+      "jetzt",
+      "am Abend",
+      "am Montag",
+      "nach der Arbeit",
+      "vor dem Treffen"
+    ],
+    "plural_action": [
+      "öffnen",
+      "prüfen",
+      "speichern",
+      "senden",
+      "bearbeiten",
+      "finden",
+      "verschieben",
+      "löschen"
+    ],
+    "infinitive_action": [
+      "öffnen",
+      "prüfen",
+      "speichern",
+      "senden",
+      "bearbeiten",
+      "finden",
+      "verschieben",
+      "kopieren"
+    ],
+    "adjective": [
+      "sicher",
+      "schnell",
+      "einfach",
+      "zuverlässig",
+      "verständlich",
+      "praktisch",
+      "wichtig",
+      "verfügbar"
+    ],
+    "neuter_system": [
+      "System",
+      "Gerät",
+      "Programm",
+      "Modell",
+      "Netzwerk",
+      "Konto",
+      "Profil",
+      "Wörterbuch"
+    ],
+    "feminine_system": [
+      "Tastatur",
+      "Anwendung",
+      "Verbindung",
+      "Sicherung",
+      "Einstellung",
+      "Nachricht",
+      "Datenbank",
+      "Sprache"
+    ],
+    "data": [
+      "persönliche Daten",
+      "lokale Einstellungen",
+      "private Nachrichten",
+      "gespeicherte Wörter",
+      "vertrauliche Inhalte",
+      "die Zwischenablage",
+      "den Suchverlauf",
+      "die Zugangsdaten"
+    ],
+    "protection": [
+      "starke Verschlüsselung",
+      "lokale Verarbeitung",
+      "klare Berechtigungen",
+      "regelmäßige Sicherungen",
+      "eine sichere Sperre",
+      "begrenzte Speicherung"
+    ],
+    "compound": [
+      "Datenschutzgrundverordnung",
+      "Datenverarbeitungsvertrag",
+      "Zwischenablageverlauf",
+      "Tastatureinstellung",
+      "Wörterbuchverwaltung",
+      "Bildschirmtastatur",
+      "Zugangsberechtigung",
+      "Datensicherung",
+      "Spracherkennung",
+      "Benutzeroberfläche"
+    ],
+    "condition": [
+      "die Verbindung abbricht",
+      "das Modell fehlt",
+      "der Speicher knapp wird",
+      "du das Gerät neu startest",
+      "eine Nachricht ankommt",
+      "das Passwort falsch ist"
+    ],
+    "result": [
+      "bleiben die Daten lokal",
+      "funktioniert die Tastatur weiter",
+      "wird nichts hochgeladen",
+      "erscheint eine klare Meldung",
+      "kannst du den Vorgang wiederholen",
+      "wird die Änderung verworfen"
+    ],
+    "compound_sentence": [
+      "Die Datenschutzgrundverordnung schützt personenbezogene Daten.",
+      "Der Datenverarbeitungsvertrag wurde gestern unterschrieben.",
+      "Der Zwischenablageverlauf läuft nach einer Stunde ab.",
+      "Die Tastatureinstellung gilt nur für dieses Layout.",
+      "Die Wörterbuchverwaltung zeigt alle persönlichen Wörter.",
+      "Die Bildschirmtastatur funktioniert auch ohne Netzwerk.",
+      "Die Zugangsberechtigung wurde erfolgreich geprüft.",
+      "Die Datensicherung enthält keine Zwischenablage.",
+      "Die Spracherkennung bleibt ein optionales Zusatzmodul.",
+      "Die Benutzeroberfläche passt sich an den Nachtmodus an."
+    ],
+    "search_target": [
+      "Datenschutzeinstellungen",
+      "gespeicherten Passwörtern",
+      "lokalen Sicherungen",
+      "deutschen Tastaturlayouts",
+      "persönlichen Wörterbüchern",
+      "ablaufenden Zwischenablagen",
+      "barrierefreien Einstellungen",
+      "offline Spracherkennung"
+    ],
+    "short_message": [
+      "Hallo, ich bin gleich da.",
+      "Danke, das klingt gut.",
+      "Bitte ruf mich später an.",
+      "Ich schicke dir die Datei morgen.",
+      "Wir treffen uns vor dem Bahnhof.",
+      "Kannst du den Termin verschieben?",
+      "Ja, das passt für mich.",
+      "Nein, heute habe ich keine Zeit.",
+      "Bis später und komm gut nach Hause.",
+      "Die Nachricht ist angekommen."
+    ],
+    "confusion_sentence": [
+      "Ich weiß, dass das System heute funktioniert.",
+      "Schön, dass du das Dokument gefunden hast.",
+      "Seit ihr hier seid, läuft alles schneller.",
+      "Seid bitte vorsichtig, seit die Straße gesperrt ist.",
+      "Wir sehen uns wieder, wenn du zurückkommst.",
+      "Wen möchtest du anrufen, wenn das Treffen endet?",
+      "Die Aussage war wahr und gut belegt.",
+      "Viel Regen fiel in der vergangenen Nacht.",
+      "Am Meer gibt es mehr frische Luft.",
+      "Das Gerät nimmt die Daten lokal an.",
+      "Du kannst die Änderung später wieder rückgängig machen.",
+      "Er widerspricht dem Vorschlag wider besseres Wissen."
+    ]
+  },
+  "templates": [
+    {
+      "id": "third-person-actions",
+      "fieldClass": "plain",
+      "text": "{actor} {singular_action} {object_accusative} {time}.",
+      "slots": ["actor", "singular_action", "object_accusative", "time"],
+      "sessionBuckets": 128
+    },
+    {
+      "id": "shared-actions",
+      "fieldClass": "plain",
+      "text": "Wir {plural_action} {object_accusative} {time}.",
+      "slots": ["plural_action", "object_accusative", "time"],
+      "sessionBuckets": 64
+    },
+    {
+      "id": "questions",
+      "fieldClass": "short_message",
+      "text": "Kannst du {object_accusative} {time} {infinitive_action}?",
+      "slots": ["object_accusative", "time", "infinitive_action"],
+      "sessionBuckets": 64
+    },
+    {
+      "id": "requests",
+      "fieldClass": "short_message",
+      "text": "Bitte {object_accusative} {time} {infinitive_action}.",
+      "slots": ["object_accusative", "time", "infinitive_action"],
+      "sessionBuckets": 64
+    },
+    {
+      "id": "future-actions",
+      "fieldClass": "plain",
+      "text": "{actor} wird {object_accusative} {time} {infinitive_action}.",
+      "slots": ["actor", "object_accusative", "time", "infinitive_action"],
+      "sessionBuckets": 128
+    },
+    {
+      "id": "modal-actions",
+      "fieldClass": "plain",
+      "text": "{actor} kann {object_accusative} {time} {infinitive_action}.",
+      "slots": ["actor", "object_accusative", "time", "infinitive_action"],
+      "sessionBuckets": 128
+    },
+    {
+      "id": "neuter-properties",
+      "fieldClass": "plain",
+      "text": "Das {neuter_system} ist {adjective}.",
+      "slots": ["neuter_system", "adjective"],
+      "sessionBuckets": 32
+    },
+    {
+      "id": "feminine-properties",
+      "fieldClass": "plain",
+      "text": "Die {feminine_system} ist {adjective}.",
+      "slots": ["feminine_system", "adjective"],
+      "sessionBuckets": 32
+    },
+    {
+      "id": "subordinate-properties",
+      "fieldClass": "plain",
+      "text": "Ich glaube, dass das {neuter_system} {adjective} ist.",
+      "slots": ["neuter_system", "adjective"],
+      "sessionBuckets": 32
+    },
+    {
+      "id": "fallback-conditions",
+      "fieldClass": "plain",
+      "text": "Wenn {condition}, dann {result}.",
+      "slots": ["condition", "result"],
+      "sessionBuckets": 32
+    },
+    {
+      "id": "privacy-protection",
+      "fieldClass": "plain",
+      "text": "Wir schützen {data} durch {protection}.",
+      "slots": ["data", "protection"],
+      "sessionBuckets": 32
+    },
+    {
+      "id": "compound-coverage",
+      "fieldClass": "plain",
+      "text": "{compound_sentence}",
+      "slots": ["compound_sentence"],
+      "sessionBuckets": 16
+    },
+    {
+      "id": "search-queries",
+      "fieldClass": "search",
+      "text": "Suche nach {search_target}",
+      "slots": ["search_target"],
+      "sessionBuckets": 16
+    },
+    {
+      "id": "message-coverage",
+      "fieldClass": "short_message",
+      "text": "{short_message}",
+      "slots": ["short_message"],
+      "sessionBuckets": 16
+    },
+    {
+      "id": "confusion-coverage",
+      "fieldClass": "plain",
+      "text": "{confusion_sentence}",
+      "slots": ["confusion_sentence"],
+      "sessionBuckets": 16
+    }
+  ],
+  "confusionSets": [
+    ["das", "dass"],
+    ["seit", "seid"],
+    ["wider", "wieder"],
+    ["wen", "wenn"],
+    ["war", "wahr"],
+    ["viel", "fiel"],
+    ["mehr", "Meer"]
+  ],
+  "aliases": {
+    "ists": "ist es",
+    "gehts": "geht es",
+    "gibts": "gibt es",
+    "wars": "war es",
+    "habs": "habe es"
+  }
+}

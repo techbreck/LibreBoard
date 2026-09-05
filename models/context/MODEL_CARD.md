@@ -28,6 +28,11 @@ padding/BOS/unknown tokens and exact `en`/`de` language-token mappings. Both the
 the Kotlin runtime enforce the same 2 MiB ceiling and structural rules. No tokenizer implementation
 is imported from the teacher or model pack.
 
+The pinned corpus deterministically produces 16,384 tokens and 16,341 merges in 530,571 bytes, with
+SHA-256 `1395e285927bfbfa5888dc7c83e4f57dfcfbfeb54f29a3cf2437f5db3d71d6a2`.
+The builder compares 256 English, German and Unicode probes against the dependency-free runtime BPE
+algorithm before publishing the tokenizer.
+
 ## Training provenance
 
 The only teacher approved for v1 is Apache-2.0
@@ -37,9 +42,15 @@ The only teacher approved for v1 is Apache-2.0
 must be LibreBoard-trained Apache-2.0 weights, and the training report must bind the student spec,
 tokenizer, data manifest and exact teacher hash.
 
-The bilingual, session-separated candidate corpus and its deterministic preparation/distillation
-commands are not accepted yet. Development/random weights and synthetic reports must remain under
-`build/`, carry development filenames and cannot produce a release export.
+The committed `corpus-manifest.json` binds a deterministic 90/5/5 whole-session split to the source
+manifest, data policy, preparation tool and project-authored German data. It contains 68,748 accepted
+sentences: 49,872 English US and 18,876 German. The held-out split contains 2,650 English and 1,114
+German sentences. The FUTO source contributes only its public sentence field after strict filtering;
+raw gesture paths, timestamps and source session identifiers are discarded. The German portion is
+expanded from reviewed Apache-2.0 templates covering ordinary context, messages/search, contractions,
+confusion pairs, privacy vocabulary and compounds. Teacher scoring and student training remain
+outstanding. Development/random weights and synthetic reports must remain under `build/`, carry
+development filenames and cannot produce a release export.
 
 ## Reproducible export contract
 
@@ -59,11 +70,14 @@ uv pip install --python build/context-model-venv/bin/python \
   --require-hashes --torch-backend cpu \
   -r models/training/requirements-context-linux-x86_64.lock
 
+python3 tools/model_sources.py verify
+build/context-model-venv/bin/python tools/prepare_context_dataset.py
+build/context-model-venv/bin/python tools/build_context_tokenizer.py
 build/context-model-venv/bin/python tools/export_context_model.py
 ```
 
-The first command that prepares and trains the accepted corpus will be added here with its immutable
-data manifest; until then this is deliberately not a complete reproduction recipe.
+The teacher-scoring and student-training commands will be added with their immutable reports; until
+then this is deliberately not a complete model reproduction recipe.
 
 ## Required acceptance evidence
 

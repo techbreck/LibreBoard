@@ -6,6 +6,8 @@ from __future__ import annotations
 import hashlib
 import json
 import pathlib
+import re
+import unicodedata
 from dataclasses import dataclass
 from typing import Any
 
@@ -28,6 +30,38 @@ class ContextTokenizer:
     path: pathlib.Path
     sha256: str
     raw: dict[str, Any]
+
+
+def encode_text(tokenizer: ContextTokenizer, text: str) -> list[int]:
+    """Mirror the bounded Kotlin BPE algorithm for build-time parity checks."""
+    vocabulary = tokenizer.raw["vocabulary"]
+    special = tokenizer.raw["specialTokens"]
+    unknown_id = vocabulary[special["unknown"]]
+    merge_ranks = {
+        (merge[0], merge[1]): rank
+        for rank, merge in enumerate(tokenizer.raw["merges"])
+    }
+    normalized = unicodedata.normalize("NFKC", text).lower()
+    output: list[int] = []
+    for word in re.split(r"\s+", normalized.strip()):
+        if not word:
+            continue
+        symbols = [WORD_START, *word]
+        while len(symbols) > 1:
+            selected_index = -1
+            selected_rank = len(merge_ranks) + 1
+            for index in range(len(symbols) - 1):
+                rank = merge_ranks.get((symbols[index], symbols[index + 1]))
+                if rank is not None and rank < selected_rank:
+                    selected_index = index
+                    selected_rank = rank
+            if selected_index < 0:
+                break
+            symbols[selected_index:selected_index + 2] = [
+                symbols[selected_index] + symbols[selected_index + 1]
+            ]
+        output.extend(vocabulary.get(symbol, unknown_id) for symbol in symbols)
+    return output
 
 
 def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
