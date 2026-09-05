@@ -43,6 +43,7 @@ python3 tools/verify_release.py --source --apk app/build/outputs/apk/debug/Libre
 - [Privacy and storage contract](docs/privacy.md)
 - [GrapheneOS compatibility gate](docs/grapheneos.md)
 - [GrapheneOS physical-device record](docs/release/grapheneos-device-record.md)
+- [GrapheneOS machine-verifiable evidence](docs/release/grapheneos-evidence-schema.md)
 - [Model and runtime policy](docs/models/README.md)
 - [Phase 0 evaluation gate](docs/phase-0.md)
 - [Phase 0 measurement schema](docs/phase-0-dataset-schema.md)

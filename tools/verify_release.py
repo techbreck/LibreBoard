@@ -4,6 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
+import math
 import os
 import pathlib
 import re
@@ -44,6 +47,53 @@ ALLOWED_NATIVE_LIBRARIES = {
     "liblibreboard_onnxruntime.so",
 }
 BACKUP_DOMAINS = {"root", "file", "database", "sharedpref", "external"}
+SHA256 = re.compile(r"^[0-9a-f]{64}$")
+GIT_COMMIT = re.compile(r"^[0-9a-f]{40,64}$")
+SECURITY_PATCH = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+UTC_TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+PHASE0_CHECKS = {
+    "tap_relative_error_reduction",
+    "neural_valid_word_relative_error_reduction",
+    "neural_valid_word_absolute_gain",
+    "false_correction_ceiling",
+    "swipe_top1",
+    "swipe_top3",
+    "swipe_short_top3",
+    "swipe_return_trip_top3",
+    "swipe_geometric_relative_error_reduction",
+    "tap_p95_latency",
+    "swipe_p95_latency",
+    "peak_neural_memory",
+}
+MINIMUM_PHASE0_COUNTS = {
+    "tap_error": 3_000,
+    "valid_word": 1_000,
+    "spacing": 500,
+    "lexical": 500,
+    "swipe": 5_000,
+}
+GRAPHENEOS_CHECKS = {
+    "apk_verified",
+    "keyboard_enable_select",
+    "direct_boot",
+    "plain_text_correction",
+    "url_email_policy",
+    "password_pin_policy",
+    "incognito_policy",
+    "no_suggestions_policy",
+    "terminal_commit",
+    "english_german_lock",
+    "model_fallbacks",
+    "clipboard_backup_wipe",
+    "window_and_animation",
+    "performance_budgets",
+    "crash_anr_stale_result_free",
+}
+PHASE0_ENVIRONMENTS = {
+    "stock_android_hardware",
+    "grapheneos_hardware",
+    "low_ram_emulator",
+}
 
 
 def fail(errors: list[str], message: str) -> None:
@@ -193,6 +243,199 @@ def run(command: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, text=True, capture_output=True, check=False)
 
 
+def sha256_file(path: pathlib.Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        while chunk := stream.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def read_json_object(errors: list[str], path: pathlib.Path, label: str) -> dict | None:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        fail(errors, f"cannot read {label}: {exc}")
+        return None
+    if not isinstance(value, dict):
+        fail(errors, f"{label} must be a JSON object")
+        return None
+    return value
+
+
+def validate_phase0_report(errors: list[str], report: dict, apk_hash: str) -> dict | None:
+    if report.get("schemaVersion") != 1:
+        fail(errors, "Phase 0 report has an unsupported schema")
+    if report.get("passed") is not True:
+        fail(errors, "Phase 0 report did not pass")
+    checks = report.get("checks")
+    if (not isinstance(checks, dict)
+            or set(checks) != PHASE0_CHECKS
+            or any(value is not True for value in checks.values())):
+        fail(errors, "Phase 0 report does not contain every passing release check")
+    counts = report.get("counts")
+    if not isinstance(counts, dict) or any(
+        isinstance(counts.get(category), bool)
+        or not isinstance(counts.get(category), int)
+        or counts[category] < minimum
+        for category, minimum in MINIMUM_PHASE0_COUNTS.items()
+    ):
+        fail(errors, "Phase 0 report does not satisfy held-out dataset minimums")
+
+    evidence = report.get("evidence")
+    if not isinstance(evidence, dict):
+        fail(errors, "Phase 0 report has no artifact or environment evidence")
+        return None
+    if evidence.get("coreApkSha256") != apk_hash:
+        fail(errors, "Phase 0 report was produced with a different APK")
+    if not isinstance(evidence.get("appCommit"), str) or not GIT_COMMIT.fullmatch(evidence["appCommit"]):
+        fail(errors, "Phase 0 report has an invalid app commit")
+    for field in ("swipeModelSha256", "contextModelSha256"):
+        if not isinstance(evidence.get(field), str) or not SHA256.fullmatch(evidence[field]):
+            fail(errors, f"Phase 0 report has an invalid {field}")
+    environments = evidence.get("environments")
+    graphene = None
+    if isinstance(environments, list):
+        kinds = [item.get("kind") for item in environments if isinstance(item, dict)]
+        if len(environments) != 3 or set(kinds) != PHASE0_ENVIRONMENTS or len(kinds) != len(set(kinds)):
+            fail(errors, "Phase 0 report does not contain the three reference environments")
+        matches = [item for item in environments
+                   if isinstance(item, dict) and item.get("kind") == "grapheneos_hardware"]
+        if len(matches) == 1:
+            graphene = matches[0]
+    if graphene is None:
+        fail(errors, "Phase 0 report has no unique GrapheneOS hardware run")
+    elif (graphene.get("physicalDevice") is not True
+          or graphene.get("sandboxedGooglePlayInstalled") is not False):
+        fail(errors, "Phase 0 GrapheneOS run is not qualifying physical hardware")
+    return evidence
+
+
+def finite_number(value: object) -> bool:
+    return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value) and value >= 0
+
+
+def validate_grapheneos_evidence(errors: list[str], report: dict, apk: pathlib.Path, apk_hash: str) -> None:
+    if report.get("schemaVersion") != 1 or report.get("status") != "PASS":
+        fail(errors, "GrapheneOS evidence must use schema 1 with PASS status")
+    if report.get("apkFilename") != apk.name or report.get("apkSha256") != apk_hash:
+        fail(errors, "GrapheneOS evidence does not identify the verified APK")
+    if not isinstance(report.get("appCommit"), str) or not GIT_COMMIT.fullmatch(report["appCommit"]):
+        fail(errors, "GrapheneOS evidence has an invalid app commit")
+    for field in (
+        "deviceModel",
+        "grapheneOsBuildNumber",
+        "buildFingerprint",
+        "testerId",
+        "phase0TestRunId",
+    ):
+        if not isinstance(report.get(field), str) or not report[field] or len(report[field]) > 512:
+            fail(errors, f"GrapheneOS evidence requires {field}")
+    if (not isinstance(report.get("securityPatchLevel"), str)
+            or not SECURITY_PATCH.fullmatch(report["securityPatchLevel"])):
+        fail(errors, "GrapheneOS evidence has an invalid security patch level")
+    if not isinstance(report.get("testedAtUtc"), str) or not UTC_TIMESTAMP.fullmatch(report["testedAtUtc"]):
+        fail(errors, "GrapheneOS evidence has an invalid UTC test timestamp")
+    api_level = report.get("apiLevel")
+    if isinstance(api_level, bool) or not isinstance(api_level, int) or api_level < 35 or api_level > 100:
+        fail(errors, "GrapheneOS evidence must come from Android 15+ hardware")
+    if report.get("physicalDevice") is not True:
+        fail(errors, "GrapheneOS evidence must come from a physical device")
+    if report.get("sandboxedGooglePlayInstalled") is not False:
+        fail(errors, "GrapheneOS evidence must run without sandboxed Google Play")
+    if report.get("compatibilityChangesEnabled") is not False:
+        fail(errors, "GrapheneOS evidence must not require compatibility changes")
+
+    checks = report.get("checks")
+    if (not isinstance(checks, dict)
+            or set(checks) != GRAPHENEOS_CHECKS
+            or any(value is not True for value in checks.values())):
+        fail(errors, "GrapheneOS evidence does not contain every passing device check")
+
+    measurements = report.get("measurements")
+    if not isinstance(measurements, dict):
+        fail(errors, "GrapheneOS evidence has no measurements")
+    else:
+        for name, budget in (("tapLatencyMs", 80.0), ("swipeLatencyMs", 200.0)):
+            latency = measurements.get(name)
+            if (not isinstance(latency, dict)
+                    or any(not finite_number(latency.get(key)) for key in ("p50", "p95", "p99"))):
+                fail(errors, f"GrapheneOS evidence has invalid {name}")
+            elif not (latency["p50"] <= latency["p95"] <= latency["p99"]):
+                fail(errors, f"GrapheneOS {name} percentiles are not ordered")
+            elif latency["p95"] > budget:
+                fail(errors, f"GrapheneOS {name} exceeds the p95 budget")
+        for field in (
+            "coldStartMs",
+            "warmStartMs",
+            "peakRssMiB",
+            "neuralTimeoutCount",
+            "circuitBreakerActivationCount",
+        ):
+            if not finite_number(measurements.get(field)):
+                fail(errors, f"GrapheneOS evidence has invalid {field}")
+
+    for field in (
+        "instrumentationOutputSha256",
+        "phase0ReportSha256",
+        "swipeModelSha256",
+        "contextModelSha256",
+    ):
+        if not isinstance(report.get(field), str) or not SHA256.fullmatch(report[field]):
+            fail(errors, f"GrapheneOS evidence requires {field}")
+
+
+def evidence_checks(
+    errors: list[str],
+    apk: pathlib.Path,
+    rebuilt_apk: pathlib.Path,
+    phase0_path: pathlib.Path,
+    grapheneos_path: pathlib.Path,
+    instrumentation_path: pathlib.Path,
+) -> None:
+    if not apk.is_file() or not rebuilt_apk.is_file():
+        fail(errors, "both reproducibility APKs must exist")
+        return
+    apk_hash = sha256_file(apk)
+    rebuilt_hash = sha256_file(rebuilt_apk)
+    if apk_hash != rebuilt_hash:
+        fail(errors, "clean rebuild APK is not byte-identical")
+
+    phase0 = read_json_object(errors, phase0_path, "Phase 0 report")
+    grapheneos = read_json_object(errors, grapheneos_path, "GrapheneOS evidence")
+    phase0_evidence = validate_phase0_report(errors, phase0, apk_hash) if phase0 is not None else None
+    if grapheneos is None:
+        return
+    validate_grapheneos_evidence(errors, grapheneos, apk, apk_hash)
+    if phase0_evidence is None:
+        return
+
+    if grapheneos.get("phase0ReportSha256") != sha256_file(phase0_path):
+        fail(errors, "GrapheneOS evidence references a different Phase 0 report")
+    if not instrumentation_path.is_file():
+        fail(errors, "GrapheneOS instrumentation output does not exist")
+    elif grapheneos.get("instrumentationOutputSha256") != sha256_file(instrumentation_path):
+        fail(errors, "GrapheneOS evidence references different instrumentation output")
+    for field in ("appCommit", "swipeModelSha256", "contextModelSha256"):
+        if grapheneos.get(field) != phase0_evidence.get(field):
+            fail(errors, f"GrapheneOS and Phase 0 evidence disagree on {field}")
+    environments = phase0_evidence.get("environments", [])
+    phase0_graphene = next(
+        (item for item in environments if isinstance(item, dict) and item.get("kind") == "grapheneos_hardware"),
+        None,
+    )
+    if phase0_graphene is not None:
+        matches = {
+            "deviceModel": "deviceModel",
+            "grapheneOsBuildNumber": "grapheneOsBuildNumber",
+            "buildFingerprint": "buildFingerprint",
+            "phase0TestRunId": "testRunId",
+        }
+        for report_field, environment_field in matches.items():
+            if grapheneos.get(report_field) != phase0_graphene.get(environment_field):
+                fail(errors, f"GrapheneOS device evidence disagrees with Phase 0 on {report_field}")
+
+
 def apk_checks(errors: list[str], apk: pathlib.Path) -> None:
     if not apk.is_file():
         fail(errors, f"APK does not exist: {apk}")
@@ -315,15 +558,39 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", action="store_true", help="verify source privacy and dependency rules")
     parser.add_argument("--apk", action="append", type=pathlib.Path, default=[], help="verify a built APK")
+    parser.add_argument("--rebuilt-apk", type=pathlib.Path, help="independent clean rebuild of the release APK")
+    parser.add_argument("--phase0-report", type=pathlib.Path, help="passing Phase 0 JSON report for the APK")
+    parser.add_argument("--grapheneos-evidence", type=pathlib.Path, help="physical GrapheneOS JSON evidence")
+    parser.add_argument(
+        "--instrumentation-output",
+        type=pathlib.Path,
+        help="raw output from the GrapheneOS device run",
+    )
     args = parser.parse_args()
-    if not args.source and not args.apk:
+    evidence_values = (args.rebuilt_apk, args.phase0_report, args.grapheneos_evidence, args.instrumentation_output)
+    has_evidence = any(value is not None for value in evidence_values)
+    if not args.source and not args.apk and not has_evidence:
         parser.error("select --source and/or at least one --apk")
+    if has_evidence and (len(args.apk) != 1 or any(value is None for value in evidence_values)):
+        parser.error(
+            "GrapheneOS evidence requires exactly one --apk plus --rebuilt-apk, "
+            "--phase0-report, --grapheneos-evidence, and --instrumentation-output"
+        )
 
     errors: list[str] = []
     if args.source:
         source_checks(errors)
     for apk in args.apk:
         apk_checks(errors, apk.resolve())
+    if has_evidence:
+        evidence_checks(
+            errors,
+            args.apk[0].resolve(),
+            args.rebuilt_apk.resolve(),
+            args.phase0_report.resolve(),
+            args.grapheneos_evidence.resolve(),
+            args.instrumentation_output.resolve(),
+        )
     if errors:
         for error in errors:
             print(f"ERROR: {error}", file=sys.stderr)

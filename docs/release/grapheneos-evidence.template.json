@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "status": "BLOCKED",
+  "appCommit": "",
+  "apkFilename": "",
+  "apkSha256": "",
+  "swipeModelSha256": "",
+  "contextModelSha256": "",
+  "deviceModel": "",
+  "grapheneOsBuildNumber": "",
+  "apiLevel": 0,
+  "securityPatchLevel": "",
+  "buildFingerprint": "",
+  "physicalDevice": false,
+  "sandboxedGooglePlayInstalled": false,
+  "compatibilityChangesEnabled": false,
+  "testerId": "",
+  "testedAtUtc": "",
+  "phase0TestRunId": "",
+  "phase0ReportSha256": "",
+  "instrumentationOutputSha256": "",
+  "checks": {
+    "apk_verified": false,
+    "keyboard_enable_select": false,
+    "direct_boot": false,
+    "plain_text_correction": false,
+    "url_email_policy": false,
+    "password_pin_policy": false,
+    "incognito_policy": false,
+    "no_suggestions_policy": false,
+    "terminal_commit": false,
+    "english_german_lock": false,
+    "model_fallbacks": false,
+    "clipboard_backup_wipe": false,
+    "window_and_animation": false,
+    "performance_budgets": false,
+    "crash_anr_stale_result_free": false
+  },
+  "measurements": {
+    "tapLatencyMs": {
+      "p50": 0,
+      "p95": 0,
+      "p99": 0
+    },
+    "swipeLatencyMs": {
+      "p50": 0,
+      "p95": 0,
+      "p99": 0
+    },
+    "coldStartMs": 0,
+    "warmStartMs": 0,
+    "peakRssMiB": 0,
+    "neuralTimeoutCount": 0,
+    "circuitBreakerActivationCount": 0
+  }
+}

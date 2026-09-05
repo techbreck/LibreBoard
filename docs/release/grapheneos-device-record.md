@@ -3,6 +3,8 @@
 Status: **BLOCKED — no qualifying device run has been recorded**
 
 Complete this file for the exact release APK. Do not replace missing evidence with emulator results.
+The completed run must also be serialized using `grapheneos-evidence-schema.md` and pass the strict
+`tools/verify_release.py` evidence command documented there.
 
 ## Artifact and device
 

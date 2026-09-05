@@ -33,7 +33,9 @@ Run on a currently supported Pixel with the current stable GrapheneOS release an
    crash-free results. Attach the device build fingerprint and GrapheneOS version to the release.
 
 Automated unit/emulator tests do not satisfy this gate. The release evidence must contain a completed
-physical-device record; an absent record means “not released,” never “probably compatible.”
+physical-device record and the matching machine-readable JSON described in
+`docs/release/grapheneos-evidence-schema.md`; an absent or verifier-rejected record means “not
+released,” never “probably compatible.”
 
 The checked-in record template is `docs/release/grapheneos-device-record.md`. Its blocked status is
 intentional until the exact release APK passes on supported physical hardware.
