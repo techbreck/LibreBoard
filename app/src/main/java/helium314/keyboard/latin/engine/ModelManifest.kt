@@ -56,12 +56,17 @@ object ModelManifestValidator {
         if (modelBytes <= 0 || modelBytes > limits.maximumBytes) return invalid("model size is outside allowed bounds")
         if (!sha256.matches(manifest.modelSha256)) return invalid("invalid model hash")
         if (manifest.tokenizerSha256 != null && !sha256.matches(manifest.tokenizerSha256)) return invalid("invalid tokenizer hash")
+        if (manifest.requiredOnnxOperators.isEmpty()
+            || manifest.requiredOnnxOperators.size > 256
+            || manifest.requiredOnnxOperators.distinct().size != manifest.requiredOnnxOperators.size
+            || manifest.requiredOnnxOperators.any {
+                it.isBlank() || it.length > 256 || it.any(Char::isWhitespace)
+            }) return invalid("invalid ONNX operator list")
         val forbidden = manifest.requiredOnnxOperators.toSet() - limits.allowedOperators
         if (forbidden.isNotEmpty()) return invalid("unsupported ONNX operators: ${forbidden.sorted().joinToString()}")
         if (manifest.locales.isEmpty() || manifest.locales.size > 16
             || manifest.locales.distinct().size != manifest.locales.size
             || manifest.locales.any { it.isBlank() || it.length > 64 }) return invalid("invalid model locales")
-        if (manifest.requiredOnnxOperators.size > 256) return invalid("too many ONNX operators")
         if (manifest.license.isBlank() || manifest.provenance.isEmpty()) return invalid("license provenance is incomplete")
         if (manifest.license !in limits.allowedModelLicenses) return invalid("model license is not allowlisted")
         if (manifest.provenance.size > 64 || manifest.provenance.any {

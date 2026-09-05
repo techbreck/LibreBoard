@@ -34,7 +34,10 @@ class ModelRegistryTest {
         keyPair = KeyPairGenerator.getInstance("EC").apply { initialize(256) }.generateKeyPair()
         registry = ModelRegistry(
             ApplicationProvider.getApplicationContext<Context>(),
-            ModelValidationLimits(allowedOperators = setOf("MatMul"), appVersionCode = 1),
+            ModelValidationLimits(
+                allowedOperators = setOf("MatMul", "Add", "If", "com.microsoft::MatMulNBits"),
+                appVersionCode = 1,
+            ),
             keyPair.public,
         )
         registry.wipe()
@@ -45,8 +48,8 @@ class ModelRegistryTest {
 
     @Test
     fun activatesOnlyHashedSignedDataAndRollsBackCorruptActiveModel() {
-        val first = "first model".encodeToByteArray()
-        val second = "second model".encodeToByteArray()
+        val first = model("MatMul", marker = "first")
+        val second = model("MatMul", marker = "second")
         registry.activate(ByteArrayInputStream(archive(first)))
         registry.activate(ByteArrayInputStream(archive(second)))
         registry.activeModel()!!.model.writeBytes("corrupt".encodeToByteArray())
@@ -58,14 +61,73 @@ class ModelRegistryTest {
 
     @Test
     fun rejectsTamperedModelWithoutReplacingActiveModel() {
-        val original = "trusted".encodeToByteArray()
+        val original = model("MatMul", marker = "trusted")
         registry.activate(ByteArrayInputStream(archive(original)))
-        val tampered = archive("signed bytes".encodeToByteArray(), modelOverride = "different".encodeToByteArray())
+        val signed = model("MatMul", marker = "signed")
+        val tampered = archive(signed, modelOverride = model("Add", marker = "different"))
         assertFailsWith<IllegalArgumentException> { registry.activate(ByteArrayInputStream(tampered)) }
         assertArrayEquals(original, registry.activeModel()!!.model.readBytes())
     }
 
-    private fun archive(signedModel: ByteArray, modelOverride: ByteArray = signedModel): ByteArray {
+    @Test
+    fun rejectsUndeclaredNestedOperatorWithoutReplacingActiveModel() {
+        val original = model("MatMul", marker = "trusted")
+        registry.activate(ByteArrayInputStream(archive(original)))
+        val hiddenAdd = OnnxTestModels.model(
+            nodes = listOf(
+                OnnxTestModels.node(
+                    "If",
+                    attributes = listOf(
+                        OnnxTestModels.graphAttribute(listOf(OnnxTestModels.node("Add"))),
+                    ),
+                ),
+            ),
+        )
+
+        val failure = assertFailsWith<IllegalArgumentException> {
+            registry.activate(ByteArrayInputStream(archive(hiddenAdd, operators = listOf("If"))))
+        }
+        assertEquals("ONNX operator manifest mismatch; undeclared: Add", failure.message)
+        assertArrayEquals(original, registry.activeModel()!!.model.readBytes())
+    }
+
+    @Test
+    fun rejectsCustomDomainMasqueradingAsCoreOperator() {
+        val custom = OnnxTestModels.model(
+            nodes = listOf(OnnxTestModels.node("MatMul", domain = "untrusted.example")),
+        )
+
+        val failure = assertFailsWith<IllegalArgumentException> {
+            registry.activate(ByteArrayInputStream(archive(custom, operators = listOf("MatMul"))))
+        }
+        assertEquals(
+            "ONNX operator manifest mismatch; undeclared: untrusted.example::MatMul; absent: MatMul",
+            failure.message,
+        )
+    }
+
+    @Test
+    fun rejectsDeclaredOperatorThatIsAbsentFromGraph() {
+        val model = model("MatMul")
+        val failure = assertFailsWith<IllegalArgumentException> {
+            registry.activate(ByteArrayInputStream(archive(model, operators = listOf("MatMul", "Add"))))
+        }
+        assertEquals("ONNX operator manifest mismatch; absent: Add", failure.message)
+    }
+
+    @Test
+    fun rejectsMalformedSignedModel() {
+        val malformed = OnnxTestModels.truncatedMessage()
+        assertFailsWith<IllegalArgumentException> {
+            registry.activate(ByteArrayInputStream(archive(malformed)))
+        }
+    }
+
+    private fun archive(
+        signedModel: ByteArray,
+        modelOverride: ByteArray = signedModel,
+        operators: List<String> = listOf("MatMul"),
+    ): ByteArray {
         val tokenizer = "{}".encodeToByteArray()
         val manifest = ModelManifest(
             schemaVersion = 1,
@@ -76,7 +138,7 @@ class ModelRegistryTest {
             quantization = "fixture",
             modelSha256 = sha256(signedModel),
             tokenizerSha256 = sha256(tokenizer),
-            requiredOnnxOperators = listOf("MatMul"),
+            requiredOnnxOperators = operators,
             license = "Apache-2.0",
             provenance = listOf(ProvenanceEntry("fixture", "1", "Apache-2.0", "https://example.invalid/model")),
             minimumAppVersionCode = 1,
@@ -105,4 +167,9 @@ class ModelRegistryTest {
 
     private fun sha256(bytes: ByteArray) = MessageDigest.getInstance("SHA-256")
         .digest(bytes).joinToString("") { "%02x".format(it) }
+
+    private fun model(operator: String, marker: String = "fixture") = OnnxTestModels.model(
+        nodes = listOf(OnnxTestModels.node(operator)),
+        marker = marker,
+    )
 }

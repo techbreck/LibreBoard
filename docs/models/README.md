@@ -16,6 +16,12 @@ No stock Maven AAR, ORT Extensions, NNAPI/Play delegate, GGUF runtime, downloade
 arbitrary model signature is permitted. `ModelManifestValidator` is fail-closed on schema, engine ABI,
 app version, size, hashes, operator allowlist, locale list, license, and provenance.
 
+Operator validation is independent of the signed declaration. Before native inference, LibreBoard
+maps the bounded ONNX protobuf, enumerates nodes in the inference graph, graph-valued attributes,
+repeated graph attributes, and model-local function bodies, and requires that discovered set to
+exactly match the manifest. Non-standard domains use `domain::Operator`; training graphs, malformed
+wire data, undeclared operators, and declared-but-absent operators are rejected.
+
 Manual imports use a strict `.lbmodel` ZIP container with exactly `manifest.json`, `model.onnx`,
 optional `tokenizer.json`, and `signature.der`. `ModelRegistry` streams the blob into CE staging,
 enforces size and entry allowlists, verifies SHA-256 and the injected project ECDSA key, atomically

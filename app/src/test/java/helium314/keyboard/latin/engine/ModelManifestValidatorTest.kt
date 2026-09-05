@@ -36,4 +36,22 @@ class ModelManifestValidatorTest {
         assertTrue(ModelManifestValidator.validate(unknown, 1_000, limits) is ModelValidationResult.Invalid)
         assertTrue(ModelManifestValidator.validate(manifest, limits.maximumBytes + 1, limits) is ModelValidationResult.Invalid)
     }
+
+    @Test
+    fun rejectsEmptyDuplicateAndMalformedOperatorLists() {
+        listOf(
+            emptyList(),
+            listOf("MatMul", "MatMul"),
+            listOf(""),
+            listOf("bad operator"),
+        ).forEach { operators ->
+            assertTrue(
+                ModelManifestValidator.validate(
+                    manifest.copy(requiredOnnxOperators = operators),
+                    1_000,
+                    limits,
+                ) is ModelValidationResult.Invalid,
+            )
+        }
+    }
 }

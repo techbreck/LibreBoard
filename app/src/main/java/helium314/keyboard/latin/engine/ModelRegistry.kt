@@ -72,6 +72,7 @@ class ModelRegistry(
             require(modelHash == manifest.modelSha256) { "Model hash mismatch" }
             require(manifest.tokenizerSha256 == tokenizerHash) { "Tokenizer hash mismatch" }
             require(verifySignature(rawManifest, rawSignature)) { "Untrusted model signature" }
+            requireOperatorsMatch(File(staging, MODEL), manifest)
 
             File(staging, MANIFEST).writeBytes(rawManifest)
             File(staging, SIGNATURE).writeBytes(rawSignature)
@@ -110,8 +111,23 @@ class ModelRegistry(
             require(tokenizer?.let(::sha256) == manifest.tokenizerSha256)
             val signature = signatureFile.inputStream().use { readBounded(it, MAX_SIGNATURE_BYTES) }
             require(verifySignature(rawManifest, signature))
+            requireOperatorsMatch(modelFile, manifest)
             ActiveModel(manifest, modelFile, tokenizer)
         }.getOrNull()
+    }
+
+    private fun requireOperatorsMatch(model: File, manifest: ModelManifest) {
+        val actual = OnnxOperatorInspector.inspect(model, limits.maximumBytes)
+        val declared = manifest.requiredOnnxOperators.toSet()
+        val undeclared = actual - declared
+        val absent = declared - actual
+        require(undeclared.isEmpty() && absent.isEmpty()) {
+            buildString {
+                append("ONNX operator manifest mismatch")
+                if (undeclared.isNotEmpty()) append("; undeclared: ${undeclared.sorted().joinToString()}")
+                if (absent.isNotEmpty()) append("; absent: ${absent.sorted().joinToString()}")
+            }
+        }
     }
 
     @Synchronized
