@@ -69,12 +69,12 @@ jobs:
           version: '0.11.4'
           enable-cache: true
 
-      - name: Install hash-locked model toolchain
+      - name: Install hash-locked swipe and context model toolchain
         run: |
           uv venv --python 3.11 build/model-venv
           uv pip install --python build/model-venv/bin/python \
             --require-hashes --torch-backend cpu \
-            -r models/training/requirements-linux-x86_64.lock
+            -r models/training/requirements-context-linux-x86_64.lock
 
-      - name: Smoke-test model train and ONNX export
+      - name: Smoke-test swipe/context training contracts and ONNX export
         run: build/model-venv/bin/python -m unittest discover -s tools/tests

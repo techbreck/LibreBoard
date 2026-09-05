@@ -43,6 +43,12 @@ class ContextCandidateRescorerTest {
         assertTrue(batch.attentionMask.count { it == 1L } > 0)
         assertEquals(2, batch.candidateMask.count { it == 1f })
         assertTrue(batch.fieldClasses.all { it == 1L })
+        assertTrue(batch.candidateMask.take(ContextCandidateRescorer.CANDIDATE_START).all { it == 0f })
+        assertTrue(batch.candidateMask.drop(32).take(ContextCandidateRescorer.CANDIDATE_START).all { it == 0f })
+        assertEquals(
+            batch.inputIds.take(ContextCandidateRescorer.CANDIDATE_START),
+            batch.inputIds.drop(32).take(ContextCandidateRescorer.CANDIDATE_START),
+        )
     }
 
     @Test
@@ -118,8 +124,15 @@ class ContextCandidateRescorerTest {
 
     @Test
     fun equalNormalizedSurfacesRemainLanguageScoped() {
-        val rescorer = ContextCandidateRescorer(tokenizer) { _, _ ->
-            ContextInferenceResult(EngineAvailability.AVAILABLE, floatArrayOf(-3f, -1f))
+        var calls = 0
+        val rescorer = ContextCandidateRescorer(tokenizer) { batch, _ ->
+            calls++
+            val score = when (batch.inputIds[1]) {
+                2L -> -3f
+                3L -> -1f
+                else -> error("unexpected language prefix")
+            }
+            ContextInferenceResult(EngineAvailability.AVAILABLE, floatArrayOf(score))
         }
         val result = rescorer.score(
             request("", FieldPolicy.NORMAL, FieldClass.PLAIN),
@@ -128,6 +141,7 @@ class ContextCandidateRescorerTest {
         )
         assertEquals(-3.0, result.scoresByCandidate[CandidateKey("libreboard", "en-US")]!!, 0.0001)
         assertEquals(-1.0, result.scoresByCandidate[CandidateKey("libreboard", "de")]!!, 0.0001)
+        assertEquals(2, calls)
     }
 
     @Test

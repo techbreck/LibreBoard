@@ -1,0 +1,5 @@
+# Build-time only. None of these packages enter an Android APK or model-pack APK.
+-r requirements.in
+onnx-ir==1.0.0
+onnxruntime==1.26.0
+transformers==4.57.6

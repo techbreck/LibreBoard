@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "modelId": "context-en-de-v1",
+  "engineAbi": 1,
+  "tensorAbi": "context-en-de-v1",
+  "architectureName": "BilingualCandidateTransformer-v1",
+  "license": "Apache-2.0",
+  "locales": [
+    "en-US",
+    "de"
+  ],
+  "parameterCount": 35662848,
+  "architecture": {
+    "sequenceLength": 32,
+    "maximumCandidates": 32,
+    "maximumCandidateTokens": 8,
+    "vocabularySize": 16384,
+    "fieldClasses": 5,
+    "width": 512,
+    "heads": 8,
+    "layers": 8,
+    "feedForwardWidth": 1536,
+    "dropout": 0.1,
+    "rmsNormEpsilon": 0.000001,
+    "ropeTheta": 10000.0,
+    "scoring": "shifted-tied-embedding-mean-v1"
+  },
+  "training": {
+    "seed": 24012026,
+    "epochs": 4,
+    "batchSize": 128,
+    "learningRate": 0.0003,
+    "weightDecay": 0.1,
+    "gradientClip": 1.0,
+    "teacherTemperature": 1.0,
+    "rankingMargin": 0.2
+  },
+  "export": {
+    "sourceOpsetVersion": 18,
+    "opsetVersion": 21,
+    "quantization": "INT4_BLOCK128",
+    "quantizationBlockSize": 128,
+    "maximumModelBytes": 25165824,
+    "inputs": [
+      {
+        "name": "input_ids",
+        "elementType": "int64",
+        "shape": [
+          -1,
+          32
+        ]
+      },
+      {
+        "name": "attention_mask",
+        "elementType": "int64",
+        "shape": [
+          -1,
+          32
+        ]
+      },
+      {
+        "name": "candidate_mask",
+        "elementType": "float32",
+        "shape": [
+          -1,
+          32
+        ]
+      },
+      {
+        "name": "field_class",
+        "elementType": "int64",
+        "shape": [
+          -1
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "candidate_log_likelihood",
+        "elementType": "float32",
+        "shape": [
+          -1
+        ]
+      }
+    ]
+  }
+}

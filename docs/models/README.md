@@ -26,6 +26,19 @@ The swipe build path is now implemented without committing or pretending to acce
 - `models/training/requirements-linux-x86_64.lock` pins and hashes the build-only CPU toolchain. These
   packages are not Android dependencies and never enter an APK.
 
+The context-model architecture/export path is also executable without treating synthetic bytes as a
+release artifact:
+
+- `models/context/model-spec.json` fixes the 35,662,848-parameter en/de candidate-only Transformer,
+  32-row dynamic tensor ABI, 24-token shared prefix, eight-token candidate suffix, and 24 MiB limit.
+- `tools/context_tokenizer_contract.py` mirrors the Android tokenizer's strict schema and adds the
+  release requirement for exactly 16,384 dense token IDs.
+- `tools/export_context_model.py` binds the pinned Hanse2 teacher, corpus manifest, tokenizer,
+  safetensors and app commit; converts the source graph to blockwise INT4; verifies the exact custom
+  operator counts; and runs CPU inference at batch sizes 1 and 32.
+- `models/training/requirements-context-linux-x86_64.lock` hashes the complete build-only distillation
+  and export environment, including Transformers and ONNX Runtime 1.26 tooling.
+
 Synthetic end-to-end smoke tests prove corpus preparation, one-step training, FP16 ONNX export,
 operator enumeration, the 2.5 MiB model ceiling, and manifest/hash binding. A smoke artifact retains
 `development` in every relevant filename and is release-ineligible by construction.
@@ -57,7 +70,7 @@ tokenization or native inference. A candidate requiring more than eight wordpiec
 neural scoring instead of being ranked from a misleading prefix; the rest of the candidate slate is
 still scored normally.
 
-The context `tokenizer.json` is schema 1 `NFKC_LOWER` BPE data: a dense vocabulary of at most 16,384
+The context `tokenizer.json` is schema 1 `NFKC_LOWER` BPE data: a dense release vocabulary of exactly 16,384
 IDs, ranked two-symbol merge pairs, distinct padding/BOS/unknown tokens, and explicit language-token
 mappings. LibreBoard parses it with unknown fields disabled, caps it at 2 MiB, validates merge outputs
 and special IDs, applies Unicode NFKC deterministically, and makes start-versus-end truncation
@@ -120,6 +133,8 @@ LICENSE, model card, deterministic export command, dataset revision manifest, sp
 report, and reduced-operator configuration. Never commit placeholder bytes under a release filename.
 
 The current swipe model card and exact reproduction commands are in
-`models/swipe/MODEL_CARD.md`. The pinned gesture inputs total roughly 5.7 GB, so fetching them remains
-an explicit operator action rather than a side effect of Gradle or tests. The context source is pinned,
-but its corpus/distillation/export pipeline and both real trained candidates still remain outstanding.
+`models/swipe/MODEL_CARD.md`; the context architecture and export contract are in
+`models/context/MODEL_CARD.md`. The pinned gesture inputs total roughly 5.7 GB, so fetching them remains
+an explicit operator action rather than a side effect of Gradle or tests. The context source and
+exporter are pinned, but its bilingual corpus preparation/distillation training and both accepted
+trained candidates still remain outstanding.

@@ -17,6 +17,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 import zipfile
 
+import context_model_contract
 import model_sources
 import prepare_swipe_dataset
 import swipe_model_contract
@@ -141,6 +142,31 @@ def fail(errors: list[str], message: str) -> None:
 
 def android_attribute(node: ET.Element, name: str) -> str | None:
     return node.attrib.get(ANDROID_NS + name)
+
+
+def validate_hash_locked_requirements(
+    errors: list[str],
+    path: pathlib.Path,
+    label: str,
+    required_packages: tuple[str, ...],
+) -> None:
+    try:
+        lock_text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        fail(errors, f"cannot read hash-locked {label} dependencies: {exc}")
+        return
+    if any(package not in lock_text for package in required_packages):
+        fail(errors, f"{label} lock does not contain the audited direct dependencies")
+    requirement_blocks = re.split(r"\n(?=[a-z0-9][a-z0-9_.-]*==)", lock_text)
+    unhashed = [
+        block.split("==", 1)[0]
+        for block in requirement_blocks
+        if "==" in block and "--hash=sha256:" not in block
+    ]
+    if unhashed:
+        fail(errors, f"{label} lock contains unhashed packages: " + ", ".join(unhashed))
+    if "http://" in lock_text:
+        fail(errors, f"{label} lock contains an insecure package source")
 
 
 def validate_backup_exclusions(errors: list[str]) -> None:
@@ -408,12 +434,14 @@ def source_checks(errors: list[str]) -> None:
         source_manifest = model_sources.load_manifest()
         swipe_policy = prepare_swipe_dataset.load_policy()
         swipe_spec = swipe_model_contract.load_spec()
+        context_spec = context_model_contract.load_spec()
         swipe_source = source_manifest.source(swipe_policy.source_id)
         teacher_source = source_manifest.source("hanse2-100m-base-teacher-v1")
     except (
         model_sources.ModelSourceError,
         prepare_swipe_dataset.SwipeDataError,
         swipe_model_contract.SwipeModelContractError,
+        context_model_contract.ContextModelContractError,
     ) as exc:
         fail(errors, f"model source/training contract is invalid: {exc}")
     else:
@@ -429,6 +457,12 @@ def source_checks(errors: list[str]) -> None:
             fail(errors, "FUTO model weights or outputs are forbidden; only the MIT gesture dataset is approved")
         if swipe_spec.raw.get("parameterCount") > 1_000_000:
             fail(errors, "swipe model exceeds the audited one-million-parameter architecture ceiling")
+        if context_spec.raw.get("parameterCount") != 35_662_848:
+            fail(errors, "context model has drifted from the audited parameter budget")
+        if context_spec.export.get("quantization") != "INT4_BLOCK128":
+            fail(errors, "context model must retain the audited blockwise INT4 export")
+        if context_spec.export.get("maximumModelBytes", CONTEXT_MODEL_MAXIMUM_BYTES + 1) > CONTEXT_MODEL_MAXIMUM_BYTES:
+            fail(errors, "context model spec exceeds the sidecar payload ceiling")
         corpus_manifest_path = swipe_model_contract.DEFAULT_CORPUS_MANIFEST
         try:
             corpus_manifest = json.loads(corpus_manifest_path.read_bytes())
@@ -469,25 +503,26 @@ def source_checks(errors: list[str]) -> None:
             ):
                 fail(errors, "swipe corpus test split is not adequately stratified")
 
-    training_lock = ROOT / "models/training/requirements-linux-x86_64.lock"
-    try:
-        lock_text = training_lock.read_text(encoding="utf-8")
-    except OSError as exc:
-        fail(errors, f"cannot read hash-locked model training dependencies: {exc}")
-    else:
-        required_packages = ("numpy==2.2.6", "onnx==1.19.0", "safetensors==0.6.2", "torch==2.8.0+cpu")
-        if any(package not in lock_text for package in required_packages):
-            fail(errors, "model training lock does not contain the audited direct dependencies")
-        requirement_blocks = re.split(r"\n(?=[a-z0-9][a-z0-9_.-]*==)", lock_text)
-        unhashed = [
-            block.split("==", 1)[0]
-            for block in requirement_blocks
-            if "==" in block and "--hash=sha256:" not in block
-        ]
-        if unhashed:
-            fail(errors, "model training lock contains unhashed packages: " + ", ".join(unhashed))
-        if "http://" in lock_text:
-            fail(errors, "model training lock contains an insecure package source")
+    validate_hash_locked_requirements(
+        errors,
+        ROOT / "models/training/requirements-linux-x86_64.lock",
+        "model training",
+        ("numpy==2.2.6", "onnx==1.19.0", "safetensors==0.6.2", "torch==2.8.0+cpu"),
+    )
+    validate_hash_locked_requirements(
+        errors,
+        ROOT / "models/training/requirements-context-linux-x86_64.lock",
+        "context model",
+        (
+            "numpy==2.2.6",
+            "onnx==1.19.0",
+            "onnx-ir==1.0.0",
+            "onnxruntime==1.26.0",
+            "safetensors==0.6.2",
+            "torch==2.8.0+cpu",
+            "transformers==4.57.6",
+        ),
+    )
 
 
 def run(command: list[str]) -> subprocess.CompletedProcess[str]:

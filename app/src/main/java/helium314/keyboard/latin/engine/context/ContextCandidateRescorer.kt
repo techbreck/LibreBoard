@@ -19,7 +19,7 @@ data class ContextModelBatch(
     val inputIds: LongArray,
     /** Shape `[batchSize, 32]`; one for real tokens and zero for padding. */
     val attentionMask: LongArray,
-    /** Shape `[batchSize, 32]`; one only for candidate tokens scored by the model. */
+    /** Shape `[batchSize, 32]`; one only for candidate tokens in the fixed `[24, 32)` suffix. */
     val candidateMask: FloatArray,
     /** Shape `[batchSize]`; stable IDs from [FieldClass]. */
     val fieldClasses: LongArray,
@@ -66,28 +66,34 @@ class ContextCandidateRescorer(
         }
         if (candidates.isEmpty()) return NeuralScoreResult(EngineAvailability.AVAILABLE)
         if (deadline.expired) return NeuralScoreResult(EngineAvailability.TIMEOUT)
-        val prepared = runCatching { createBatch(request, candidates.take(MAX_CANDIDATES)) }
+        val prepared = runCatching { createBatches(request, candidates.take(MAX_CANDIDATES)) }
             .getOrElse { return NeuralScoreResult(EngineAvailability.INCOMPATIBLE) }
-        if (prepared == null) return NeuralScoreResult(EngineAvailability.AVAILABLE)
-        if (deadline.expired) return NeuralScoreResult(EngineAvailability.TIMEOUT)
-        val inference = runCatching { inferenceSession.infer(prepared.batch, deadline) }
-            .getOrElse { return NeuralScoreResult(EngineAvailability.UNAVAILABLE) }
-        if (inference.availability != EngineAvailability.AVAILABLE) {
-            return NeuralScoreResult(inference.availability)
-        }
-        val scores = inference.candidateLogLikelihoods
-        if (scores == null || scores.size != prepared.candidates.size || !scores.all(Float::isFinite)) {
-            return NeuralScoreResult(EngineAvailability.INCOMPATIBLE)
-        }
-        if (deadline.expired) return NeuralScoreResult(EngineAvailability.TIMEOUT)
+        if (prepared.isEmpty()) return NeuralScoreResult(EngineAvailability.AVAILABLE)
         val byCandidate = LinkedHashMap<CandidateKey, Double>()
-        prepared.candidates.forEachIndexed { index, candidate ->
-            byCandidate.merge(CandidateKey(candidate.normalized, candidate.languageTag), scores[index].toDouble(), ::maxOf)
+        prepared.forEach { group ->
+            if (deadline.expired) return NeuralScoreResult(EngineAvailability.TIMEOUT)
+            val inference = runCatching { inferenceSession.infer(group.batch, deadline) }
+                .getOrElse { return NeuralScoreResult(EngineAvailability.UNAVAILABLE) }
+            if (inference.availability != EngineAvailability.AVAILABLE) {
+                return NeuralScoreResult(inference.availability)
+            }
+            val scores = inference.candidateLogLikelihoods
+            if (scores == null || scores.size != group.candidates.size || !scores.all(Float::isFinite)) {
+                return NeuralScoreResult(EngineAvailability.INCOMPATIBLE)
+            }
+            group.candidates.forEachIndexed { index, candidate ->
+                byCandidate.merge(
+                    CandidateKey(candidate.normalized, candidate.languageTag),
+                    scores[index].toDouble(),
+                    ::maxOf,
+                )
+            }
         }
+        if (deadline.expired) return NeuralScoreResult(EngineAvailability.TIMEOUT)
         return NeuralScoreResult(EngineAvailability.AVAILABLE, byCandidate)
     }
 
-    private fun createBatch(request: TypingRequest, candidates: List<Candidate>): PreparedContextBatch? {
+    private fun createBatches(request: TypingRequest, candidates: List<Candidate>): List<PreparedContextBatch> {
         val paddingToken = tokenizer.paddingTokenId.requireTokenId()
         val beginningToken = tokenizer.beginningOfSequenceTokenId.requireTokenId()
         val tokenizedCandidates = candidates.mapNotNull { candidate ->
@@ -103,43 +109,46 @@ class ContextCandidateRescorer(
             tokenization.tokenIds.forEach { it.requireTokenId() }
             TokenizedCandidate(candidate, languageToken, tokenization.tokenIds)
         }
-        if (tokenizedCandidates.isEmpty()) return null
-        val rows = tokenizedCandidates.size
-        val inputIds = LongArray(rows * SEQUENCE_LENGTH) { paddingToken.toLong() }
-        val attentionMask = LongArray(rows * SEQUENCE_LENGTH)
-        val candidateMask = FloatArray(rows * SEQUENCE_LENGTH)
-        val fieldClasses = LongArray(rows) { request.fieldClass.modelId }
-
-        tokenizedCandidates.forEachIndexed { row, tokenized ->
-            val candidateTokens = tokenized.tokenIds
-            val maximumContext = SEQUENCE_LENGTH - candidateTokens.size - PREFIX_TOKENS
-            val contextTokens = tokenizer.encode(
-                request.precedingContext,
-                maximumContext,
-                TokenTruncation.KEEP_END,
-            ).tokenIds
-            require(contextTokens.size <= maximumContext) { "context tokenization is unbounded" }
-            contextTokens.forEach { it.requireTokenId() }
-            val tokens = intArrayOf(beginningToken, tokenized.languageToken) + contextTokens + candidateTokens
-            val candidateStart = tokens.size - candidateTokens.size
-            tokens.forEachIndexed { column, token ->
-                val offset = row * SEQUENCE_LENGTH + column
-                inputIds[offset] = token.toLong()
-                attentionMask[offset] = 1L
-                if (column >= candidateStart) candidateMask[offset] = 1f
+        if (tokenizedCandidates.isEmpty()) return emptyList()
+        val contextTokens = tokenizer.encode(
+            request.precedingContext,
+            MAX_CONTEXT_TOKENS,
+            TokenTruncation.KEEP_END,
+        ).tokenIds
+        require(contextTokens.size <= MAX_CONTEXT_TOKENS) { "context tokenization is unbounded" }
+        contextTokens.forEach { it.requireTokenId() }
+        return tokenizedCandidates.groupBy(TokenizedCandidate::languageToken).map { (languageToken, group) ->
+            val rows = group.size
+            val inputIds = LongArray(rows * SEQUENCE_LENGTH) { paddingToken.toLong() }
+            val attentionMask = LongArray(rows * SEQUENCE_LENGTH)
+            val candidateMask = FloatArray(rows * SEQUENCE_LENGTH)
+            val fieldClasses = LongArray(rows) { request.fieldClass.modelId }
+            val prefix = intArrayOf(beginningToken, languageToken) + contextTokens
+            group.forEachIndexed { row, tokenized ->
+                prefix.forEachIndexed { column, token ->
+                    val offset = row * SEQUENCE_LENGTH + column
+                    inputIds[offset] = token.toLong()
+                    attentionMask[offset] = 1L
+                }
+                tokenized.tokenIds.forEachIndexed { candidateIndex, token ->
+                    val offset = row * SEQUENCE_LENGTH + CANDIDATE_START + candidateIndex
+                    inputIds[offset] = token.toLong()
+                    attentionMask[offset] = 1L
+                    candidateMask[offset] = 1f
+                }
             }
+            PreparedContextBatch(
+                candidates = group.map(TokenizedCandidate::candidate),
+                batch = ContextModelBatch(
+                    batchSize = rows,
+                    sequenceLength = SEQUENCE_LENGTH,
+                    inputIds = inputIds,
+                    attentionMask = attentionMask,
+                    candidateMask = candidateMask,
+                    fieldClasses = fieldClasses,
+                ),
+            )
         }
-        return PreparedContextBatch(
-            candidates = tokenizedCandidates.map(TokenizedCandidate::candidate),
-            batch = ContextModelBatch(
-                batchSize = rows,
-                sequenceLength = SEQUENCE_LENGTH,
-                inputIds = inputIds,
-                attentionMask = attentionMask,
-                candidateMask = candidateMask,
-                fieldClasses = fieldClasses,
-            ),
-        )
     }
 
     private data class TokenizedCandidate(
@@ -171,5 +180,7 @@ class ContextCandidateRescorer(
         const val SEQUENCE_LENGTH = 32
         const val MAX_CANDIDATE_TOKENS = 8
         private const val PREFIX_TOKENS = 2
+        const val CANDIDATE_START = SEQUENCE_LENGTH - MAX_CANDIDATE_TOKENS
+        const val MAX_CONTEXT_TOKENS = CANDIDATE_START - PREFIX_TOKENS
     }
 }

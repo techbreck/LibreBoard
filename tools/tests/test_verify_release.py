@@ -17,6 +17,7 @@ from verify_release import (  # noqa: E402
     PHASE0_CHECKS,
     evidence_checks,
     model_archive_checks,
+    validate_hash_locked_requirements,
 )
 
 
@@ -99,6 +100,37 @@ class VerifyModelArchiveTest(unittest.TestCase):
         )
         self.assertIn("model archive must contain exactly the en-US and de locales", errors)
         self.assertIn("model archive has an invalid ONNX operator declaration", errors)
+
+
+class VerifyDependencyLockTest(unittest.TestCase):
+    def test_accepts_hash_locked_direct_dependencies(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = pathlib.Path(temporary) / "requirements.lock"
+            path.write_text(
+                "first==1.0 \\\n"
+                "    --hash=sha256:" + "a" * 64 + "\n"
+                "second==2.0 \\\n"
+                "    --hash=sha256:" + "b" * 64 + "\n",
+                encoding="utf-8",
+            )
+            errors = []
+            validate_hash_locked_requirements(errors, path, "fixture", ("first==1.0", "second==2.0"))
+            self.assertEqual([], errors)
+
+    def test_rejects_missing_unhashed_and_insecure_entries(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = pathlib.Path(temporary) / "requirements.lock"
+            path.write_text("first==1.0\n# http://example.invalid/simple\n", encoding="utf-8")
+            errors = []
+            validate_hash_locked_requirements(errors, path, "fixture", ("first==1.0", "second==2.0"))
+            self.assertEqual(
+                [
+                    "fixture lock does not contain the audited direct dependencies",
+                    "fixture lock contains unhashed packages: first",
+                    "fixture lock contains an insecure package source",
+                ],
+                errors,
+            )
 
 
 class VerifyReleaseEvidenceTest(unittest.TestCase):
