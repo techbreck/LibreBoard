@@ -53,9 +53,13 @@ bounded same-language slates and computes the actual mean conditional log probab
 candidate with the verified offline Hanse2 model. Its emitted records retain only bounded student
 prefix IDs, candidate surfaces/IDs, provenance classes and teacher scores; source session IDs and
 teacher-prefix text are not copied. Scoring is resumable through atomic chunks whose bindings include
-the app commit, tool, policy, corpus, tokenizer, teacher and toolchain. The full teacher-scored corpus
-and student training remain outstanding. Development/random weights and synthetic reports must remain
-under `build/`, carry development filenames and cannot produce a release export.
+the app commit, tool, policy, corpus, tokenizer, teacher and toolchain. The accepted release-sized run
+scored all 68,748 prepared records with no rejection: 61,620 train, 3,364 validation and 3,764 untouched
+test records. `distillation-manifest.json` pins every output byte count and SHA-256 plus the exact
+toolchain and provenance. The teacher ranked the observed candidate first on 70.43% of the test slates;
+this is a distillation diagnostic, not student quality evidence. Full student training remains
+outstanding. Development/random weights and synthetic reports must remain under `build/`, carry
+development filenames and cannot produce a release export.
 
 Student training uses 128 candidate rows per optimizer step, implemented as 16 vectorized but
 prefix-isolated eight-candidate groups. Its committed objective combines temperature-scaled teacher
@@ -92,8 +96,9 @@ build/context-model-venv/bin/python tools/train_context_model.py --threads 4
 build/context-model-venv/bin/python tools/export_context_model.py
 ```
 
-The teacher-scoring and student-training commands will be added with their immutable reports; until
-then this is deliberately not a complete model reproduction recipe.
+The completed teacher-scoring report is committed as an immutable manifest. The recipe remains
+incomplete release evidence until the full student report, two byte-identical Linux exports and held-out
+quality measurements are accepted.
 
 ## Required acceptance evidence
 

@@ -1,0 +1,96 @@
+{
+  "appCommit": "6603670af21c630f38aa63e3566526ae684cb8a8",
+  "dataManifestSha256": "63bfb424dcf7cdc2c113b8bf0dd3bf26fb4f569c0fadd9d5659d0a38746081df",
+  "distillationPolicySha256": "1c936ed0de0e70fd7d780e9fa5bb6be9b488038db2347dfebd83b49a9bbd87ad",
+  "generationCounts": {
+    "language:test:de": 1114,
+    "language:test:en-US": 2650,
+    "language:train:de": 16916,
+    "language:train:en-US": 44704,
+    "language:validation:de": 846,
+    "language:validation:en-US": 2518,
+    "scored:test": 3764,
+    "scored:train": 61620,
+    "scored:validation": 3364,
+    "source:test": 3764,
+    "source:train": 61620,
+    "source:validation": 3364
+  },
+  "modelId": "context-en-de-v1",
+  "outputs": {
+    "test.scored.jsonl": {
+      "bytes": 4866004,
+      "languages": {
+        "de": 1114,
+        "en-US": 2650
+      },
+      "records": 3764,
+      "sha256": "601af0241da189a25247e810a1d293c738e2f5f9338dde365f95142243e3a848"
+    },
+    "train.scored.jsonl": {
+      "bytes": 79597816,
+      "languages": {
+        "de": 16916,
+        "en-US": 44704
+      },
+      "records": 61620,
+      "sha256": "80d96c0750a82b6de664bf07d697809cf313c561b3ed399b12e39d924fe0fb98"
+    },
+    "validation.scored.jsonl": {
+      "bytes": 4371371,
+      "languages": {
+        "de": 846,
+        "en-US": 2518
+      },
+      "records": 3364,
+      "sha256": "f6750a9d822a3390e1c09cb2290e5c545ded186ab2f855ec6e8c0da55566223a"
+    }
+  },
+  "releaseEligible": true,
+  "schemaVersion": 1,
+  "teacher": {
+    "license": "Apache-2.0",
+    "modelSha256": "e53fe4ee925f53dac5b0aae468843d76469df35c2c9c79bee1dd70cf7752ce2c",
+    "revision": "0a834967424be0ec471f2846646d1c75906a9a9c",
+    "sourceId": "hanse2-100m-base-teacher-v1",
+    "sourceUrl": "https://huggingface.co/Evicka/Hanse2-100M-Base"
+  },
+  "teacherMetrics": {
+    "test": {
+      "candidateRows": 30112,
+      "observedTop1": 2651,
+      "observedTop1Rate": 0.7043039319872476,
+      "records": 3764,
+      "slateSizes": {
+        "8": 3764
+      }
+    },
+    "train": {
+      "candidateRows": 492953,
+      "observedTop1": 43525,
+      "observedTop1Rate": 0.7063453424212918,
+      "records": 61620,
+      "slateSizes": {
+        "6": 3,
+        "7": 1,
+        "8": 61616
+      }
+    },
+    "validation": {
+      "candidateRows": 26912,
+      "observedTop1": 2375,
+      "observedTop1Rate": 0.7060047562425684,
+      "records": 3364,
+      "slateSizes": {
+        "8": 3364
+      }
+    }
+  },
+  "tokenizerContractToolSha256": "f0fd863c4c174ab9190df23f3307ab5799db3f463bd21fc979788a2965c4d9a6",
+  "tokenizerSha256": "1395e285927bfbfa5888dc7c83e4f57dfcfbfeb54f29a3cf2437f5db3d71d6a2",
+  "toolSha256": "04127609664ffaf46d1be47f758705d156586bb1f7d46025a82fd8ebb45b6b17",
+  "toolchain": {
+    "torch": "2.8.0",
+    "transformers": "4.57.6"
+  }
+}

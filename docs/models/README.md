@@ -45,6 +45,10 @@ release artifact:
   It scores actual conditional token probabilities with the hash-verified offline Hanse2 model and
   emits only bounded student prefix IDs, candidate surfaces/IDs and scores. Atomic hash-bound chunks
   make the long CPU run safely resumable without accepting work from a changed tool or corpus.
+- `models/context/distillation-manifest.json` pins the completed 68,748-record teacher run, including
+  exact hashes for all three scored splits, zero-rejection generation counts, reconciled 6–8 candidate
+  slate metrics, the source commit and the complete teacher/tokenizer/tool/toolchain binding. The
+  untouched 3,764-record test split has a 70.43% observed-candidate teacher top-1 diagnostic.
 - `models/context/model-spec.json` fixes the 35,662,848-parameter en/de candidate-only Transformer,
   32-row dynamic tensor ABI, 24-token shared prefix, eight-token candidate suffix, and 24 MiB limit.
 - `tools/train_context_model.py` validates every scored slate and data hash, vectorizes 16 distinct
@@ -162,8 +166,8 @@ report, and reduced-operator configuration. Never commit placeholder bytes under
 The current swipe model card and exact reproduction commands are in
 `models/swipe/MODEL_CARD.md`; the context architecture and export contract are in
 `models/context/MODEL_CARD.md`. The pinned gesture inputs total roughly 5.7 GB, so fetching them remains
-an explicit operator action rather than a side effect of Gradle or tests. The context source and
-deterministic bilingual corpus/tokenizer and teacher-scoring implementation are pinned, but the full
-teacher-scored corpus, full context-student run and both accepted trained candidates still remain
-outstanding. A bounded real-teacher-to-student smoke run already reaches the verified INT4 exporter;
-it is development evidence only.
+an explicit operator action rather than a side effect of Gradle or tests. The context source,
+deterministic bilingual corpus/tokenizer and completed teacher-scoring result are pinned, but the full
+context-student run and both accepted trained candidates still remain outstanding. A bounded real-
+teacher-to-student smoke run already reaches the verified INT4 exporter; it is development evidence
+only.

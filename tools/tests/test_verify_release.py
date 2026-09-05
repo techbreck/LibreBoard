@@ -17,8 +17,12 @@ from verify_release import (  # noqa: E402
     PHASE0_CHECKS,
     evidence_checks,
     model_archive_checks,
+    validate_context_distillation_manifest,
     validate_hash_locked_requirements,
 )
+import model_sources  # noqa: E402
+import prepare_context_dataset  # noqa: E402
+import score_context_teacher  # noqa: E402
 
 
 def sha256(value: bytes) -> str:
@@ -131,6 +135,58 @@ class VerifyDependencyLockTest(unittest.TestCase):
                 ],
                 errors,
             )
+
+
+class VerifyContextDistillationManifestTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        root = pathlib.Path(__file__).resolve().parents[2]
+        cls.manifest = json.loads(
+            (root / "models/context/distillation-manifest.json").read_text(encoding="utf-8")
+        )
+        cls.context_corpus = json.loads(
+            prepare_context_dataset.DEFAULT_CORPUS_MANIFEST.read_text(encoding="utf-8")
+        )
+        cls.policy = score_context_teacher.load_policy()
+        cls.teacher_source = model_sources.load_manifest().source(cls.policy.teacher_source_id)
+
+    def validate(self, manifest):
+        errors = []
+        validate_context_distillation_manifest(
+            errors,
+            manifest,
+            context_corpus=self.context_corpus,
+            policy=self.policy,
+            teacher_source=self.teacher_source,
+        )
+        return errors
+
+    def test_accepts_committed_release_sized_result(self):
+        self.assertEqual([], self.validate(json.loads(json.dumps(self.manifest))))
+
+    def test_rejects_unreconciled_counts_and_teacher_provenance(self):
+        manifest = json.loads(json.dumps(self.manifest))
+        manifest["generationCounts"]["rejection:train:no_candidates"] = 1
+        manifest["teacher"]["modelSha256"] = "a" * 64
+        errors = self.validate(manifest)
+        self.assertIn("context distillation generation counts do not exactly reconcile", errors)
+        self.assertIn("context distillation manifest has unexpected teacher provenance", errors)
+
+    def test_rejects_invalid_output_without_crashing(self):
+        manifest = json.loads(json.dumps(self.manifest))
+        manifest["outputs"]["test.scored.jsonl"]["languages"] = ["en-US", "de"]
+        self.assertIn(
+            "context distillation output metadata is invalid: test.scored.jsonl",
+            self.validate(manifest),
+        )
+
+    def test_rejects_inconsistent_teacher_metrics(self):
+        manifest = json.loads(json.dumps(self.manifest))
+        manifest["teacherMetrics"]["validation"]["observedTop1Rate"] = 0.5
+        self.assertIn(
+            "context distillation teacher metrics do not reconcile: validation",
+            self.validate(manifest),
+        )
 
 
 class VerifyReleaseEvidenceTest(unittest.TestCase):

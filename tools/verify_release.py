@@ -137,6 +137,26 @@ MODEL_MANIFEST_FIELDS = {
     "provenance",
     "minimumAppVersionCode",
 }
+CONTEXT_DISTILLATION_MANIFEST_FIELDS = {
+    "schemaVersion",
+    "modelId",
+    "releaseEligible",
+    "appCommit",
+    "dataManifestSha256",
+    "distillationPolicySha256",
+    "tokenizerSha256",
+    "teacher",
+    "toolSha256",
+    "tokenizerContractToolSha256",
+    "toolchain",
+    "generationCounts",
+    "teacherMetrics",
+    "outputs",
+}
+CONTEXT_DISTILLATION_OUTPUT_FIELDS = {"bytes", "sha256", "records", "languages"}
+CONTEXT_DISTILLATION_METRIC_FIELDS = {
+    "records", "candidateRows", "observedTop1", "observedTop1Rate", "slateSizes",
+}
 
 
 def fail(errors: list[str], message: str) -> None:
@@ -170,6 +190,170 @@ def validate_hash_locked_requirements(
         fail(errors, f"{label} lock contains unhashed packages: " + ", ".join(unhashed))
     if "http://" in lock_text:
         fail(errors, f"{label} lock contains an insecure package source")
+
+
+def validate_context_distillation_manifest(
+    errors: list[str],
+    manifest: dict,
+    *,
+    context_corpus: dict,
+    policy: score_context_teacher.DistillationPolicy,
+    teacher_source: model_sources.Source,
+) -> None:
+    """Validate the immutable release-sized teacher-scoring result without the large JSONL files."""
+    if set(manifest) != CONTEXT_DISTILLATION_MANIFEST_FIELDS:
+        fail(errors, "context distillation manifest has an unexpected schema")
+        return
+    if (
+        manifest.get("schemaVersion") != 1
+        or manifest.get("modelId") != "context-en-de-v1"
+        or manifest.get("releaseEligible") is not True
+        or not isinstance(manifest.get("appCommit"), str)
+        or not GIT_COMMIT.fullmatch(manifest["appCommit"])
+    ):
+        fail(errors, "context distillation manifest is not a release-eligible v1 result")
+
+    expected_teacher = {
+        "sourceId": teacher_source.identifier,
+        "revision": teacher_source.revision,
+        "license": teacher_source.license,
+        "sourceUrl": teacher_source.source_url,
+        "modelSha256": teacher_source.artifact("model.safetensors").sha256,
+    }
+    if manifest.get("teacher") != expected_teacher:
+        fail(errors, "context distillation manifest has unexpected teacher provenance")
+    if manifest.get("dataManifestSha256") != model_sources.file_sha256(
+        prepare_context_dataset.DEFAULT_CORPUS_MANIFEST
+    ):
+        fail(errors, "context distillation manifest is not bound to the current corpus")
+    if manifest.get("distillationPolicySha256") != policy.sha256:
+        fail(errors, "context distillation manifest is not bound to the current policy")
+    if manifest.get("tokenizerSha256") != policy.tokenizer_sha256:
+        fail(errors, "context distillation manifest is not bound to the approved tokenizer")
+    if manifest.get("toolSha256") != model_sources.file_sha256(
+        ROOT / "tools/score_context_teacher.py"
+    ):
+        fail(errors, "context distillation manifest is not bound to the current scoring tool")
+    if manifest.get("tokenizerContractToolSha256") != model_sources.file_sha256(
+        ROOT / "tools/context_tokenizer_contract.py"
+    ):
+        fail(errors, "context distillation manifest is not bound to the current tokenizer verifier")
+    if manifest.get("toolchain") != {"torch": "2.8.0", "transformers": "4.57.6"}:
+        fail(errors, "context distillation manifest has an unexpected toolchain")
+
+    outputs = manifest.get("outputs")
+    expected_output_names = {
+        "train.scored.jsonl", "validation.scored.jsonl", "test.scored.jsonl",
+    }
+    if not isinstance(outputs, dict) or set(outputs) != expected_output_names:
+        fail(errors, "context distillation manifest has incomplete outputs")
+        return
+
+    prepared_outputs = context_corpus.get("outputs")
+    generation_counts: dict[str, int] = {}
+    output_records: dict[str, int] = {}
+    output_languages: dict[str, dict[str, int]] = {}
+    for split in prepare_context_dataset.SPLITS:
+        filename = f"{split}.scored.jsonl"
+        details = outputs[filename]
+        prepared = (
+            prepared_outputs.get(f"{split}.sentences.jsonl")
+            if isinstance(prepared_outputs, dict) else None
+        )
+        if (
+            not isinstance(details, dict)
+            or set(details) != CONTEXT_DISTILLATION_OUTPUT_FIELDS
+            or isinstance(details.get("bytes"), bool)
+            or not isinstance(details.get("bytes"), int)
+            or details["bytes"] <= 0
+            or not isinstance(details.get("sha256"), str)
+            or not SHA256.fullmatch(details["sha256"])
+            or isinstance(details.get("records"), bool)
+            or not isinstance(details.get("records"), int)
+            or details["records"] <= 0
+            or not isinstance(details.get("languages"), dict)
+            or set(details["languages"]) != {"en-US", "de"}
+            or any(
+                isinstance(value, bool) or not isinstance(value, int) or value <= 0
+                for value in details["languages"].values()
+            )
+            or sum(details["languages"].values()) != details["records"]
+        ):
+            fail(errors, f"context distillation output metadata is invalid: {filename}")
+            continue
+        if not isinstance(prepared, dict) or (
+            details["records"] != prepared.get("records")
+            or details["languages"] != prepared.get("languages")
+        ):
+            fail(errors, f"context distillation output does not match the prepared corpus: {filename}")
+        records = details["records"]
+        output_records[split] = records
+        output_languages[split] = details["languages"]
+        generation_counts[f"source:{split}"] = records
+        generation_counts[f"scored:{split}"] = records
+        for language, count in details["languages"].items():
+            generation_counts[f"language:{split}:{language}"] = count
+
+    if manifest.get("generationCounts") != generation_counts:
+        fail(errors, "context distillation generation counts do not exactly reconcile")
+    if (
+        sum(output_records.values()) < policy.minimum_scored_records
+        or sum(output_languages.get(split, {}).get("de", 0)
+               for split in prepare_context_dataset.SPLITS) < policy.minimum_german_records
+        or output_records.get("test", 0) < policy.minimum_held_out_records
+        or output_languages.get("test", {}).get("en-US", 0)
+        < policy.minimum_held_out_english_records
+        or output_languages.get("test", {}).get("de", 0)
+        < policy.minimum_held_out_german_records
+    ):
+        fail(errors, "context distillation manifest does not satisfy the release data floors")
+
+    metrics = manifest.get("teacherMetrics")
+    if not isinstance(metrics, dict) or set(metrics) != set(prepare_context_dataset.SPLITS):
+        fail(errors, "context distillation manifest has incomplete teacher metrics")
+        return
+    for split in prepare_context_dataset.SPLITS:
+        metric = metrics[split]
+        records = output_records.get(split)
+        if not isinstance(metric, dict) or set(metric) != CONTEXT_DISTILLATION_METRIC_FIELDS:
+            fail(errors, f"context distillation teacher metrics are invalid: {split}")
+            continue
+        candidate_rows = metric.get("candidateRows")
+        observed_top1 = metric.get("observedTop1")
+        rate = metric.get("observedTop1Rate")
+        slate_sizes = metric.get("slateSizes")
+        valid_slates = isinstance(slate_sizes, dict) and bool(slate_sizes)
+        slate_records = slate_rows = 0
+        if valid_slates:
+            for size, count in slate_sizes.items():
+                if (
+                    not isinstance(size, str)
+                    or not size.isdecimal()
+                    or not policy.minimum_candidates <= int(size) <= policy.maximum_candidates
+                    or isinstance(count, bool)
+                    or not isinstance(count, int)
+                    or count <= 0
+                ):
+                    valid_slates = False
+                    break
+                slate_records += count
+                slate_rows += int(size) * count
+        valid_metric = (
+            records is not None
+            and metric.get("records") == records
+            and isinstance(candidate_rows, int)
+            and not isinstance(candidate_rows, bool)
+            and isinstance(observed_top1, int)
+            and not isinstance(observed_top1, bool)
+            and 0 <= observed_top1 <= records
+            and finite_number(rate)
+            and math.isclose(float(rate), observed_top1 / records, rel_tol=0.0, abs_tol=1e-15)
+            and valid_slates
+            and slate_records == records
+            and slate_rows == candidate_rows
+        )
+        if not valid_metric:
+            fail(errors, f"context distillation teacher metrics do not reconcile: {split}")
 
 
 def validate_backup_exclusions(errors: list[str]) -> None:
@@ -675,6 +859,24 @@ def source_checks(errors: list[str]) -> None:
                         or held_out.get("languages", {}).get("de", 0) < 1_000
                     ):
                         fail(errors, "context corpus has insufficient bilingual held-out sentences")
+
+            if isinstance(context_corpus, dict):
+                distillation_manifest_path = ROOT / "models/context/distillation-manifest.json"
+                try:
+                    distillation_manifest = json.loads(distillation_manifest_path.read_bytes())
+                except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+                    fail(errors, f"committed context distillation manifest is invalid: {exc}")
+                else:
+                    if not isinstance(distillation_manifest, dict):
+                        fail(errors, "context distillation manifest must be a JSON object")
+                    else:
+                        validate_context_distillation_manifest(
+                            errors,
+                            distillation_manifest,
+                            context_corpus=context_corpus,
+                            policy=context_distillation_policy,
+                            teacher_source=teacher_source,
+                        )
 
     validate_hash_locked_requirements(
         errors,
