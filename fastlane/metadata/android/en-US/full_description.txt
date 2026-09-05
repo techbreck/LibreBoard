@@ -1,30 +1,22 @@
-HeliBoard is a privacy-conscious open-source keyboard, based on AOSP / OpenBoard.
-Does not use internet permission, and thus is 100% offline.
+LibreBoard is a fully free and open-source Android keyboard for accurate, private, offline typing. It is based on HeliBoard and Android's LatinIME, with a LibreBoard typing engine built for local correction, prediction, and swipe decoding.
 
-Features:
+LibreBoard does not request INTERNET or ACCESS_NETWORK_STATE. It has no account system, telemetry, advertising identifier, cloud typing service, or proprietary gesture library. Typed text, gesture paths, learned words, rejection history, and clipboard contents stay on the device.
+
+Features include:
+
 <ul>
-  <li>Add dictionaries for suggestions and spell check</li>
-  <ul>
-    <li>build your own, or get them  <a href="https://codeberg.org/Helium314/aosp-dictionaries#dictionaries">here</a>, or in the <a href="https://codeberg.org/Helium314/aosp-dictionaries#experimental-dictionaries">experimental</a> section (quality may vary)</li>
-    <li>additional dictionaries for emojis or scientific symbols can be used to provide suggestions (similar to "emoji search")</li>
-    <li>note that for Korean layouts, suggestions only work using <a href="https://github.com/openboard-team/openboard/commit/83fca9533c03b9fecc009fc632577226bbd6301f">this dictionary</a>, the tools in the dictionary repository are not able to create working dictionaries</li>
-  </ul>
-  <li>Customize keyboard themes (style, colors and background image)</li>
-  <ul>
-    <li>can follow the system's day/night setting on Android 10+ (and on some versions of Android 9)</li>
-    <li>can follow dynamic colors for Android 12+</li>
-  </ul>
-  <li>Customize keyboard <a href="https://github.com/HeliBorg/HeliBoard/blob/main/layouts.md">layouts</a> (only available when disabling <i>use system languages</i>)</li>
-  <li>Customize special layouts, like symbols, number,  or functional key layout</li>
-  <li>Multilingual typing</li>
-  <li>Glide typing (<i>only with closed source library</i> ☹️)</li>
-  <ul>
-    <li>library not included in the app, as there is no compatible open source library available</li>
-    <li>can be extracted from GApps packages ("<i>swypelibs</i>"), or downloaded <a href="https://github.com/erkserkserks/openboard/tree/46fdf2b550035ca69299ce312fa158e7ade36967/app/src/main/jniLibs">here</a> (click on the file and then "raw" or the tiny download button)</li>
-  </ul>
-  <li>Clipboard history</li>
-  <li>One-handed mode</li>
-  <li>Split keyboard (only available if the screen is large enough)</li>
-  <li>Number pad</li>
-  <li>Backup and restore your settings and learned word / history data</li>
+  <li>Fused spatial, dictionary, context, and personal candidate ranking</li>
+  <li>Fully open swipe typing with a geometric fallback when neural inference is unavailable</li>
+  <li>Simultaneous English and German typing with a per-word language lock</li>
+  <li>Local next-word and short-phrase prediction</li>
+  <li>A raw-word suggestion that keeps the exact typed text one tap away</li>
+  <li>Local learning and rejection memory that can be exported or deleted explicitly</li>
+  <li>Searchable, pinnable, expiring clipboard history in credential-encrypted storage</li>
+  <li>Number row, spacebar cursor control, swipe-delete, D-pad, split and one-handed layouts</li>
+  <li>Material You, custom, and night themes plus local emoji search</li>
+  <li>Direct Boot typing without exposing personal data before first unlock</li>
 </ul>
+
+An optional, separately installed English/German context-model pack improves ranking without adding network access. Missing, disabled, slow, or incompatible models fall back to the classic tap and geometric swipe engines.
+
+Password, PIN, email, URI, no-personalized-learning, and no-suggestions fields use restrictive policies that disable context access, clipboard capture, and learning as appropriate. Incognito mode clears in-memory context and suspends suggestions, capture, and personalization until it is turned off.

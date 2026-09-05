@@ -1,31 +1,22 @@
-HeliBoard ist eine datenschutzbewusste quelloffene Tastatur, die auf AOSP / OpenBoard basiert.
-Verwendet keine Internetberechtigung und ist daher zu 100 % offline.
+LibreBoard ist eine vollständig freie und quelloffene Android-Tastatur für präzises, privates und offline ausgeführtes Tippen. Sie basiert auf HeliBoard und Androids LatinIME und ergänzt eine LibreBoard-Engine für lokale Korrektur, Vorhersage und Wischerkennung.
 
-Features:
+LibreBoard fordert weder INTERNET noch ACCESS_NETWORK_STATE an. Es gibt keine Konten, Telemetrie, Werbe-ID, Cloud-Tippdienste oder proprietäre Wischbibliothek. Eingegebener Text, Wischpfade, gelernte Wörter, verworfene Korrekturen und Zwischenablageinhalte bleiben auf dem Gerät.
+
+Funktionen:
+
 <ul>
-   <li>Wörterbücher für Vorschläge und Rechtschreibprüfung hinzufügen</li>
-   <ul>
-     <li>Erstelle deine eigenen oder hole sie dir <a href="https://codeberg.org/Helium314/aosp-dictionaries#dictionaries">hier</a> oder im <a href="https://codeberg.org/Helium314/aosp-dictionaries#experimental-dictionaries">experimentellen</a> Bereich (Qualität kann variieren)</li>
-     <li>Zusätzliche Wörterbücher für Emojis oder wissenschaftliche Symbole können zur Bereitstellung von Vorschlägen genutzt werden (ähnlich wie bei der „Emoji-Suche“)</li>
-     <li>Beachte, dass die Vorschläge für koreanische Layouts nur mit <a href="https://github.com/openboard-team/openboard/commit/83fca9533c03b9fecc009fc632577226bbd6301f">diesem Wörterbuch</a> funktionieren, die Werkzeuge im Wörterbuch-Repository können keine funktionierenden Wörterbücher erstellen</li>
-   </ul>
-   <li>Tastaturdesigns anpassen (Stil, Farben und Hintergrundbild)</li>
-   <ul>
-     <li>kann der Tag-/Nachteinstellung des Systems auf Android 10+ (und auf einigen Versionen von Android 9) folgen</li>
-     <li>kann dynamischen Farben für Android 12+ folgen</li>
-   </ul>
-   <li>Tastatur-<a href="https://github.com/HeliBorg/HeliBoard/blob/main/layouts.md">Layouts</a> anpassen (nur verfügbar, wenn <i>Systemsprachen verwenden</i deaktiviert ist >)
-   </li>Anpassen spezieller Layouts, wie Symbole, Zahlen oder Funktionstastenlayout</li>
-   <li>Mehrsprachiges Tippen</li>
-   <li>Gleitendes Tippen (<i>nur mit quellgeschlossener Bibliothek</i> ☹️)</li>
-   <ul>
-     <li>Bibliothek nicht in der App enthalten, da keine kompatible quelloffene Bibliothek verfügbar ist</li>
-     <li>kann aus GApps-Paketen („<i>swypelibs</i>“) extrahiert oder heruntergeladen werden <a href="https://github.com/erkserkserks/openboard/tree/46fdf2b550035ca69299ce312fa158e7ade36967/app/src/main /jniLibs">hier</a>
-(klicke auf die Datei und dann auf "raw" oder den kleinen Download-Button)</li>
-   </ul>
-   <li>Zwischenablageverlauf</li>
-   <li>Einhandmodus</li>
-   <li>Geteilte Tastatur (nur verfügbar, wenn der Bildschirm groß genug ist)</li>
-   <li>Ziffernblock</li>
-   <li>Sichere und stelle deine Einstellungen und gelernte Wort-/Verlaufsdaten wieder her</li>
+  <li>Gemeinsame Bewertung anhand von Tastenposition, Wörterbuch, Kontext und persönlichen Daten</li>
+  <li>Vollständig freie Wischeingabe mit geometrischem Ersatzverfahren, falls neuronale Inferenz nicht verfügbar ist</li>
+  <li>Gleichzeitiges Tippen auf Englisch und Deutsch mit Spracherkennung pro Wort</li>
+  <li>Lokale Vorhersage des nächsten Wortes und kurzer Phrasen</li>
+  <li>Das exakt eingegebene Wort bleibt immer mit einem Tippen erreichbar</li>
+  <li>Lokales Lernen und Korrekturgedächtnis mit ausdrücklichem Export und Löschen</li>
+  <li>Durchsuchbare, anheftbare und automatisch ablaufende Zwischenablage in zugangsdatenverschlüsseltem Speicher</li>
+  <li>Zahlenreihe, Cursorsteuerung über die Leertaste, Wisch-Löschen, Steuerkreuz sowie geteilte und einhändige Layouts</li>
+  <li>Material You, eigene und Nacht-Themen sowie lokale Emoji-Suche</li>
+  <li>Tippen über Direct Boot, ohne persönliche Daten vor dem ersten Entsperren offenzulegen</li>
 </ul>
+
+Ein optionales, separat installiertes Englisch/Deutsch-Kontextmodell verbessert die Rangfolge, ohne Netzwerkzugriff hinzuzufügen. Fehlende, deaktivierte, langsame oder inkompatible Modelle werden automatisch durch die klassische Tipp- und geometrische Wisch-Engine ersetzt.
+
+Passwort-, PIN-, E-Mail-, URI-, Nicht-personalisieren- und Keine-Vorschläge-Felder verwenden eingeschränkte Richtlinien. Kontextzugriff, Zwischenablageerfassung und Lernen werden dabei passend deaktiviert. Der Inkognito-Modus leert den Kontext im Arbeitsspeicher und unterbindet Vorschläge, Erfassung und Personalisierung, bis er wieder ausgeschaltet wird.

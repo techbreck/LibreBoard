@@ -259,6 +259,61 @@ class VerifyOnnxRuntimeApkEntriesTest(unittest.TestCase):
             errors,
         )
 
+
+class VerifyStoreMetadataTest(unittest.TestCase):
+    def write_locale(self, root: pathlib.Path, locale: str, full_description: str) -> None:
+        locale_root = root / locale
+        locale_root.mkdir(parents=True)
+        (locale_root / "title.txt").write_text("LibreBoard\n", encoding="utf-8")
+        (locale_root / "short_description.txt").write_text("Private offline keyboard\n", encoding="utf-8")
+        (locale_root / "full_description.txt").write_text(full_description + "\n", encoding="utf-8")
+
+    def test_accepts_reviewed_english_and_german_metadata(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            description = (
+                "LibreBoard does not request INTERNET or ACCESS_NETWORK_STATE and includes a geometric fallback."
+            )
+            self.write_locale(root, "en-US", description)
+            self.write_locale(root, "de-DE", description)
+            errors = []
+            verify_release.validate_store_metadata(errors, root)
+            self.assertEqual([], errors)
+
+    def test_rejects_stale_locale_and_proprietary_swipe_instructions(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            description = (
+                "LibreBoard does not request INTERNET or ACCESS_NETWORK_STATE and includes a geometric fallback."
+            )
+            self.write_locale(root, "en-US", description + " Install swypelibs for swipe typing.")
+            self.write_locale(root, "de-DE", description)
+            self.write_locale(root, "fr-FR", description)
+            errors = []
+            verify_release.validate_store_metadata(errors, root)
+            self.assertIn(
+                "store metadata must contain exactly the reviewed English and German locales",
+                errors,
+            )
+            self.assertIn(
+                "store metadata contains obsolete proprietary-swipe guidance: swypelibs",
+                errors,
+            )
+
+    def test_malformed_metadata_fails_closed_without_crashing(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            description = (
+                "LibreBoard does not request INTERNET or ACCESS_NETWORK_STATE and includes a geometric fallback."
+            )
+            self.write_locale(root, "en-US", description)
+            self.write_locale(root, "de-DE", description)
+            (root / "de-DE/title.txt").write_bytes(b"\xff")
+            errors = []
+            verify_release.validate_store_metadata(errors, root)
+            self.assertTrue(any(error.startswith("cannot read de-DE store metadata title.txt") for error in errors))
+
+
 class VerifyDependencyLockTest(unittest.TestCase):
     def test_process_exhaustion_is_a_failed_command_not_a_traceback(self):
         with mock.patch.object(

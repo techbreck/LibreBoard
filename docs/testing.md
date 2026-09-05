@@ -44,6 +44,12 @@ session-separated swipe preparation, split/hash reproducibility, model architect
 CTC utilities, and ONNX operator-file ordering. These dependency-free tests run for every pull
 request.
 
+The source release gate also validates the Phase 1 Fastlane metadata. Only reviewed English and
+German copy may ship initially; titles and length bounds are checked, the zero-network and geometric-
+fallback contract must remain explicit, and inherited instructions for proprietary swipe libraries
+are rejected. Obsolete upstream changelogs and screenshots are intentionally not redistributed as
+LibreBoard release material.
+
 A second CI job installs the hash-locked Python 3.11 CPU model toolchain and runs the same suite with
 its optional checks enabled. It instantiates the real 821,121-parameter model, verifies finite
 `[1,32,65]` output, prepares a synthetic three-split corpus, trains one deterministic CTC step, stores

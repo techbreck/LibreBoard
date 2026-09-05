@@ -1,1 +1,1 @@
-Customizable open-source keyboard
+Private offline keyboard with open swipe typing and local prediction

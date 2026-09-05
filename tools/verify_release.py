@@ -152,6 +152,15 @@ MODEL_MANIFEST_FIELDS = {
     "provenance",
     "minimumAppVersionCode",
 }
+STORE_METADATA_LOCALES = {"en-US", "de-DE"}
+STORE_METADATA_FILES = {"title.txt", "short_description.txt", "full_description.txt"}
+FORBIDDEN_STORE_METADATA_MARKERS = (
+    "swypelibs",
+    "erkserkserks/openboard",
+    "only with closed source",
+    "only with closed-source",
+    "nur mit proprietärer",
+)
 
 
 def reject_duplicate_json_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -214,6 +223,55 @@ def validate_hash_locked_requirements(
         fail(errors, f"{label} lock contains unhashed packages: " + ", ".join(unhashed))
     if "http://" in lock_text:
         fail(errors, f"{label} lock contains an insecure package source")
+
+
+def validate_store_metadata(
+    errors: list[str],
+    root: pathlib.Path = ROOT / "fastlane/metadata/android",
+) -> None:
+    """Keep Phase 1 store copy honest and free of inherited proprietary-swipe instructions."""
+    try:
+        locales = {path.name for path in root.iterdir() if path.is_dir()}
+    except OSError as exc:
+        fail(errors, f"cannot read store metadata: {exc}")
+        return
+    if locales != STORE_METADATA_LOCALES:
+        fail(errors, "store metadata must contain exactly the reviewed English and German locales")
+
+    searchable_text: list[str] = []
+    for locale in sorted(STORE_METADATA_LOCALES):
+        locale_root = root / locale
+        locale_values: dict[str, str] = {}
+        for filename in sorted(STORE_METADATA_FILES):
+            path = locale_root / filename
+            try:
+                value = path.read_text(encoding="utf-8").strip()
+            except (OSError, UnicodeError) as exc:
+                fail(errors, f"cannot read {locale} store metadata {filename}: {exc}")
+                continue
+            locale_values[filename] = value
+            searchable_text.append(value.lower())
+            if not value or any(ord(character) < 32 and character not in "\n\t" for character in value):
+                fail(errors, f"{locale} store metadata {filename} is empty or contains control characters")
+            if "LibreBoard" not in value and filename != "short_description.txt":
+                fail(errors, f"{locale} store metadata {filename} does not identify LibreBoard")
+            maximum = {
+                "title.txt": 30,
+                "short_description.txt": 80,
+                "full_description.txt": 4_000,
+            }[filename]
+            if len(value) > maximum:
+                fail(errors, f"{locale} store metadata {filename} exceeds its length limit")
+        if locale_values.get("title.txt") not in {None, "LibreBoard"}:
+            fail(errors, f"{locale} store title must be LibreBoard")
+
+    combined = "\n".join(searchable_text)
+    for marker in FORBIDDEN_STORE_METADATA_MARKERS:
+        if marker in combined:
+            fail(errors, f"store metadata contains obsolete proprietary-swipe guidance: {marker}")
+    for required in ("internet", "access_network_state", "geometric"):
+        if required not in combined:
+            fail(errors, f"store metadata omits the release contract marker: {required}")
 
 
 def validate_context_distillation_manifest(
@@ -573,6 +631,7 @@ def source_checks(errors: list[str]) -> None:
 
     validate_backup_exclusions(errors)
     validate_model_pack_source(errors)
+    validate_store_metadata(errors)
 
     source_root = ROOT / "app/src/main/java"
     dynamic_load = re.compile(r"System\s*\.\s*load\s*\(")
