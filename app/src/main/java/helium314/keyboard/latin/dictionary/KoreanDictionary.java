@@ -81,6 +81,12 @@ public class KoreanDictionary extends Dictionary {
     }
 
     @Override
+    public int visitUnigrams(final int maximumWords, final UnigramVisitor visitor) {
+        return mDictionary.visitUnigrams(maximumWords, (word, frequency, isNotAWord, isPossiblyOffensive) ->
+                visitor.visit(processOutput(word), frequency, isNotAWord, isPossiblyOffensive));
+    }
+
+    @Override
     protected boolean same(char[] word, int length, String typedWord) {
         word = processInput(new String(word)).toCharArray();
         typedWord = processInput(typedWord);

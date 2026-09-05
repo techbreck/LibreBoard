@@ -9,6 +9,7 @@ import helium314.keyboard.ShadowInputMethodManager2
 import helium314.keyboard.ShadowLocaleManagerCompat
 import helium314.keyboard.event.Event
 import helium314.keyboard.keyboard.Keyboard
+import helium314.keyboard.keyboard.Key
 import helium314.keyboard.keyboard.KeyboardElement
 import helium314.keyboard.keyboard.KeyboardLayoutSet
 import helium314.keyboard.keyboard.internal.KeyboardParams
@@ -23,6 +24,13 @@ import helium314.keyboard.latin.common.StringUtils
 import helium314.keyboard.latin.dictionary.Dictionary
 import helium314.keyboard.latin.engine.personal.PersonalizationRuntime
 import helium314.keyboard.latin.engine.AutoCorrectionAggressiveness
+import helium314.keyboard.latin.engine.Candidate
+import helium314.keyboard.latin.engine.CandidateSource
+import helium314.keyboard.latin.engine.EngineAvailability
+import helium314.keyboard.latin.engine.ScoreComponents
+import helium314.keyboard.latin.engine.SwipeDecodeResult
+import helium314.keyboard.latin.engine.SwipeDecoder
+import helium314.keyboard.latin.engine.runtime.LiveTypingEngine
 import helium314.keyboard.latin.settings.Settings
 import helium314.keyboard.latin.settings.SettingsValuesForSuggestion
 import helium314.keyboard.latin.utils.SuggestionResults
@@ -710,6 +718,41 @@ class SuggestTest {
         }
     }
 
+    @Test fun `live CTC candidate enters batch suggestions and remains a single typed commit`() {
+        LiveTypingEngine.swipeDecoder.clear()
+        LiveTypingEngine.swipeDecoder.install(SwipeDecoder { _, _ ->
+            SwipeDecodeResult(
+                EngineAvailability.AVAILABLE,
+                listOf(Candidate(
+                    "cat",
+                    languageTag = currentTypingLocale.toLanguageTag(),
+                    sources = setOf(CandidateSource.CTC_SWIPE),
+                    components = ScoreComponents(spatial = -0.1, staticFrequency = 4.0),
+                )),
+            )
+        }, AutoCloseable {})
+        try {
+            val result = getSuggestedWordsForGestureWithPath("cat")
+
+            assertEquals(listOf("cat"), result.mSuggestedWordInfoList.map { it.mWord })
+            assertEquals("cat", result.typedWordInfo.mWord)
+            assert(!result.mWillAutoCorrect)
+        } finally {
+            LiveTypingEngine.swipeDecoder.clear()
+        }
+    }
+
+    @Test fun `missing CTC model retains classic nearest-key batch fallback`() {
+        LiveTypingEngine.swipeDecoder.clear()
+        tapTypingSuggestions = suggestionResults(listOf(suggestion("cat", 900_000)))
+        glideTypingSuggestions = suggestionResults(emptyList())
+
+        val result = getSuggestedWordsForGestureWithPath("cat")
+
+        assertEquals("cat", result.mSuggestedWordInfoList.first().mWord)
+        assertEquals("cat", result.typedWordInfo.mWord)
+    }
+
     private fun getSuggestedWords(gesture: Boolean, typedWord: String, capsMode: CapsMode): SuggestedWords {
         val wc = WordComposer()
         if (gesture) wc.setBatchInputPointers(InputPointers(1))
@@ -739,6 +782,43 @@ class SuggestTest {
         return suggest.getSuggestedWords(
             wc, NgramContext.EMPTY_PREV_WORDS_INFO, Keyboard(params), Settings.getValues().mSettingsValuesForSuggestion,
             Settings.getValues().mAutoCorrectEnabled, 0, 0
+        )
+    }
+
+    private fun getSuggestedWordsForGestureWithPath(trace: String): SuggestedWords {
+        val params = KeyboardParams().apply {
+            GRID_HEIGHT = 1
+            GRID_WIDTH = trace.length
+            mId = KeyboardLayoutSet.getFakeKeyboardId(KeyboardElement.ALPHABET)
+            mOccupiedWidth = trace.length * 100
+            mOccupiedHeight = 100
+            mBaseWidth = mOccupiedWidth
+            mBaseHeight = mOccupiedHeight
+            mMostCommonKeyWidth = 100
+            mMostCommonKeyHeight = 100
+        }
+        val pointers = InputPointers(trace.length)
+        trace.forEachIndexed { index, character ->
+            params.onAddKey(Key(
+                character.toString(), null, character.code, null, null,
+                0, 0, index * 100, 0, 100, 100, 0, 0,
+            ))
+            pointers.addPointer(index * 100 + 50, 50, 0, index * 10)
+        }
+        val composer = WordComposer().apply {
+            setBatchInputPointers(pointers)
+            setCapitalizedModeAtStartComposingTime(CapsMode.OFF)
+            adviseCapitalizedModeBeforeFetchingSuggestions(CapsMode.OFF)
+        }
+        suggest.clearNextWordSuggestionsCache()
+        return suggest.getSuggestedWords(
+            composer,
+            NgramContext.EMPTY_PREV_WORDS_INFO,
+            Keyboard(params),
+            Settings.getValues().mSettingsValuesForSuggestion,
+            Settings.getValues().mAutoCorrectEnabled,
+            0,
+            33,
         )
     }
 

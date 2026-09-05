@@ -25,10 +25,14 @@ import helium314.keyboard.latin.engine.InputStyle
 import helium314.keyboard.latin.engine.TypingRequest
 import helium314.keyboard.latin.engine.WordLock
 import helium314.keyboard.latin.engine.integration.HeliBoardGeometricFallback
+import helium314.keyboard.latin.engine.integration.HeliBoardSwipeLexicon
 import helium314.keyboard.latin.engine.integration.LegacySuggestionFusion
 import helium314.keyboard.latin.engine.lexical.LexicalCandidateProposer
+import helium314.keyboard.latin.engine.geometric.GeometricSwipeDecoder
+import helium314.keyboard.latin.engine.geometric.ParallelSwipeDecoder
 import helium314.keyboard.latin.engine.normalizeCandidate
 import helium314.keyboard.latin.engine.personal.PersonalizationRuntime
+import helium314.keyboard.latin.engine.runtime.LiveTypingEngine
 import helium314.keyboard.latin.settings.Settings
 import helium314.keyboard.latin.settings.SettingsValuesForSuggestion
 import helium314.keyboard.latin.suggestions.SuggestionStripView
@@ -49,6 +53,11 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
     private val nextWordSuggestionsCache = HashMap<NgramContext, SuggestionResults>()
     private val liveCandidateFusion = LegacySuggestionFusion()
     private val lexicalCandidateProposer = LexicalCandidateProposer(mDictionaryFacilitator::isValidSpellingWord)
+    private val swipeLexicon = HeliBoardSwipeLexicon(mDictionaryFacilitator)
+    private val swipeDecoder = ParallelSwipeDecoder(
+        LiveTypingEngine.swipeDecoder,
+        GeometricSwipeDecoder(swipeLexicon),
+    )
 
     // cache cleared whenever LatinIME.loadSettings is called, notably on changing layout and switching input fields
     fun clearNextWordSuggestionsCache() {
@@ -106,7 +115,7 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
         val personalCandidates = getPersonalCandidates(
             typedWordString, ngramContext, resultsArePredictions, sequenceNumber,
         )
-        val transformedPersonalCandidates = transformPersonalCandidates(
+        val transformedPersonalCandidates = transformEngineCandidates(
             personalCandidates, capsMode, trailingSingleQuotesCount, mDictionaryFacilitator.mainLocale,
         )
         val enabledLanguageTags = mDictionaryFacilitator.activeLocales.map(Locale::toLanguageTag)
@@ -365,15 +374,17 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
         settingsValuesForSuggestion: SettingsValuesForSuggestion,
         inputStyle: Int, isCorrectionEnabled: Boolean, sequenceNumber: Int
     ): SuggestedWords {
+        val swipeProposalDeadline = Deadline.afterMillis(SWIPE_PROPOSAL_BUDGET_MILLIS)
+        val composedData = wordComposer.composedDataSnapshot
         val suggestionResults = mDictionaryFacilitator.getSuggestionResults(
-            wordComposer.composedDataSnapshot, ngramContext, keyboard,
+            composedData, ngramContext, keyboard,
             settingsValuesForSuggestion, SESSION_ID_GESTURE, inputStyle
         )
         // HeliBoard's open native dictionary contains no gesture policy. LibreBoard always runs a
         // data-only geometric fallback by converting the live path to a nearest-key trace and then
         // asking the retained AOSP typing matcher for spatial corrections. Neural CTC candidates
         // are unioned at this same boundary when an approved model is available.
-        HeliBoardGeometricFallback.toTypingComposedData(wordComposer.composedDataSnapshot.mInputPointers, keyboard)
+        HeliBoardGeometricFallback.toTypingComposedData(composedData.mInputPointers, keyboard)
             ?.let { fallbackData ->
                 val fallback = mDictionaryFacilitator.getSuggestionResults(
                     fallbackData, ngramContext, keyboard, settingsValuesForSuggestion,
@@ -382,11 +393,70 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
                 suggestionResults.addAll(fallback)
             }
 
-        // For transforming words that don't come from a dictionary, because it's our best bet
         val locale = mDictionaryFacilitator.mainLocale
         val capsMode = getCapsModeForGesture(wordComposer, keyboard)
         val suggestionsContainer = ArrayList(suggestionResults)
         replaceSingleLetterFirstSuggestion(suggestionsContainer)
+        SuggestedWordInfo.removeDupsAndTypedWord(null, suggestionsContainer)
+        makeFirstTwoSuggestionsNonEmoji(suggestionsContainer)
+        val uncapitalizedSurfaces = suggestionsContainer.associateTo(linkedMapOf()) {
+            normalizeCandidate(it.mWord) to it.mWord
+        }
+        capitalizeAndAddTrailingSingleQuotes(suggestionsContainer, capsMode, 0, locale)
+
+        // For some reason some suggestions with MIN_VALUE are making their way here.
+        // TODO: Find a more robust way to detect distracters.
+        for (i in suggestionsContainer.indices.reversed()) {
+            if (suggestionsContainer[i].mScore < SUPPRESS_SUGGEST_THRESHOLD) {
+                suggestionsContainer.removeAt(i)
+            }
+        }
+
+        val liveSettings = Settings.getValues()
+        val fieldPolicy = liveSettings.mInputAttributes.mFieldPolicy
+        val allowsEngineContext = fieldPolicy.allowsContextRead && !liveSettings.mIncognitoModeEnabled
+        val enabledLanguageTags = mDictionaryFacilitator.activeLocales.map(Locale::toLanguageTag).ifEmpty {
+            listOf(locale.toLanguageTag())
+        }
+        val geometry = HeliBoardGeometricFallback.toEngineGeometry(keyboard)
+        val path = HeliBoardGeometricFallback.toEnginePath(composedData.mInputPointers)
+        val typingRequest = TypingRequest.bounded(
+            rawText = "",
+            path = path,
+            precedingContext = if (allowsEngineContext) ngramContext.extractPrevWordsContext() else null,
+            geometry = geometry,
+            enabledLanguages = enabledLanguageTags,
+            wordLock = WordLock.Unlocked,
+            fieldPolicy = fieldPolicy,
+            fieldClass = FieldClassResolver.resolve(
+                liveSettings.mInputAttributes.mInputType,
+                liveSettings.mInputAttributes.mImeOptions,
+                fieldPolicy,
+            ),
+            inputStyle = InputStyle.SWIPE,
+            sequenceId = sequenceNumber.toLong(),
+        )
+        val decodedCandidates = if (path.size >= 2 && geometry.keys.isNotEmpty() && fieldPolicy.allowsSuggestions) {
+            swipeDecoder.decode(typingRequest, swipeProposalDeadline).candidates
+        } else emptyList()
+        decodedCandidates.forEach { candidate ->
+            uncapitalizedSurfaces.putIfAbsent(candidate.normalized, candidate.surface)
+        }
+        val transformedDecodedCandidates = transformEngineCandidates(decodedCandidates, capsMode, 0, locale)
+        val fusion = liveCandidateFusion.fuse(
+            rawText = "",
+            classicSuggestions = suggestionsContainer,
+            supplementalCandidates = transformedDecodedCandidates,
+            enabledLanguageTags = enabledLanguageTags,
+            defaultLocale = locale,
+            inputStyle = InputStyle.SWIPE,
+            typingRequest = typingRequest,
+            neuralStrength = liveSettings.mNeuralStrength.takeIf { allowsEngineContext } ?: 0,
+            aggressiveness = liveSettings.mAutoCorrectionAggressiveness,
+            neuralDeadline = Deadline.afterMillis(SWIPE_CONTEXT_RESCORING_BUDGET_MILLIS),
+        )
+        suggestionsContainer.clear()
+        suggestionsContainer.addAll(fusion.suggestions)
 
         val rejected: SuggestedWordInfo?
         if (SHOULD_REMOVE_PREVIOUSLY_REJECTED_SUGGESTION && suggestionsContainer.size > 1 && TextUtils.equals(
@@ -399,17 +469,17 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
         } else {
             rejected = null
         }
-        SuggestedWordInfo.removeDupsAndTypedWord(null, suggestionsContainer)
-        makeFirstTwoSuggestionsNonEmoji(suggestionsContainer)
-        val pseudoTypedWord = suggestionsContainer.firstOrNull() // unchanged first suggestion, but considering adjusted order
-        capitalizeAndAddTrailingSingleQuotes(suggestionsContainer, capsMode, 0, locale)
-
-        // For some reason some suggestions with MIN_VALUE are making their way here.
-        // TODO: Find a more robust way to detect distracters.
-        for (i in suggestionsContainer.indices.reversed()) {
-            if (suggestionsContainer[i].mScore < SUPPRESS_SUGGEST_THRESHOLD) {
-                suggestionsContainer.removeAt(i)
-            }
+        val pseudoTypedWord = suggestionsContainer.firstOrNull()?.let { first ->
+            val originalSurface = uncapitalizedSurfaces[normalizeCandidate(first.mWord)] ?: first.mWord
+            if (originalSurface == first.mWord) first else SuggestedWordInfo(
+                originalSurface,
+                first.mPrevWordsContext,
+                first.mScore,
+                first.mKindAndFlags,
+                first.mSourceDict,
+                first.mIndexOfTouchPointOfSecondWord,
+                first.mAutoCommitFirstWordConfidence,
+            )
         }
 
         val capitalizedTypedWord = capitalize(wordComposer.typedWord, capsMode, locale)
@@ -433,7 +503,7 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
             getNextWordSuggestions(ngramContext, keyboard, inputStyle, settingsValuesForSuggestion), rejected
         )
         val suggestionsList = if (SuggestionStripView.DEBUG_SUGGESTIONS && suggestionsContainer.isNotEmpty()) {
-            getSuggestionsInfoListWithDebugInfo(suggestionResults.first().mWord, suggestionsContainer)
+            getSuggestionsInfoListWithDebugInfo(suggestionsContainer.first().mWord, suggestionsContainer)
         } else {
             suggestionsContainer
         }
@@ -480,7 +550,7 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
         )
     }
 
-    private fun transformPersonalCandidates(
+    private fun transformEngineCandidates(
         candidates: List<Candidate>,
         capsMode: CapsMode,
         trailingSingleQuotesCount: Int,
@@ -496,6 +566,8 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
     companion object {
         private const val LEXICAL_PROPOSAL_BUDGET_MILLIS = 8L
         private const val CONTEXT_RESCORING_BUDGET_MILLIS = 35L
+        private const val SWIPE_PROPOSAL_BUDGET_MILLIS = 125L
+        private const val SWIPE_CONTEXT_RESCORING_BUDGET_MILLIS = 50L
         private val TAG: String = Suggest::class.java.simpleName
 
         // Session id for {@link #getSuggestedWords(WordComposer,String,ProximityInfo,boolean,int)}.

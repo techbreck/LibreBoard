@@ -16,10 +16,12 @@ import helium314.keyboard.keyboard.Keyboard;
 import helium314.keyboard.latin.common.ComposedData;
 import helium314.keyboard.latin.dictionary.Dictionary;
 import helium314.keyboard.latin.dictionary.DictionaryStats;
+import helium314.keyboard.latin.engine.geometric.LexiconWord;
 import helium314.keyboard.latin.settings.SettingsValuesForSuggestion;
 import helium314.keyboard.latin.utils.SuggestionResults;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
@@ -93,6 +95,20 @@ public interface DictionaryFacilitator {
         locales.add(getMainLocale());
         if (!getMainLocale().equals(getCurrentLocale())) locales.add(getCurrentLocale());
         return locales;
+    }
+
+    /** Returns a bounded immutable view of the asynchronously prepared swipe lexicon. */
+    @NonNull default List<LexiconWord> getSwipeLexiconWords(
+            @NonNull final List<String> languageTags,
+            final int approximateLength,
+            final int maximumWords,
+            final boolean blockPossiblyOffensive) {
+        return Collections.emptyList();
+    }
+
+    /** Monotonic process-local revision for invalidating immutable swipe-lexicon views. */
+    default long getSwipeLexiconRevision() {
+        return 0L;
     }
 
     boolean usesSameSettings(

@@ -31,6 +31,7 @@ public final class ReadOnlyBinaryDictionary extends Dictionary {
     private final ReentrantReadWriteLock mLock = new ReentrantReadWriteLock();
 
     private final BinaryDictionary mBinaryDictionary;
+    private boolean mClosed;
 
     public ReadOnlyBinaryDictionary(final String filename, final long offset, final long length,
             final boolean useFullEditDistance, final Locale locale, final String dictType) {
@@ -122,10 +123,36 @@ public final class ReadOnlyBinaryDictionary extends Dictionary {
     }
 
     @Override
+    public int visitUnigrams(final int maximumWords, final UnigramVisitor visitor) {
+        if (maximumWords <= 0 || !mLock.readLock().tryLock()) return 0;
+        try {
+            if (mClosed) return 0;
+            int visited = 0;
+            int token = 0;
+            do {
+                final BinaryDictionary.GetNextWordPropertyResult result =
+                        mBinaryDictionary.getNextWordProperty(token);
+                final WordProperty property = result.mWordProperty;
+                if (property == null) break;
+                visitor.visit(property.mWord, property.getProbability(), property.mIsNotAWord,
+                        property.mIsPossiblyOffensive);
+                visited++;
+                token = result.mNextToken;
+            } while (token != 0 && visited < maximumWords);
+            return visited;
+        } finally {
+            mLock.readLock().unlock();
+        }
+    }
+
+    @Override
     public void close() {
         mLock.writeLock().lock();
         try {
-            mBinaryDictionary.close();
+            if (!mClosed) {
+                mClosed = true;
+                mBinaryDictionary.close();
+            }
         } finally {
             mLock.writeLock().unlock();
         }

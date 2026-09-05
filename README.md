@@ -13,7 +13,9 @@ temporarily to keep upstream review practical; the Android application ID is `or
 - Android 8/API 26 minimum; compile and target API 36.
 - No `INTERNET` or `ACCESS_NETWORK_STATE` permission.
 - No imported, proprietary, or system Google gesture library.
-- Pure-Kotlin geometric swipe fallback using live keyboard geometry.
+- Live batch input unions the retained AOSP matcher with pure-Kotlin geometric and optional CTC
+  candidates over one revision-cached static/personal lexicon. Missing, late, incompatible, and
+  circuit-open CTC inference preserves the classic/geometric slate.
 - Immutable engine contracts for candidate fusion, language lock, deadlines, model validation,
   neural availability, and stale-result sequencing.
 - Live tap and next-word fusion builds immutable, bounded requests from current geometry and coarse

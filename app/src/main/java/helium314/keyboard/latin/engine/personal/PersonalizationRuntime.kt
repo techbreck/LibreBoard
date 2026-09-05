@@ -15,12 +15,15 @@ import helium314.keyboard.latin.engine.RejectionObservation
 import helium314.keyboard.latin.engine.TypingRequest
 import helium314.keyboard.latin.engine.WordLock
 import helium314.keyboard.latin.engine.normalizeCandidate
+import helium314.keyboard.latin.engine.geometric.LexiconWord
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 
 /** Process-local facade used by the retained Java input logic. */
 object PersonalizationRuntime {
     @Volatile private var store: SqlitePersonalStore? = null
     private val sessionRejections = ConcurrentHashMap.newKeySet<String>()
+    private val vocabularyRevision = AtomicLong()
     private val sessionLock = Any()
     private val sessionCommittedTokens = ArrayDeque<String>()
 
@@ -50,6 +53,7 @@ object PersonalizationRuntime {
             contextFingerprint = contextFingerprint,
             precedingTokens = precedingTokens,
         ))
+        vocabularyRevision.incrementAndGet()
         synchronized(sessionLock) {
             committedTokens.forEach(sessionCommittedTokens::addLast)
             while (sessionCommittedTokens.size > MAX_SESSION_TOKENS) sessionCommittedTokens.removeFirst()
@@ -92,6 +96,7 @@ object PersonalizationRuntime {
                 contextHash,
                 System.currentTimeMillis(),
             ))
+            vocabularyRevision.incrementAndGet()
         }
     }
 
@@ -141,6 +146,30 @@ object PersonalizationRuntime {
         return open(context)?.suggest(request, Deadline.afterMillis(PERSONAL_QUERY_BUDGET_MILLIS)).orEmpty()
     }
 
+    /** Bounded CE-only personal vocabulary used by both open swipe decoders. */
+    @JvmStatic
+    fun swipeLexicon(
+        context: Context,
+        enabledLanguageTags: List<String>,
+        approximateLength: Int,
+        maximumWords: Int,
+        fieldPolicy: FieldPolicy,
+        incognito: Boolean,
+    ): List<LexiconWord> {
+        if (incognito || !fieldPolicy.allowsSuggestions || !fieldPolicy.allowsPersistence) return emptyList()
+        val languages = enabledLanguageTags.filter(String::isNotBlank).distinct().take(MAX_PERSONAL_LANGUAGES)
+        if (languages.isEmpty() || maximumWords <= 0) return emptyList()
+        return open(context)?.swipeLexicon(
+            languages,
+            approximateLength,
+            maximumWords.coerceAtMost(MAX_PERSONAL_SWIPE_WORDS),
+            Deadline.afterMillis(PERSONAL_QUERY_BUDGET_MILLIS),
+        ).orEmpty()
+    }
+
+    @JvmStatic
+    fun swipeLexiconRevision(): Long = vocabularyRevision.get()
+
     @JvmStatic
     fun clearSession() {
         sessionRejections.clear()
@@ -149,7 +178,10 @@ object PersonalizationRuntime {
 
     @JvmStatic
     fun wipe(context: Context) {
-        open(context)?.wipe()
+        open(context)?.let {
+            it.wipe()
+            vocabularyRevision.incrementAndGet()
+        }
         clearSession()
     }
 
@@ -159,6 +191,7 @@ object PersonalizationRuntime {
         val personalStore = open(context)
             ?: throw IllegalStateException("Credential-encrypted personalization storage is unavailable")
         personalStore.wipe()
+        vocabularyRevision.incrementAndGet()
         clearSession()
     }
 
@@ -170,6 +203,7 @@ object PersonalizationRuntime {
         val personalStore = open(context)
             ?: throw IllegalStateException("Credential-encrypted storage is unavailable")
         personalStore.restore(payload)
+        vocabularyRevision.incrementAndGet()
         clearSession()
     }
 
@@ -188,6 +222,7 @@ object PersonalizationRuntime {
 
     private const val MAX_SESSION_TOKENS = 8
     private const val MAX_PERSONAL_LANGUAGES = 8
+    private const val MAX_PERSONAL_SWIPE_WORDS = 256
     private const val PERSONAL_QUERY_BUDGET_MILLIS = 15L
     private val EMPTY_GEOMETRY = KeyGeometry(1f, 1f, emptyList())
 }

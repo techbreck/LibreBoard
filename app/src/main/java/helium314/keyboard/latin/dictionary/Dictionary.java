@@ -189,6 +189,19 @@ public abstract class Dictionary {
     }
 
     /**
+     * Visits a bounded snapshot of this dictionary's unigrams. Implementations that cannot safely
+     * enumerate return zero. This is used only to build the data-only swipe lexicon off the UI
+     * thread; callers must not retain {@link WordProperty} instances.
+     */
+    public int visitUnigrams(final int maximumWords, final UnigramVisitor visitor) {
+        return 0;
+    }
+
+    public interface UnigramVisitor {
+        void visit(String word, int frequency, boolean isNotAWord, boolean isPossiblyOffensive);
+    }
+
+    /**
      * Not a true dictionary. A placeholder used to indicate suggestions that don't come from any
      * real dictionary.
      */

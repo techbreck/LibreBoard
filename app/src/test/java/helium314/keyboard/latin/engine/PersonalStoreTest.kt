@@ -182,4 +182,39 @@ class PersonalStoreTest {
         assertEquals("Libre", candidates.first().surface)
         assertTrue(candidates.first().exactPersonalMatch)
     }
+
+    @Test
+    fun swipeLexiconIsLanguageAndLengthBoundedAndPreservesSurface() {
+        store.observeCommit(CommitObservation(listOf("LibreBoard"), "en-US", System.currentTimeMillis(), false))
+        store.observeCommit(CommitObservation(listOf("Datenschutz"), "de-DE", System.currentTimeMillis(), false))
+        store.observeCommit(CommitObservation(listOf("cat"), "en-US", System.currentTimeMillis(), false))
+
+        val words = store.swipeLexicon(
+            languageTags = listOf("en-US"),
+            approximateLength = 10,
+            maximumWords = 8,
+            deadline = Deadline.afterMillis(1_000),
+        )
+
+        assertEquals(listOf("LibreBoard"), words.map { it.word })
+        assertTrue(words.single().personal)
+    }
+
+    @Test
+    fun runtimeNeverExposesPersonalSwipeWordsInIncognitoOrRestrictedFields() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val editorInfo = EditorInfo().apply { inputType = InputType.TYPE_CLASS_TEXT }
+        PersonalizationRuntime.wipe(context)
+        PersonalizationRuntime.observeCommit(context, editorInfo, false, "LibreBoard", "en-US", false)
+
+        val incognito = PersonalizationRuntime.swipeLexicon(
+            context, listOf("en-US"), 10, 8, FieldPolicy.NORMAL, incognito = true,
+        )
+        val restricted = PersonalizationRuntime.swipeLexicon(
+            context, listOf("en-US"), 10, 8, FieldPolicy.SENSITIVE, incognito = false,
+        )
+
+        assertTrue(incognito.isEmpty())
+        assertTrue(restricted.isEmpty())
+    }
 }

@@ -15,8 +15,12 @@ direct-buffer invocation, output bounds, native-wrapper cleanup, core-only absen
 fallback. Live-path tests prove bounded immutable request and language-lock propagation,
 0–100 neural weighting, calibrated commit selection, classic ranking on timeout, cooperative and
 non-cooperative timeout circuit breaking, delayed native-owner cleanup, invalid preference fallback,
-restricted-field bypass, and safety-veto precedence. Registry tests prove swipe/context activation
-and rollback slots cannot collide. Lexical tests require contractions, split/join hypotheses, and
+restricted-field bypass, and safety-veto precedence. Swipe live-path tests additionally prove
+revision-safe static lexicon caching, CE-only personal vocabulary gates, negative-score multilingual
+locking, CTC/geometric provenance union, missing-model fallback, non-cooperative timeout circuit
+breaking, delayed native-owner cleanup, and batch single-commit metadata. Registry tests prove
+swipe/context activation and rollback slots cannot collide. Lexical tests require contractions,
+split/join hypotheses, and
 German compound evidence to stay within one explicitly tagged dictionary; they also cover casing,
 language locks, deadline exits, generated provenance, raw-word vetoes, and multilingual source-order
 invariance. CTC tests cover

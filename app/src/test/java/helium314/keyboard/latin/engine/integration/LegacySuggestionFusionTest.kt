@@ -253,6 +253,43 @@ class LegacySuggestionFusionTest {
         assertTrue(result.suggestions.all { it.mSourceDict.mLocale == german })
     }
 
+    @Test
+    fun completeSwipeLocksToStrongestLanguageEvenWhenCtcScoresAreNegative() {
+        val fusion = LegacySuggestionFusion()
+        val result = fusion.fuse(
+            rawText = "",
+            classicSuggestions = emptyList(),
+            supplementalCandidates = listOf(
+                Candidate(
+                    "gift",
+                    languageTag = "en-US",
+                    sources = setOf(CandidateSource.CTC_SWIPE),
+                    components = ScoreComponents(spatial = -5.0, staticFrequency = 1.0),
+                ),
+                Candidate(
+                    "Gift",
+                    languageTag = "de",
+                    sources = setOf(CandidateSource.CTC_SWIPE),
+                    components = ScoreComponents(spatial = -0.1, staticFrequency = 1.0),
+                ),
+            ),
+            enabledLanguageTags = listOf("en-US", "de"),
+            defaultLocale = english,
+            inputStyle = InputStyle.SWIPE,
+            typingRequest = TypingRequest.bounded(
+                rawText = "",
+                geometry = KeyGeometry(1f, 1f, emptyList()),
+                enabledLanguages = listOf("en-US", "de"),
+                fieldPolicy = FieldPolicy.NORMAL,
+                inputStyle = InputStyle.SWIPE,
+                sequenceId = 18,
+            ),
+        )
+
+        assertEquals(WordLock.Automatic("de"), result.wordLock)
+        assertEquals(listOf("Gift"), result.suggestions.map { it.mWord })
+    }
+
     private fun personal(surface: String, exact: Boolean) = Candidate(
         surface = surface,
         languageTag = "en-US",

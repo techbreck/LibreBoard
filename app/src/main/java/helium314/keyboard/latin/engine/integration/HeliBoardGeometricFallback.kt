@@ -12,15 +12,9 @@ import helium314.keyboard.latin.engine.geometric.TraceKeySequence
 /** Bridges retained HeliBoard pointer collection to the LibreBoard data-only fallback decoder. */
 object HeliBoardGeometricFallback {
     fun toTypingComposedData(inputPointers: InputPointers, keyboard: Keyboard): ComposedData? {
-        val size = inputPointers.pointerSize
-        if (size < 2) return null
+        val path = toEnginePath(inputPointers)
+        if (path.size < 2) return null
         val geometry = toEngineGeometry(keyboard)
-        val xs = inputPointers.xCoordinates
-        val ys = inputPointers.yCoordinates
-        val times = inputPointers.times
-        val path = List(size) { index ->
-            TouchPoint(xs[index].toFloat(), ys[index].toFloat(), times[index].toLong())
-        }
         val trace = TraceKeySequence.decode(path, geometry)
         if (trace.isBlank()) return null
 
@@ -30,6 +24,16 @@ object HeliBoardGeometricFallback {
             syntheticPointers.addPointer(key.centerX.toInt(), key.centerY.toInt(), 0, index * 10)
         }
         return ComposedData(syntheticPointers, false, trace)
+    }
+
+    fun toEnginePath(inputPointers: InputPointers): List<TouchPoint> {
+        val size = inputPointers.pointerSize.coerceAtMost(1024)
+        val xs = inputPointers.xCoordinates
+        val ys = inputPointers.yCoordinates
+        val times = inputPointers.times
+        return List(size) { index ->
+            TouchPoint(xs[index].toFloat(), ys[index].toFloat(), times[index].toLong())
+        }
     }
 
     fun toEngineGeometry(keyboard: Keyboard): KeyGeometry {

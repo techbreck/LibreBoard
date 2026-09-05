@@ -80,7 +80,21 @@ internal class LegacySuggestionFusion(
             enabledLanguageTags.ifEmpty { listOf(defaultLanguage) },
             defaultLanguage,
         )
-        val currentLock = updateWordLock(rawText, languageProbabilities)
+        val currentLock = if (inputStyle == InputStyle.SWIPE) {
+            resetWord()
+            when (val requestedLock = typingRequest?.wordLock) {
+                is WordLock.Manual -> requestedLock.takeIf {
+                    it.languageTag in enabledLanguageTags
+                } ?: WordLock.Automatic(
+                    languageProbabilities.maxByOrNull { it.value }?.key ?: defaultLanguage,
+                )
+                else -> WordLock.Automatic(
+                    languageProbabilities.maxByOrNull { it.value }?.key ?: defaultLanguage,
+                )
+            }
+        } else {
+            updateWordLock(rawText, languageProbabilities)
+        }
         val classicCandidates = classicSuggestions.take(SuggestedWords.MAX_SUGGESTIONS).map { info ->
             val language = languageTag(info, defaultLanguage)
             val userSpecific = info.mSourceDict.isUserSpecific
@@ -231,16 +245,31 @@ internal class LegacySuggestionFusion(
         enabledLanguages: List<String>,
         defaultLanguage: String,
     ): Map<String, Double> {
-        val scores = enabledLanguages.distinct().associateWithTo(linkedMapOf()) { 0.0 }
+        val scores = enabledLanguages.distinct().associateWithTo(linkedMapOf()) { Double.NEGATIVE_INFINITY }
         classic.forEach { info ->
             val language = languageTag(info, defaultLanguage)
-            scores[language] = max(scores[language] ?: 0.0, info.mScore.toDouble())
+            if (language !in scores) return@forEach
+            scores[language] = max(scores[language] ?: Double.NEGATIVE_INFINITY, info.mScore.toDouble())
         }
         personal.forEach { candidate ->
-            val score = ln1p(max(0.0, candidate.components.personal ?: 0.0))
-            scores[candidate.languageTag] = max(scores[candidate.languageTag] ?: 0.0, score)
+            if (candidate.languageTag !in scores) return@forEach
+            val score = candidate.components.language ?: (
+                (candidate.components.spatial ?: 0.0) +
+                    (candidate.components.staticFrequency ?: 0.0) +
+                    ln1p(max(0.0, candidate.components.personal ?: 0.0))
+                )
+            scores[candidate.languageTag] = max(
+                scores[candidate.languageTag] ?: Double.NEGATIVE_INFINITY,
+                score,
+            )
         }
         if (scores.isEmpty()) return mapOf(defaultLanguage to 1.0)
+        val observed = scores.values.filter(Double::isFinite)
+        if (observed.isEmpty()) scores.replaceAll { _, _ -> 0.0 }
+        else {
+            val floor = observed.min() - max(1.0, observed.maxOf(::abs) * LANGUAGE_SCORE_TEMPERATURE_RATIO)
+            scores.replaceAll { _, score -> score.takeIf(Double::isFinite) ?: floor }
+        }
         val maximum = scores.values.max()
         val temperature = max(1.0, scores.values.maxOf(::abs) * LANGUAGE_SCORE_TEMPERATURE_RATIO)
         val exponentials = scores.mapValues { (_, score) -> exp(((score - maximum) / temperature).coerceIn(-50.0, 0.0)) }

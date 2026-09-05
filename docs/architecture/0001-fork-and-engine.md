@@ -32,8 +32,11 @@ release calibration remain gated on accepted signed artifacts and Phase 0 measur
 
 Every HeliBoard route for importing a `.so`, probing `jni_latinimegoogle`, or loading a user-selected
 native library is removed. The retained native library is the source-built AOSP dictionary engine.
-LibreBoard swipe input always has a pure-Kotlin, live-geometry fallback; an ONNX CTC decoder may add
-candidates but cannot replace that fallback.
+LibreBoard swipe input always has a pure-Kotlin, live-geometry fallback. It runs beside the optional
+ONNX CTC decoder against one language-tagged static/personal lexicon, then sends their provenance-
+preserving union through the same language lock and context scorer used for taps. CTC execution has
+a hard deadline and three-overrun circuit breaker; absent, incompatible, late, or disabled models
+cannot replace or suppress the retained AOSP/geometric fallback.
 
 ## Storage decision
 

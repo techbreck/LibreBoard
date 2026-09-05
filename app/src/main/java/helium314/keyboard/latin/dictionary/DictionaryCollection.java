@@ -90,6 +90,20 @@ public final class DictionaryCollection extends Dictionary {
     }
 
     @Override
+    public int visitUnigrams(final int maximumWords, final UnigramVisitor visitor) {
+        if (maximumWords <= 0) return 0;
+        int visited = 0;
+        for (final Dictionary dictionary : mDictionaries) {
+            if (TYPE_EMOJI.equals(dictionary.mDictType)) continue;
+            final int remaining = maximumWords - visited;
+            final int childCount = dictionary.visitUnigrams(remaining, visitor);
+            visited += Math.min(remaining, Math.max(0, childCount));
+            if (visited >= maximumWords) break;
+        }
+        return visited;
+    }
+
+    @Override
     public boolean isInitialized() {
         return !mDictionaries.isEmpty();
     }

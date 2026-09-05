@@ -21,6 +21,7 @@ data class LexiconWord(
     val languageTag: String,
     val frequency: Int,
     val personal: Boolean = false,
+    val possiblyOffensive: Boolean = false,
 )
 
 fun interface SwipeLexicon {

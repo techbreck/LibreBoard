@@ -27,6 +27,8 @@ import helium314.keyboard.latin.dictionary.DictionaryFactory
 import helium314.keyboard.latin.dictionary.DictionaryStats
 import helium314.keyboard.latin.dictionary.ExpandableBinaryDictionary
 import helium314.keyboard.latin.dictionary.UserBinaryDictionary
+import helium314.keyboard.latin.engine.geometric.LexiconWord
+import helium314.keyboard.latin.engine.geometric.SwipeLexiconIndex
 import helium314.keyboard.latin.permissions.PermissionsUtil
 import helium314.keyboard.latin.personalization.UserHistoryDictionary
 import helium314.keyboard.latin.settings.Settings
@@ -58,6 +60,9 @@ import java.util.concurrent.TimeUnit
  */
 class DictionaryFacilitatorImpl : DictionaryFacilitator {
     private var dictionaryGroups = listOf(DictionaryGroup())
+    @Volatile private var swipeLexicon = SwipeLexiconIndex.EMPTY
+    @Volatile private var dictionaryGeneration = 0L
+    @Volatile private var swipeLexiconRevision = 0L
 
     @Volatile
     private var mLatchForWaitingLoadingMainDictionaries = CountDownLatch(0)
@@ -116,6 +121,20 @@ class DictionaryFacilitatorImpl : DictionaryFacilitator {
 
     override fun getActiveLocales(): List<Locale> = dictionaryGroups.map { it.locale }.distinct()
 
+    override fun getSwipeLexiconWords(
+        languageTags: List<String>,
+        approximateLength: Int,
+        maximumWords: Int,
+        blockPossiblyOffensive: Boolean,
+    ): List<LexiconWord> = swipeLexicon.words(
+        languageTags,
+        approximateLength,
+        maximumWords,
+        blockPossiblyOffensive,
+    )
+
+    override fun getSwipeLexiconRevision(): Long = swipeLexiconRevision
+
     override fun usesSameSettings(locales: List<Locale>, contacts: Boolean, apps: Boolean, personalization: Boolean): Boolean {
         val dictGroup = dictionaryGroups[0] // settings are the same for all groups
         return contacts == dictGroup.hasDict(Dictionary.TYPE_CONTACTS)
@@ -154,13 +173,21 @@ class DictionaryFacilitatorImpl : DictionaryFacilitator {
 
         // Replace Dictionaries.
         val oldDictionaryGroups: List<DictionaryGroup>
+        val generation: Long
+        val reloadMainDictionaries: Boolean
         synchronized(this) {
             oldDictionaryGroups = dictionaryGroups
             dictionaryGroups = newDictionaryGroups
-            if (hasAtLeastOneUninitializedMainDictionary()) {
-                asyncReloadUninitializedMainDictionaries(context, locales, listener)
+            dictionaryGeneration++
+            generation = dictionaryGeneration
+            swipeLexicon = SwipeLexiconIndex.EMPTY
+            swipeLexiconRevision++
+            reloadMainDictionaries = hasAtLeastOneUninitializedMainDictionary()
+            if (reloadMainDictionaries) {
+                asyncReloadUninitializedMainDictionaries(context, locales, listener, generation)
             }
         }
+        if (!reloadMainDictionaries) scope.launch { rebuildSwipeLexicon(generation) }
 
         listener?.onUpdateMainDictionaryAvailability(hasAtLeastOneInitializedMainDictionary())
 
@@ -233,7 +260,10 @@ class DictionaryFacilitatorImpl : DictionaryFacilitator {
     }
 
     private fun asyncReloadUninitializedMainDictionaries(
-        context: Context, locales: Collection<Locale>, listener: DictionaryInitializationListener?
+        context: Context,
+        locales: Collection<Locale>,
+        listener: DictionaryInitializationListener?,
+        generation: Long,
     ) {
         val latchForWaitingLoadingMainDictionary = CountDownLatch(1)
         mLatchForWaitingLoadingMainDictionaries = latchForWaitingLoadingMainDictionary
@@ -255,10 +285,46 @@ class DictionaryFacilitatorImpl : DictionaryFacilitator {
                     }
                 }
 
-                listener?.onUpdateMainDictionaryAvailability(hasAtLeastOneInitializedMainDictionary())
-                latchForWaitingLoadingMainDictionary.countDown()
+                if (dictionaryGeneration == generation) {
+                    // Dictionary readiness must not wait for the one-time full lexicon scan. The
+                    // keyboard can continue using the legacy batch path until the immutable swipe
+                    // index is published by this follow-up task.
+                    listener?.onUpdateMainDictionaryAvailability(hasAtLeastOneInitializedMainDictionary())
+                    scope.launch { rebuildSwipeLexicon(generation) }
+                }
             } catch (e: Throwable) {
                 Log.e(TAG, "could not initialize main dictionaries for $locales", e)
+            } finally {
+                latchForWaitingLoadingMainDictionary.countDown()
+            }
+        }
+    }
+
+    private fun rebuildSwipeLexicon(generation: Long) {
+        val groups = synchronized(this) {
+            if (generation != dictionaryGeneration) return
+            dictionaryGroups.toList()
+        }
+        val words = ArrayList<LexiconWord>()
+        groups.forEach { group ->
+            val languageTag = group.locale.toLanguageTag()
+            group.getDict(Dictionary.TYPE_MAIN)?.visitUnigrams(MAX_STATIC_SWIPE_WORDS_PER_LANGUAGE) {
+                    word, frequency, isNotAWord, isPossiblyOffensive ->
+                if (!isNotAWord && frequency >= 0 && word.isNotBlank() && word.all(::isSwipeWordCharacter)) {
+                    words += LexiconWord(
+                        word = word,
+                        languageTag = languageTag,
+                        frequency = frequency,
+                        possiblyOffensive = isPossiblyOffensive,
+                    )
+                }
+            }
+        }
+        val rebuilt = SwipeLexiconIndex.from(words)
+        synchronized(this) {
+            if (generation == dictionaryGeneration) {
+                swipeLexicon = rebuilt
+                swipeLexiconRevision++
             }
         }
     }
@@ -269,6 +335,9 @@ class DictionaryFacilitatorImpl : DictionaryFacilitator {
         synchronized(this) {
             dictionaryGroupsToClose = dictionaryGroups
             dictionaryGroups = listOf(DictionaryGroup())
+            dictionaryGeneration++
+            swipeLexicon = SwipeLexiconIndex.EMPTY
+            swipeLexiconRevision++
         }
         for (dictionaryGroup in dictionaryGroupsToClose) {
             for (dictType in DictionaryFacilitator.ALL_DICTIONARY_TYPES) {
@@ -596,6 +665,10 @@ class DictionaryFacilitatorImpl : DictionaryFacilitator {
         for (dictionaryGroup in dictionaryGroups) {
             dictionaryGroup.removeWord(word)
         }
+        synchronized(this) {
+            swipeLexicon = swipeLexicon.without(word)
+            swipeLexiconRevision++
+        }
     }
 
     override fun clearUserHistoryDictionary(context: Context) {
@@ -637,6 +710,10 @@ class DictionaryFacilitatorImpl : DictionaryFacilitator {
 
         // HACK: This threshold is being used when adding a capitalized entry in the User History dictionary.
         private const val CAPITALIZED_FORM_MAX_PROBABILITY_FOR_INSERT = 140
+        private const val MAX_STATIC_SWIPE_WORDS_PER_LANGUAGE = 100_000
+
+        private fun isSwipeWordCharacter(character: Char): Boolean =
+            character.isLetter() || character == '\'' || character == '\u2019' || character == '-'
 
         private fun createSubDict(
             dictType: String, context: Context, locale: Locale, dictFile: File?, dictNamePrefix: String

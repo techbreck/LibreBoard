@@ -15,6 +15,7 @@ import helium314.keyboard.latin.engine.RejectionObservation
 import helium314.keyboard.latin.engine.ScoreComponents
 import helium314.keyboard.latin.engine.TypingRequest
 import helium314.keyboard.latin.engine.normalizeCandidate
+import helium314.keyboard.latin.engine.geometric.LexiconWord
 import helium314.keyboard.latin.privacy.CredentialEncryptedStorage
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
@@ -229,6 +230,56 @@ class SqlitePersonalStore private constructor(context: Context) :
         ).take(32)
     }
 
+    /**
+     * Returns only learned unigram surfaces for swipe decoding. Length filtering is deliberately
+     * performed in Kotlin because SQLite counts punctuation that the CTC alphabet omits. The SQL
+     * query remains bounded, so a large personal vocabulary cannot monopolize the decoder deadline.
+     */
+    fun swipeLexicon(
+        languageTags: List<String>,
+        approximateLength: Int,
+        maximumWords: Int,
+        deadline: Deadline,
+    ): List<LexiconWord> {
+        if (maximumWords <= 0 || deadline.expired) return emptyList()
+        val minimumLength = (approximateLength - SWIPE_LENGTH_TOLERANCE_BELOW).coerceAtLeast(1)
+        val now = System.currentTimeMillis()
+        val result = ArrayList<LexiconWord>(minOf(maximumWords, 64))
+        val seen = hashSetOf<Pair<String, String>>()
+        languageTags.filter(String::isNotBlank).distinct().forEach { language ->
+            if (deadline.expired || result.size >= maximumWords) return@forEach
+            val remaining = maximumWords - result.size
+            readableDatabase.query(
+                "unigram",
+                arrayOf("word", "surface", "count", "last_used"),
+                "language = ?",
+                arrayOf(language),
+                null,
+                null,
+                "count DESC, last_used DESC",
+                minOf(MAX_PERSONAL_SWIPE_QUERY_ROWS, remaining * 2).toString(),
+            ).use { cursor ->
+                while (cursor.moveToNext() && !deadline.expired && result.size < maximumWords) {
+                    val normalized = cursor.getString(0)
+                    if (swipeEmissionLength(normalized) !in minimumLength..(
+                            approximateLength + SWIPE_LENGTH_TOLERANCE_ABOVE
+                        ).coerceAtMost(MAX_PERSONAL_WORD_LENGTH)
+                    ) continue
+                    val key = normalized to language
+                    if (!seen.add(key)) continue
+                    val decayed = decayedCount(cursor.getLong(2), cursor.getLong(3), now)
+                    result += LexiconWord(
+                        word = cursor.getString(1) ?: normalized,
+                        languageTag = language,
+                        frequency = decayed.coerceIn(0.0, Int.MAX_VALUE.toDouble()).toInt(),
+                        personal = true,
+                    )
+                }
+            }
+        }
+        return result
+    }
+
     fun isCorrectionSuppressed(raw: String, replacement: String, languageTag: String): Boolean {
         val normalizedRaw = normalizeCandidate(raw)
         val normalizedReplacement = normalizeCandidate(replacement)
@@ -438,6 +489,10 @@ class SqlitePersonalStore private constructor(context: Context) :
         private const val MAX_EXPORT_BYTES = 16 * 1024 * 1024
         private const val MAX_EXPORT_ROWS = 100_000
         private const val MAX_PHRASE_TOKENS = 4
+        private const val MAX_PERSONAL_SWIPE_QUERY_ROWS = 512
+        private const val MAX_PERSONAL_WORD_LENGTH = 64
+        private const val SWIPE_LENGTH_TOLERANCE_BELOW = 2
+        private const val SWIPE_LENGTH_TOLERANCE_ABOVE = 3
         private const val REQUIRED_MANUAL_ACCEPTS = 2
         private const val REJECTION_RETENTION_MILLIS = 30L * 24 * 60 * 60 * 1000
         private const val DECAY_TIME_CONSTANT_MILLIS = 90.0 * 24 * 60 * 60 * 1000
@@ -487,6 +542,17 @@ class SqlitePersonalStore private constructor(context: Context) :
         fun tokenizeSurfaces(text: String): List<String> = text
             .split(Regex("[^\\p{L}\\p{N}'’]+"))
             .filter(String::isNotBlank)
+
+        private fun swipeEmissionLength(word: String): Int {
+            var count = 0
+            var index = 0
+            while (index < word.length) {
+                val codePoint = word.codePointAt(index)
+                if (codePoint != '\''.code && codePoint != 0x2019 && codePoint != '-'.code) count++
+                index += Character.charCount(codePoint)
+            }
+            return count
+        }
 
         /** Stores only a one-way fingerprint, never the surrounding prose. */
         fun fingerprintContext(context: String): String {
