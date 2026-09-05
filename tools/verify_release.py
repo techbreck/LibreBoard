@@ -19,6 +19,7 @@ import zipfile
 
 import build_context_tokenizer
 import context_model_contract
+import evaluate_engine
 import model_sources
 import prepare_context_dataset
 import prepare_swipe_dataset
@@ -83,6 +84,7 @@ MINIMUM_PHASE0_COUNTS = {
     "lexical": 500,
     "swipe": 5_000,
 }
+MINIMUM_PHASE0_SWIPE_STRATA_COUNTS = dict(evaluate_engine.MINIMUM_SWIPE_STRATA_COUNTS)
 GRAPHENEOS_CHECKS = {
     "apk_verified",
     "keyboard_enable_select",
@@ -954,6 +956,14 @@ def validate_phase0_report(errors: list[str], report: dict, apk_hash: str) -> di
         for category, minimum in MINIMUM_PHASE0_COUNTS.items()
     ):
         fail(errors, "Phase 0 report does not satisfy held-out dataset minimums")
+    swipe_strata = report.get("swipeStrataCounts")
+    if not isinstance(swipe_strata, dict) or any(
+        isinstance(swipe_strata.get(stratum), bool)
+        or not isinstance(swipe_strata.get(stratum), int)
+        or swipe_strata[stratum] < minimum
+        for stratum, minimum in MINIMUM_PHASE0_SWIPE_STRATA_COUNTS.items()
+    ):
+        fail(errors, "Phase 0 report does not satisfy swipe stratum minimums")
 
     evidence = report.get("evidence")
     if not isinstance(evidence, dict):
@@ -966,6 +976,11 @@ def validate_phase0_report(errors: list[str], report: dict, apk_hash: str) -> di
     for field in ("swipeModelSha256", "contextModelSha256"):
         if not isinstance(evidence.get(field), str) or not SHA256.fullmatch(evidence[field]):
             fail(errors, f"Phase 0 report has an invalid {field}")
+    if (
+        not isinstance(evidence.get("measurementDatasetSha256"), str)
+        or not SHA256.fullmatch(evidence["measurementDatasetSha256"])
+    ):
+        fail(errors, "Phase 0 report has an invalid measurementDatasetSha256")
     environments = evidence.get("environments")
     graphene = None
     if isinstance(environments, list):
@@ -1063,6 +1078,7 @@ def evidence_checks(
     apk: pathlib.Path,
     rebuilt_apk: pathlib.Path,
     phase0_path: pathlib.Path,
+    phase0_measurements_path: pathlib.Path,
     grapheneos_path: pathlib.Path,
     instrumentation_path: pathlib.Path,
 ) -> None:
@@ -1082,6 +1098,26 @@ def evidence_checks(
     validate_grapheneos_evidence(errors, grapheneos, apk, apk_hash)
     if phase0_evidence is None:
         return
+
+    if not phase0_measurements_path.is_file():
+        fail(errors, "Phase 0 measurement dataset does not exist")
+    else:
+        measurement_hash = sha256_file(phase0_measurements_path)
+        if phase0_evidence.get("measurementDatasetSha256") != measurement_hash:
+            fail(errors, "Phase 0 report references a different measurement dataset")
+        try:
+            measurements = evaluate_engine.read_jsonl(phase0_measurements_path)
+            recomputed = evaluate_engine.evaluate(
+                measurements,
+                {"schemaVersion": 1, **phase0_evidence},
+                measurement_sha256=measurement_hash,
+                enforce_minimum_counts=True,
+            )
+        except (OSError, evaluate_engine.EvaluationError) as exc:
+            fail(errors, f"Phase 0 measurements cannot be independently evaluated: {exc}")
+        else:
+            if recomputed != phase0:
+                fail(errors, "Phase 0 report does not exactly match its measurement dataset")
 
     if grapheneos.get("phase0ReportSha256") != sha256_file(phase0_path):
         fail(errors, "GrapheneOS evidence references a different Phase 0 report")
@@ -1457,6 +1493,11 @@ def main() -> int:
     )
     parser.add_argument("--rebuilt-apk", type=pathlib.Path, help="independent clean rebuild of the release APK")
     parser.add_argument("--phase0-report", type=pathlib.Path, help="passing Phase 0 JSON report for the APK")
+    parser.add_argument(
+        "--phase0-measurements",
+        type=pathlib.Path,
+        help="raw session-separated Phase 0 measurement JSONL",
+    )
     parser.add_argument("--grapheneos-evidence", type=pathlib.Path, help="physical GrapheneOS JSON evidence")
     parser.add_argument(
         "--instrumentation-output",
@@ -1464,14 +1505,21 @@ def main() -> int:
         help="raw output from the GrapheneOS device run",
     )
     args = parser.parse_args()
-    evidence_values = (args.rebuilt_apk, args.phase0_report, args.grapheneos_evidence, args.instrumentation_output)
+    evidence_values = (
+        args.rebuilt_apk,
+        args.phase0_report,
+        args.phase0_measurements,
+        args.grapheneos_evidence,
+        args.instrumentation_output,
+    )
     has_evidence = any(value is not None for value in evidence_values)
     if not args.source and not args.apk and not args.model_pack_apk and not has_evidence:
         parser.error("select --source, --apk, and/or --model-pack-apk")
     if has_evidence and (len(args.apk) != 1 or any(value is None for value in evidence_values)):
         parser.error(
             "GrapheneOS evidence requires exactly one --apk plus --rebuilt-apk, "
-            "--phase0-report, --grapheneos-evidence, and --instrumentation-output"
+            "--phase0-report, --phase0-measurements, --grapheneos-evidence, and "
+            "--instrumentation-output"
         )
 
     errors: list[str] = []
@@ -1487,6 +1535,7 @@ def main() -> int:
             args.apk[0].resolve(),
             args.rebuilt_apk.resolve(),
             args.phase0_report.resolve(),
+            args.phase0_measurements.resolve(),
             args.grapheneos_evidence.resolve(),
             args.instrumentation_output.resolve(),
         )

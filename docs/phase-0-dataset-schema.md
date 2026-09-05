@@ -11,11 +11,17 @@ these fields:
 - `target` and `raw`: expected and observed text.
 - `predictions`: ranked strings for every applicable system, capped at 32.
 - `latencyMs`: end-to-end measurement for every applicable system.
-- `strata`: swipe labels including `short` or `return_trip` where applicable.
+- `strata`: swipe labels. Release evidence must include at least 500 samples in each of `short`,
+  `medium`, `long`, `clean`, `sloppy`, `very_sloppy`, `double_letter`, and `return_trip`; labels may
+  overlap.
 - `shouldCorrect`: required for `valid_word`; false labels measure false corrections.
 
 Tap systems are `heliboard`, `fused`, `fused_personal`, and `fused_neural`. Swipe systems are
 `geometric`, `ctc`, and `fused_swipe`.
+
+Every measured LibreBoard tap slate (`fused`, `fused_personal`, and `fused_neural`) must contain the
+exact `raw` surface, including capitalization and punctuation. The evaluator rejects a report that
+cannot prove the one-tap raw-word fallback; normalization is used only for accuracy scoring.
 
 Metadata is a JSON object that binds the report to the artifacts and required environments:
 
@@ -33,7 +39,8 @@ Metadata is a JSON object that binds the report to the artifacts and required en
 
 The evaluator copies this normalized evidence into the output report. Missing device classes,
 placeholder artifact identifiers, a non-physical GrapheneOS run, or a GrapheneOS run with sandboxed
-Google Play cannot produce a passing report.
+Google Play cannot produce a passing report. It also computes `measurementDatasetSha256` directly
+from the input JSONL and places that hash in the report; callers cannot supply or override it.
 
 ```sh
 python3 tools/evaluate_engine.py measurements.jsonl \
@@ -44,3 +51,5 @@ python3 tools/evaluate_engine.py measurements.jsonl \
 The normal command enforces the release-size dataset minimums. `--allow-small-dataset` exists only
 for developing the evaluator and cannot produce release evidence. A report passes only when every
 quality, false-correction, latency, memory, and swipe-stratum gate from the product plan passes.
+Final release verification requires both the report and its raw JSONL, recomputes every metric and
+requires the result to match the report exactly.

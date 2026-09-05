@@ -8,6 +8,7 @@ contains a model implementation and never treats missing measurements as zero or
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import pathlib
@@ -30,6 +31,16 @@ MINIMUM_COUNTS = {
     "spacing": 500,
     "lexical": 500,
     "swipe": 5_000,
+}
+MINIMUM_SWIPE_STRATA_COUNTS = {
+    "short": 500,
+    "medium": 500,
+    "long": 500,
+    "clean": 500,
+    "sloppy": 500,
+    "very_sloppy": 500,
+    "double_letter": 500,
+    "return_trip": 500,
 }
 REQUIRED_ENVIRONMENTS = {
     "stock_android_hardware",
@@ -93,6 +104,14 @@ def parse_example(raw: dict[str, Any], line_number: int) -> Example:
         if any(not isinstance(value, str) or not value for value in values):
             raise EvaluationError(f"{location}: predictions must be non-empty strings")
         predictions[system] = tuple(values)
+    if raw["split"] == "test" and raw["category"] != "swipe":
+        if not raw["raw"]:
+            raise EvaluationError(f"{location}: measured tap raw text must not be empty")
+        for system in ("fused", "fused_personal", "fused_neural"):
+            if raw["raw"] not in predictions[system]:
+                raise EvaluationError(
+                    f"{location}: {system} does not preserve the exact raw candidate"
+                )
     latency: dict[str, float] = {}
     for system, value in (latency_raw or {}).items():
         if system not in ALL_SYSTEMS or isinstance(value, bool) or not isinstance(value, (int, float)):
@@ -141,6 +160,14 @@ def read_jsonl(path: pathlib.Path) -> list[Example]:
     return examples
 
 
+def sha256_file(path: pathlib.Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        while chunk := stream.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def percentile(values: list[float], quantile: float) -> float:
     if not values:
         raise EvaluationError("required latency samples are missing")
@@ -175,7 +202,25 @@ def false_correction_rate(examples: Iterable[Example], system: str) -> float:
     return false_corrections / len(rows)
 
 
-def check_dataset(examples: list[Example], enforce_minimum_counts: bool) -> tuple[list[Example], dict[str, int]]:
+def validate_swipe_strata(
+    swipe: list[Example],
+    minimums: dict[str, int],
+) -> dict[str, int]:
+    counts = Counter(stratum for example in swipe for stratum in example.strata)
+    missing = [
+        f"{stratum}={counts[stratum]}<{minimum}"
+        for stratum, minimum in minimums.items()
+        if counts[stratum] < minimum
+    ]
+    if missing:
+        raise EvaluationError("swipe stratum minimums not met: " + ", ".join(missing))
+    return dict(sorted(counts.items()))
+
+
+def check_dataset(
+    examples: list[Example],
+    enforce_minimum_counts: bool,
+) -> tuple[list[Example], dict[str, int], dict[str, int]]:
     ids = Counter(example.identifier for example in examples)
     duplicates = sorted(identifier for identifier, count in ids.items() if count > 1)
     if duplicates:
@@ -195,10 +240,11 @@ def check_dataset(examples: list[Example], enforce_minimum_counts: bool) -> tupl
         if missing:
             raise EvaluationError("held-out dataset minimums not met: " + ", ".join(missing))
     swipe = [example for example in test if example.category == "swipe"]
-    for stratum in ("short", "return_trip"):
-        if not any(stratum in example.strata for example in swipe):
-            raise EvaluationError(f"swipe stratum is missing: {stratum}")
-    return test, dict(sorted(counts.items()))
+    strata = validate_swipe_strata(
+        swipe,
+        MINIMUM_SWIPE_STRATA_COUNTS if enforce_minimum_counts else {"short": 1, "return_trip": 1},
+    )
+    return test, dict(sorted(counts.items())), strata
 
 
 def validate_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
@@ -273,10 +319,14 @@ def evaluate(
     examples: list[Example],
     metadata: dict[str, Any],
     *,
+    measurement_sha256: str,
     enforce_minimum_counts: bool = True,
 ) -> dict[str, Any]:
-    test, counts = check_dataset(examples, enforce_minimum_counts)
+    if not isinstance(measurement_sha256, str) or not SHA256.fullmatch(measurement_sha256):
+        raise EvaluationError("measurement dataset requires a lowercase SHA-256")
+    test, counts, swipe_strata = check_dataset(examples, enforce_minimum_counts)
     evidence = validate_metadata(metadata)
+    evidence["measurementDatasetSha256"] = measurement_sha256
     peak_memory = evidence["peakAddedNeuralMemoryMiB"]
 
     tap_error = [row for row in test if row.category == "tap_error"]
@@ -287,6 +337,7 @@ def evaluate(
         "schemaVersion": SCHEMA_VERSION,
         "evidence": evidence,
         "counts": counts,
+        "swipeStrataCounts": swipe_strata,
         "systems": {},
     }
     for system in TAP_SYSTEMS:
@@ -375,7 +426,12 @@ def main() -> int:
         metadata = json.loads(args.metadata.read_text(encoding="utf-8"))
         if not isinstance(metadata, dict):
             raise EvaluationError("metadata must be an object")
-        metrics = evaluate(examples, metadata, enforce_minimum_counts=not args.allow_small_dataset)
+        metrics = evaluate(
+            examples,
+            metadata,
+            measurement_sha256=sha256_file(args.dataset),
+            enforce_minimum_counts=not args.allow_small_dataset,
+        )
     except (OSError, json.JSONDecodeError, EvaluationError) as failure:
         print(f"ERROR: {failure}", file=sys.stderr)
         return 2

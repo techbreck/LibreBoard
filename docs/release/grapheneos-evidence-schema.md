@@ -43,6 +43,7 @@ python3 tools/verify_release.py --source \
   --apk build/first/LibreBoard_release.apk \
   --rebuilt-apk build/second/LibreBoard_release.apk \
   --phase0-report build/reports/phase-0.json \
+  --phase0-measurements build/reports/phase-0-measurements.jsonl \
   --grapheneos-evidence build/reports/grapheneos.json \
   --instrumentation-output build/reports/grapheneos-instrumentation.txt
 ```

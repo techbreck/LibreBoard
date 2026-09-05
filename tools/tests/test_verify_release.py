@@ -14,7 +14,6 @@ import zipfile
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from verify_release import (  # noqa: E402
     GRAPHENEOS_CHECKS,
-    PHASE0_CHECKS,
     evidence_checks,
     model_archive_checks,
     validate_context_distillation_manifest,
@@ -23,6 +22,7 @@ from verify_release import (  # noqa: E402
 import model_sources  # noqa: E402
 import prepare_context_dataset  # noqa: E402
 import score_context_teacher  # noqa: E402
+import evaluate_engine  # noqa: E402
 
 
 def sha256(value: bytes) -> str:
@@ -190,6 +190,75 @@ class VerifyContextDistillationManifestTest(unittest.TestCase):
 
 
 class VerifyReleaseEvidenceTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        documents = []
+
+        def add(number, category, target, raw, predictions, *, strata=None, should_correct=None):
+            document = {
+                "schemaVersion": 1,
+                "id": f"release-example-{number}",
+                "sessionId": f"release-session-{number}",
+                "split": "test",
+                "category": category,
+                "target": target,
+                "raw": raw,
+                "predictions": predictions,
+                "latencyMs": {system: 20.0 for system in predictions},
+                "strata": strata or [],
+            }
+            if should_correct is not None:
+                document["shouldCorrect"] = should_correct
+            documents.append(document)
+
+        number = 0
+        for category, count in (("tap_error", 3_000), ("spacing", 500), ("lexical", 500)):
+            for index in range(count):
+                number += 1
+                raw = f"raw-{category}-{index}"
+                target = f"target-{category}-{index}"
+                add(number, category, target, raw, {
+                    "heliboard": [raw],
+                    "fused": [target, raw],
+                    "fused_personal": [target, raw],
+                    "fused_neural": [target, raw],
+                })
+        for index in range(1_000):
+            number += 1
+            should_correct = index < 500
+            raw = f"their-{index}" if should_correct else f"word-{index}"
+            target = f"there-{index}" if should_correct else raw
+            add(number, "valid_word", target, raw, {
+                "heliboard": [raw],
+                "fused": [raw],
+                "fused_personal": [raw],
+                "fused_neural": [target, raw] if should_correct else [raw],
+            }, should_correct=should_correct)
+        for index in range(5_000):
+            number += 1
+            length = "short" if index < 1_667 else "medium" if index < 3_334 else "long"
+            quality = "clean" if 500 <= index < 2_500 else "sloppy"
+            strata = [length, quality]
+            if index < 500:
+                strata.extend(("very_sloppy", "double_letter"))
+            if 500 <= index < 1_000:
+                strata.append("return_trip")
+            target = f"swipe-{index}"
+            add(number, "swipe", target, "", {
+                "geometric": [f"wrong-{index}"],
+                "ctc": [target],
+                "fused_swipe": [target],
+            }, strata=strata)
+
+        cls.measurement_payload = b"".join(
+            (json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n").encode()
+            for document in documents
+        )
+        cls.measurement_examples = [
+            evaluate_engine.parse_example(document, index)
+            for index, document in enumerate(documents, 1)
+        ]
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="libreboard-release-evidence-")
         self.root = pathlib.Path(self.temporary.name)
@@ -199,61 +268,62 @@ class VerifyReleaseEvidenceTest(unittest.TestCase):
         self.rebuilt.write_bytes(self.apk.read_bytes())
         self.apk_hash = sha256(self.apk.read_bytes())
         self.phase0_path = self.root / "phase0.json"
+        self.phase0_measurements_path = self.root / "phase0-measurements.jsonl"
+        self.phase0_measurements_path.write_bytes(self.measurement_payload)
         self.grapheneos_path = self.root / "grapheneos.json"
         self.instrumentation_path = self.root / "instrumentation.txt"
         self.instrumentation_path.write_bytes(b"passing device instrumentation")
+        self.phase0_result = evaluate_engine.evaluate(
+            self.measurement_examples,
+            self.phase0_metadata(),
+            measurement_sha256=sha256(self.measurement_payload),
+            enforce_minimum_counts=True,
+        )
 
     def tearDown(self):
         self.temporary.cleanup()
 
     def phase0(self):
+        return json.loads(json.dumps(self.phase0_result))
+
+    def phase0_metadata(self):
         return {
             "schemaVersion": 1,
-            "passed": True,
-            "checks": {name: True for name in PHASE0_CHECKS},
-            "counts": {
-                "tap_error": 3_000,
-                "valid_word": 1_000,
-                "spacing": 500,
-                "lexical": 500,
-                "swipe": 5_000,
-            },
-            "evidence": {
-                "appCommit": "a" * 40,
-                "coreApkSha256": self.apk_hash,
-                "swipeModelSha256": "b" * 64,
-                "contextModelSha256": "c" * 64,
-                "environments": [
-                    {
-                        "kind": "stock_android_hardware",
-                        "deviceModel": "Pixel 8a",
-                        "buildFingerprint": "stock/fingerprint",
-                        "testRunId": "stock-run",
-                        "apiLevel": 36,
-                        "physicalDevice": True,
-                    },
-                    {
-                        "kind": "grapheneos_hardware",
-                        "deviceModel": "Pixel 8a",
-                        "grapheneOsBuildNumber": "2026090100",
-                        "buildFingerprint": "graphene/fingerprint",
-                        "testRunId": "graphene-run",
-                        "apiLevel": 36,
-                        "physicalDevice": True,
-                        "sandboxedGooglePlayInstalled": False,
-                    },
-                    {
-                        "kind": "low_ram_emulator",
-                        "deviceModel": "AOSP low RAM",
-                        "buildFingerprint": "aosp/fingerprint",
-                        "testRunId": "low-ram-run",
-                        "apiLevel": 36,
-                        "physicalDevice": False,
-                        "isLowRamDevice": True,
-                        "memoryMiB": 1_024,
-                    },
-                ],
-            },
+            "appCommit": "a" * 40,
+            "coreApkSha256": self.apk_hash,
+            "swipeModelSha256": "b" * 64,
+            "contextModelSha256": "c" * 64,
+            "peakAddedNeuralMemoryMiB": 40,
+            "environments": [
+                {
+                    "kind": "stock_android_hardware",
+                    "deviceModel": "Pixel 8a",
+                    "buildFingerprint": "stock/fingerprint",
+                    "testRunId": "stock-run",
+                    "apiLevel": 36,
+                    "physicalDevice": True,
+                },
+                {
+                    "kind": "grapheneos_hardware",
+                    "deviceModel": "Pixel 8a",
+                    "grapheneOsBuildNumber": "2026090100",
+                    "buildFingerprint": "graphene/fingerprint",
+                    "testRunId": "graphene-run",
+                    "apiLevel": 36,
+                    "physicalDevice": True,
+                    "sandboxedGooglePlayInstalled": False,
+                },
+                {
+                    "kind": "low_ram_emulator",
+                    "deviceModel": "AOSP low RAM",
+                    "buildFingerprint": "aosp/fingerprint",
+                    "testRunId": "low-ram-run",
+                    "apiLevel": 36,
+                    "physicalDevice": False,
+                    "isLowRamDevice": True,
+                    "memoryMiB": 1_024,
+                },
+            ],
         }
 
     def grapheneos(self, phase0_bytes: bytes):
@@ -306,6 +376,7 @@ class VerifyReleaseEvidenceTest(unittest.TestCase):
             self.apk,
             self.rebuilt,
             self.phase0_path,
+            self.phase0_measurements_path,
             self.grapheneos_path,
             self.instrumentation_path,
         )
@@ -362,6 +433,11 @@ class VerifyReleaseEvidenceTest(unittest.TestCase):
         self.write_reports()
         self.instrumentation_path.write_bytes(b"different output")
         self.assertIn("GrapheneOS evidence references different instrumentation output", self.verify())
+
+    def test_rejects_different_phase0_measurement_dataset(self):
+        self.write_reports()
+        self.phase0_measurements_path.write_bytes(self.measurement_payload + b"\n")
+        self.assertIn("Phase 0 report references a different measurement dataset", self.verify())
 
 
 if __name__ == "__main__":
