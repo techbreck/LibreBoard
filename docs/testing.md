@@ -19,7 +19,10 @@ restricted-field bypass, and safety-veto precedence. Swipe live-path tests addit
 revision-safe static lexicon caching, CE-only personal vocabulary gates, negative-score multilingual
 locking, CTC/geometric provenance union, missing-model fallback, non-cooperative timeout circuit
 breaking, delayed native-owner cleanup, and batch single-commit metadata. Registry tests prove
-swipe/context activation and rollback slots cannot collide. Lexical tests require contractions,
+swipe/context activation and rollback slots cannot collide. Retained input-logic tests exercise
+terminal policy through the editor adapter: tap input creates no composing span, swipe commits
+directly, and duplicate asynchronous tail delivery cannot commit the same gesture twice. Lexical
+tests require contractions,
 split/join hypotheses, and
 German compound evidence to stay within one explicitly tagged dictionary; they also cover casing,
 language locks, deadline exits, generated provenance, raw-word vetoes, and multilingual source-order

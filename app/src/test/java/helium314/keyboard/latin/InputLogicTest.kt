@@ -732,6 +732,28 @@ class InputLogicTest {
         //  need to avoid getting into the mWordComposer.isBatchMode() part of handleBackspaceEvent
     }
 
+    @Test fun `terminal tap and glide input never compose or duplicate a completed gesture`() {
+        val terminal = EditorInfo().apply {
+            inputType = InputType.TYPE_NULL
+            privateImeOptions = "org.libreboard.test:terminal"
+        }
+        startInput(terminal, "")
+
+        chainInput("ab")
+        assertEquals("ab", text)
+        assertEquals("", composingText)
+
+        startInput(terminal, "")
+        glideTypingInput("hello")
+        assertEquals("hello", text)
+        assertEquals("", composingText)
+
+        // Re-delivery of the exact same asynchronous tail result is a no-op.
+        glideTypingInput("hello")
+        assertEquals("hello", text)
+        assertEquals("", composingText)
+    }
+
     @Test fun timestamp() {
         chainInput("hello")
         functionalKeyPress(KeyCode.TIMESTAMP)

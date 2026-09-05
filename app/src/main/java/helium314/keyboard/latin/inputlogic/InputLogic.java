@@ -627,6 +627,10 @@ public final class InputLogic {
      * earlier sequence number.
      */
     private int mAutoCommitSequenceNumber = 1;
+    // A tail result may be delivered more than once by asynchronous handler/editor races. Keep
+    // the completed sequence idempotent, especially for terminal fields where the word is sent
+    // directly with commitText rather than held in an editor-side composing span.
+    private int mLastCommittedBatchSequenceNumber = SuggestedWords.NOT_A_SEQUENCE_NUMBER;
     public void onUpdateBatchInput(final InputPointers batchPointers) {
         mInputLogicHandler.onUpdateBatchInput(batchPointers, mAutoCommitSequenceNumber);
     }
@@ -2339,13 +2343,17 @@ public final class InputLogic {
      */
     public void onUpdateTailBatchInputCompleted(final SettingsValues settingsValues,
             final SuggestedWords suggestedWords, final KeyboardSwitcher keyboardSwitcher) {
-        if (suggestedWords.mSequenceNumber != mAutoCommitSequenceNumber - 1) {
+        if (suggestedWords.mSequenceNumber != mAutoCommitSequenceNumber - 1
+                || suggestedWords.mSequenceNumber == mLastCommittedBatchSequenceNumber) {
             return;
         }
         final String batchInputText = suggestedWords.isEmpty() ? null : suggestedWords.getWord(0);
         if (TextUtils.isEmpty(batchInputText)) {
             return;
         }
+        // Claim the sequence before mutating the editor so a re-entrant or duplicate callback
+        // cannot commit the same gesture twice.
+        mLastCommittedBatchSequenceNumber = suggestedWords.mSequenceNumber;
         mConnection.beginBatchEdit();
         if (SpaceState.PHANTOM == mSpaceState) {
             insertAutomaticSpaceIfOptionsAndTextAllow(settingsValues);
