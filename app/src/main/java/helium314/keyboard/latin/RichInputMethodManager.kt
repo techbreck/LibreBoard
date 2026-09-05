@@ -23,8 +23,10 @@ import helium314.keyboard.latin.utils.SubtypeSettings
 import helium314.keyboard.latin.utils.getSecondaryLocales
 import helium314.keyboard.latin.utils.locale
 import helium314.keyboard.latin.utils.prefs
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -34,7 +36,12 @@ class RichInputMethodManager private constructor() {
     private lateinit var imm: InputMethodManager
     private lateinit var inputMethodInfoCache: InputMethodInfoCache
     private lateinit var currentRichInputMethodSubtype: RichInputMethodSubtype
-    private val scope = CoroutineScope(Dispatchers.Default)
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, failure ->
+            // Shortcut discovery is optional keyboard chrome and must not crash the IME process.
+            runCatching { Log.e(TAG, "Could not refresh shortcut input methods", failure) }
+        },
+    )
 
     private val isInitializedInternal get() = this::imm.isInitialized
 

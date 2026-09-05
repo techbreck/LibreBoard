@@ -17,11 +17,22 @@ import helium314.keyboard.latin.utils.prefs
 import helium314.keyboard.latin.utils.upgradeToolbarPrefs
 import helium314.keyboard.settings.preferences.BackupRestoreTransaction
 import helium314.keyboard.settings.preferences.isBackupFilePath
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 class App : Application() {
+    private val startupScope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, failure ->
+            // Startup warmups are explicitly optional. Never route their failure to Android's
+            // uncaught handler, which would turn an optimization into an application crash.
+            runCatching { Log.e("startup", "Optional startup warmup failed", failure) }
+        },
+    )
+
     override fun onCreate() {
         super.onCreate()
         DebugFlags.init(this)
@@ -40,8 +51,15 @@ class App : Application() {
             }.onFailure { Log.e("startup", "Could not recover interrupted backup restore", it) }
         }
 
-        val scope = CoroutineScope(Dispatchers.Default)
-        scope.launch { // do some uncritical work in background for faster startup
+        RichInputMethodManager.init(this)
+        checkVersionUpgrade(this)
+        if (BuildConfig.DEBUG) // do this on every debug apk start because we may work on adding a new toolbar key
+            upgradeToolbarPrefs(prefs())
+        transferOldPinnedClips(this) // todo: remove in a few months, maybe end 2026
+        app = this
+        Defaults.initDynamicDefaults(this)
+
+        startupScope.launch { // do some uncritical work in background for faster startup
             SupportedEmojis.load(this@App)
             LayoutUtilsCustom.removeMissingLayouts(this@App)
             val packageInfo = packageManager.getPackageInfo(packageName, 0)
@@ -52,14 +70,13 @@ class App : Application() {
                 }) on Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})"
             )
         }
+    }
 
-        RichInputMethodManager.init(this)
-        checkVersionUpgrade(this)
-        if (BuildConfig.DEBUG) // do this on every debug apk start because we may work on adding a new toolbar key
-            upgradeToolbarPrefs(prefs())
-        transferOldPinnedClips(this) // todo: remove in a few months, maybe end 2026
-        app = this
-        Defaults.initDynamicDefaults(this)
+    override fun onTerminate() {
+        // Android does not call this on production devices, but emulated processes do. Cancelling
+        // keeps Robolectric from tearing down Android shadows underneath an unfinished warmup.
+        startupScope.cancel()
+        super.onTerminate()
     }
 
     companion object {
