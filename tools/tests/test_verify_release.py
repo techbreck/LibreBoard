@@ -682,8 +682,8 @@ class VerifyReleaseEvidenceTest(unittest.TestCase):
             "instrumentationOutputSha256": sha256(self.instrumentation_path.read_bytes()),
             "checks": {name: True for name in GRAPHENEOS_CHECKS},
             "measurements": {
-                "tapLatencyMs": {"p50": 20.0, "p95": 70.0, "p99": 90.0},
-                "swipeLatencyMs": {"p50": 80.0, "p95": 180.0, "p99": 210.0},
+                "tapLatencyMs": {"p50": 20.0, "p95": 20.0, "p99": 20.0},
+                "swipeLatencyMs": {"p50": 20.0, "p95": 20.0, "p99": 20.0},
                 "coldStartMs": 300.0,
                 "warmStartMs": 80.0,
                 "peakRssMiB": 120.0,
@@ -787,11 +787,13 @@ class VerifyReleaseEvidenceTest(unittest.TestCase):
         def mutate(report):
             report["buildFingerprint"] = "different/fingerprint"
             report["measurements"]["tapLatencyMs"]["p95"] = 81.0
+            report["measurements"]["tapLatencyMs"]["p99"] = 90.0
 
         self.write_reports(grapheneos_mutator=mutate)
         errors = self.verify()
         self.assertIn("GrapheneOS tapLatencyMs exceeds the p95 budget", errors)
         self.assertIn("GrapheneOS device evidence disagrees with Phase 0 on buildFingerprint", errors)
+        self.assertIn("GrapheneOS tapLatencyMs disagrees with its Phase 0 device run", errors)
 
     def test_rejects_different_instrumentation_output(self):
         self.write_reports()

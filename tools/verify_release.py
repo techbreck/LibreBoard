@@ -1500,6 +1500,11 @@ def evidence_checks(
         for report_field, environment_field in matches.items():
             if grapheneos.get(report_field) != phase0_graphene.get(environment_field):
                 fail(errors, f"GrapheneOS device evidence disagrees with Phase 0 on {report_field}")
+        phase0_latency = phase0.get("environmentLatencyMs", {}).get("grapheneos_hardware", {})
+        graphene_measurements = grapheneos.get("measurements", {})
+        for report_field, phase0_field in (("tapLatencyMs", "tap"), ("swipeLatencyMs", "swipe")):
+            if graphene_measurements.get(report_field) != phase0_latency.get(phase0_field):
+                fail(errors, f"GrapheneOS {report_field} disagrees with its Phase 0 device run")
 
 
 def verify_model_signature(

@@ -36,7 +36,9 @@ environment in the Phase 0 report.
 `measurements` contains `tapLatencyMs` and `swipeLatencyMs`, each with ordered, non-negative `p50`,
 `p95`, and `p99`, plus non-negative `coldStartMs`, `warmStartMs`, `peakRssMiB`,
 `neuralTimeoutCount`, and `circuitBreakerActivationCount`. Tap p95 must be at most 80 ms and swipe
-p95 at most 200 ms.
+p95 at most 200 ms. All three latency percentiles must exactly match the rows carrying the same
+GrapheneOS `testRunId` in the Phase 0 report; the release verifier rejects independently edited or
+contradictory copies.
 
 Run the strict evidence gate with two independently clean-built copies of the same APK:
 
