@@ -623,7 +623,6 @@ class VerifyReleaseEvidenceTest(unittest.TestCase):
             "coreApkSha256": self.apk_hash,
             "swipeModelSha256": "b" * 64,
             "contextModelSha256": "c" * 64,
-            "peakAddedNeuralMemoryMiB": 40,
             "environments": [
                 {
                     "kind": "stock_android_hardware",
@@ -632,6 +631,7 @@ class VerifyReleaseEvidenceTest(unittest.TestCase):
                     "testRunId": "stock-run",
                     "apiLevel": 36,
                     "physicalDevice": True,
+                    "peakAddedNeuralMemoryMiB": 40,
                 },
                 {
                     "kind": "grapheneos_hardware",
@@ -642,6 +642,7 @@ class VerifyReleaseEvidenceTest(unittest.TestCase):
                     "apiLevel": 36,
                     "physicalDevice": True,
                     "sandboxedGooglePlayInstalled": False,
+                    "peakAddedNeuralMemoryMiB": 42,
                 },
                 {
                     "kind": "low_ram_emulator",
@@ -652,6 +653,7 @@ class VerifyReleaseEvidenceTest(unittest.TestCase):
                     "physicalDevice": False,
                     "isLowRamDevice": True,
                     "memoryMiB": 1_024,
+                    "peakAddedNeuralMemoryMiB": 18,
                 },
             ],
         }

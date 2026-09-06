@@ -329,9 +329,6 @@ def check_dataset(
 def validate_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     if metadata.get("schemaVersion") != SCHEMA_VERSION:
         raise EvaluationError("metadata has unsupported schemaVersion")
-    peak_memory = metadata.get("peakAddedNeuralMemoryMiB")
-    if isinstance(peak_memory, bool) or not isinstance(peak_memory, (int, float)) or peak_memory < 0:
-        raise EvaluationError("metadata requires non-negative peakAddedNeuralMemoryMiB")
 
     app_commit = metadata.get("appCommit")
     if not isinstance(app_commit, str) or not GIT_COMMIT.fullmatch(app_commit):
@@ -371,6 +368,14 @@ def validate_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
         api_level = environment.get("apiLevel")
         if isinstance(api_level, bool) or not isinstance(api_level, int) or api_level < 26 or api_level > 100:
             raise EvaluationError(f"{location} has an invalid apiLevel")
+        peak_memory = environment.get("peakAddedNeuralMemoryMiB")
+        if (
+            isinstance(peak_memory, bool)
+            or not isinstance(peak_memory, (int, float))
+            or not math.isfinite(peak_memory)
+            or peak_memory < 0
+        ):
+            raise EvaluationError(f"{location} requires non-negative peakAddedNeuralMemoryMiB")
 
         if kind.endswith("_hardware"):
             if environment.get("physicalDevice") is not True or api_level < 35:
@@ -391,11 +396,13 @@ def validate_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
 
     if seen != REQUIRED_ENVIRONMENTS:
         raise EvaluationError("metadata is missing a reference environment")
+    maximum_peak_memory = max(float(environment["peakAddedNeuralMemoryMiB"])
+                              for environment in validated_environments)
     return {
         "appCommit": app_commit,
         **hashes,
         "environments": validated_environments,
-        "peakAddedNeuralMemoryMiB": float(peak_memory),
+        "peakAddedNeuralMemoryMiB": maximum_peak_memory,
     }
 
 

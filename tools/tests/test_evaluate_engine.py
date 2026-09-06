@@ -54,7 +54,6 @@ def metadata():
         "coreApkSha256": "b" * 64,
         "swipeModelSha256": "c" * 64,
         "contextModelSha256": "d" * 64,
-        "peakAddedNeuralMemoryMiB": 40,
         "environments": [
             {
                 "kind": "stock_android_hardware",
@@ -63,6 +62,7 @@ def metadata():
                 "testRunId": "stock-run",
                 "apiLevel": 36,
                 "physicalDevice": True,
+                "peakAddedNeuralMemoryMiB": 40,
             },
             {
                 "kind": "grapheneos_hardware",
@@ -73,6 +73,7 @@ def metadata():
                 "physicalDevice": True,
                 "grapheneOsBuildNumber": "2026090100",
                 "sandboxedGooglePlayInstalled": False,
+                "peakAddedNeuralMemoryMiB": 42,
             },
             {
                 "kind": "low_ram_emulator",
@@ -83,6 +84,7 @@ def metadata():
                 "physicalDevice": False,
                 "isLowRamDevice": True,
                 "memoryMiB": 1_024,
+                "peakAddedNeuralMemoryMiB": 18,
             },
         ],
     }
@@ -263,6 +265,18 @@ class EvaluateEngineTest(unittest.TestCase):
                 measurement_sha256="e" * 64,
                 enforce_minimum_counts=False,
             )
+
+    def test_peak_memory_is_derived_from_the_slowest_environment(self):
+        value = metadata()
+        value["environments"][1]["peakAddedNeuralMemoryMiB"] = 65
+        result = evaluate(
+            self._minimum_rows(),
+            value,
+            measurement_sha256="e" * 64,
+            enforce_minimum_counts=False,
+        )
+        self.assertEqual(65.0, result["evidence"]["peakAddedNeuralMemoryMiB"])
+        self.assertFalse(result["checks"]["peak_neural_memory"])
 
     def test_each_environment_controls_its_own_latency_gate(self):
         rows = self._minimum_rows()

@@ -38,10 +38,10 @@ Metadata is a JSON object that binds the report to the artifacts and required en
 - `appCommit`: the full lowercase Git commit tested.
 - `coreApkSha256`, `swipeModelSha256`, and `contextModelSha256`: lowercase SHA-256 values for the
   exact APK and both models used for every reported prediction.
-- `peakAddedNeuralMemoryMiB`: the maximum measured added neural memory.
 - `environments`: exactly one `stock_android_hardware`, one `grapheneos_hardware`, and one
   `low_ram_emulator` record. Every record includes `deviceModel`, `buildFingerprint`, `testRunId`,
-  `apiLevel`, and `physicalDevice`. Hardware must be physical and run Android 15 or newer. The
+  `apiLevel`, `physicalDevice`, and its measured `peakAddedNeuralMemoryMiB`. Hardware must be
+  physical and run Android 15 or newer. The
   GrapheneOS record also includes `grapheneOsBuildNumber` and
   `sandboxedGooglePlayInstalled: false`. The emulator includes `isLowRamDevice: true` and a
   `memoryMiB` value no greater than 2048.
@@ -53,6 +53,8 @@ least 100 tap and 100 swipe measurements to each environment; the 80/200 ms p95 
 independently for every environment, so fast stock-device samples cannot hide a slow or absent
 GrapheneOS run. The report exposes these values as `environmentCounts` and
 `environmentLatencyMs`; the valid-word strata are exposed as `validWordCounts`. It also computes
+the report-level `peakAddedNeuralMemoryMiB` as the maximum of the three bound environment values, so
+one device's memory result cannot stand in for the matrix. It computes
 `measurementDatasetSha256` directly from the input JSONL and places that hash in the report; callers
 cannot supply or override it.
 

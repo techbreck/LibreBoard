@@ -55,6 +55,7 @@ evidence requires at least 100 tap and 100 swipe latency samples from each stock
 GrapheneOS-without-Play, and low-RAM run, and enforces the p95 budgets independently on all three.
 It also requires 500 true context corrections and 500 unchanged valid words, evaluating neural gain
 and false-correction behavior on the appropriate strata instead of a blended easy-case score.
+Added neural memory is recorded for each environment and the 64 MiB gate uses the maximum.
 
 The source release gate also validates the Phase 1 Fastlane metadata. Only reviewed English and
 German copy may ship initially; titles and length bounds are checked, the zero-network and geometric-
