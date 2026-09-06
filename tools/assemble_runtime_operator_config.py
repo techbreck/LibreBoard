@@ -5,10 +5,12 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.metadata
 import json
 import os
 import pathlib
 import re
+import shutil
 import sys
 import tempfile
 from typing import Any
@@ -36,6 +38,24 @@ MAXIMUM_JSON_BYTES = 4 * 1024 * 1024
 MAXIMUM_CONFIG_BYTES = 1024 * 1024
 OPERATOR = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 DOMAIN = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]*$")
+TYPE_INDEX = re.compile(r"^(0|[1-9][0-9]*)$")
+ALLOWED_KERNEL_TYPES = {
+    "MLFloat16",
+    "BFloat16",
+    "bool",
+    "double",
+    "float",
+    "int8_t",
+    "int16_t",
+    "int32_t",
+    "int64_t",
+    "uint8_t",
+    "uint16_t",
+    "uint32_t",
+    "uint64_t",
+}
+EXPECTED_ONNXRUNTIME_VERSION = "1.26.0"
+ALLOWED_RUNTIME_DOMAINS = {"ai.onnx", "com.microsoft"}
 
 
 class RuntimeOperatorConfigError(ValueError):
@@ -131,12 +151,193 @@ def _flatten(required: dict[tuple[str, int], set[str]]) -> set[str]:
     }
 
 
+def _parse_typed_operator_entries(value: str) -> dict[str, dict[str, Any] | None]:
+    entries: dict[str, dict[str, Any] | None] = {}
+    decoder = json.JSONDecoder(object_pairs_hook=_unique_object)
+    position = 0
+    while position < len(value):
+        match = re.match(r"[A-Za-z_][A-Za-z0-9_]*", value[position:])
+        if match is None:
+            raise RuntimeOperatorConfigError(f"invalid typed operator inventory: {value}")
+        operator = match.group(0)
+        position += len(operator)
+        type_info = None
+        if position < len(value) and value[position] == "{":
+            try:
+                decoded, consumed = decoder.raw_decode(value[position:])
+            except (json.JSONDecodeError, RuntimeOperatorConfigError) as failure:
+                raise RuntimeOperatorConfigError(
+                    f"invalid type reduction metadata for {operator}"
+                ) from failure
+            if not isinstance(decoded, dict) or not decoded or set(decoded) - {"inputs", "outputs"}:
+                raise RuntimeOperatorConfigError(f"unsupported type reduction metadata for {operator}")
+            for direction, indexes in decoded.items():
+                if not isinstance(indexes, dict) or not indexes:
+                    raise RuntimeOperatorConfigError(f"invalid {direction} type metadata for {operator}")
+                for index, types in indexes.items():
+                    if (
+                        not isinstance(index, str)
+                        or not TYPE_INDEX.fullmatch(index)
+                        or not isinstance(types, list)
+                        or not types
+                        or any(not isinstance(item, str) or item not in ALLOWED_KERNEL_TYPES for item in types)
+                        or types != sorted(set(types))
+                    ):
+                        raise RuntimeOperatorConfigError(f"invalid {direction} type metadata for {operator}")
+            type_info = decoded
+            position += consumed
+        if operator in entries:
+            raise RuntimeOperatorConfigError(f"duplicate typed operator: {operator}")
+        entries[operator] = type_info
+        if position == len(value):
+            break
+        if value[position] != ",":
+            raise RuntimeOperatorConfigError(f"invalid typed operator delimiter: {value}")
+        position += 1
+    if not entries:
+        raise RuntimeOperatorConfigError("typed operator inventory is empty")
+    return entries
+
+
+def _parse_typed_config(path: pathlib.Path) -> dict[tuple[str, int], dict[str, dict[str, Any] | None]]:
+    try:
+        if not 0 < path.stat().st_size <= MAXIMUM_CONFIG_BYTES:
+            raise RuntimeOperatorConfigError("typed operator config is empty or too large")
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except RuntimeOperatorConfigError:
+        raise
+    except (OSError, UnicodeDecodeError) as failure:
+        raise RuntimeOperatorConfigError(f"cannot read typed operator config: {failure}") from failure
+    required: dict[tuple[str, int], dict[str, dict[str, Any] | None]] = {}
+    for line in lines:
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split(";", 2)
+        if (
+            len(parts) != 3
+            or not DOMAIN.fullmatch(parts[0])
+            or parts[0] not in ALLOWED_RUNTIME_DOMAINS
+        ):
+            raise RuntimeOperatorConfigError(f"invalid typed reduced-operator line: {line}")
+        try:
+            opset = int(parts[1])
+        except ValueError as failure:
+            raise RuntimeOperatorConfigError(f"invalid typed reduced-operator opset: {line}") from failure
+        if not 1 <= opset <= 100:
+            raise RuntimeOperatorConfigError(f"invalid typed reduced-operator opset: {line}")
+        key = (parts[0], opset)
+        if key in required:
+            raise RuntimeOperatorConfigError(f"duplicate typed reduced-operator domain/opset: {line}")
+        required[key] = _parse_typed_operator_entries(parts[2])
+    if not required:
+        raise RuntimeOperatorConfigError("typed operator config contains no operators")
+    return required
+
+
+def _canonical_typed_config(
+    raw: dict[tuple[str, int], set[str]],
+    typed: dict[tuple[str, int], dict[str, dict[str, Any] | None]],
+) -> tuple[bytes, int]:
+    annotations: dict[tuple[str, str], dict[str, Any]] = {}
+    for (domain, _opset), operators in typed.items():
+        for operator, annotation in operators.items():
+            if annotation is None:
+                continue
+            key = (domain, operator)
+            previous = annotations.get(key)
+            if previous is not None and previous != annotation:
+                raise RuntimeOperatorConfigError(f"conflicting type metadata for {domain}::{operator}")
+            annotations[key] = annotation
+
+    combined = {key: dict(operators) for key, operators in typed.items()}
+    for key, operators in raw.items():
+        target = combined.setdefault(key, {})
+        for operator in operators:
+            # Type metadata is valid only for the exact domain/opset entry emitted
+            # by ONNX Runtime. Never borrow an annotation from another opset: doing
+            # so could remove a kernel type that the original ONNX graph still uses.
+            target.setdefault(operator, None)
+
+    lines = [
+        "# Generated from the exact LibreBoard ONNX graphs plus deterministic raw/optimized type analysis; do not edit by hand."
+    ]
+    annotated = 0
+    for (domain, opset), operators in sorted(combined.items()):
+        rendered = []
+        for operator, annotation in sorted(operators.items()):
+            if annotation is None:
+                rendered.append(operator)
+            else:
+                annotated += 1
+                rendered.append(operator + json.dumps(annotation, sort_keys=True, separators=(",", ":")))
+        lines.append(f"{domain};{opset};{','.join(rendered)}")
+    return ("\n".join(lines) + "\n").encode("utf-8"), annotated
+
+
+def _generate_type_reduced_config(
+    model_paths: dict[str, pathlib.Path],
+    raw: dict[tuple[str, int], set[str]],
+) -> tuple[bytes, dict[str, Any]]:
+    try:
+        runtime_version = importlib.metadata.version("onnxruntime")
+        from onnxruntime.tools import convert_onnx_models_to_ort as converter
+    except (importlib.metadata.PackageNotFoundError, ImportError) as failure:
+        raise RuntimeOperatorConfigError(
+            "ONNX Runtime 1.26.0 is required for operator type specialization"
+        ) from failure
+    if runtime_version != EXPECTED_ONNXRUNTIME_VERSION:
+        raise RuntimeOperatorConfigError(
+            f"operator type specialization requires ONNX Runtime {EXPECTED_ONNXRUNTIME_VERSION}"
+        )
+
+    previous_level = os.environ.get("ORT_CONVERT_ONNX_MODELS_TO_ORT_OPTIMIZATION_LEVEL")
+    with tempfile.TemporaryDirectory(prefix="libreboard-runtime-types-") as temporary:
+        root = pathlib.Path(temporary)
+        inputs = root / "inputs"
+        inputs.mkdir()
+        for model_id, model_path in sorted(model_paths.items()):
+            shutil.copyfile(model_path, inputs / f"{model_id}.onnx")
+        converted = []
+        try:
+            for level in ("disable", "all"):
+                output = root / level
+                os.environ["ORT_CONVERT_ONNX_MODELS_TO_ORT_OPTIMIZATION_LEVEL"] = level
+                converter.convert_onnx_models_to_ort(
+                    inputs,
+                    output_dir=output,
+                    optimization_styles=[converter.OptimizationStyle.Fixed],
+                    target_platform="arm",
+                    enable_type_reduction=True,
+                )
+                converted.extend(sorted(output.rglob("*.ort")))
+        finally:
+            if previous_level is None:
+                os.environ.pop("ORT_CONVERT_ONNX_MODELS_TO_ORT_OPTIMIZATION_LEVEL", None)
+            else:
+                os.environ["ORT_CONVERT_ONNX_MODELS_TO_ORT_OPTIMIZATION_LEVEL"] = previous_level
+        if len(converted) != len(model_paths) * 2:
+            raise RuntimeOperatorConfigError("operator type specialization did not convert every model twice")
+        generated = root / "required_operators_and_types.config"
+        converter.create_config_from_models(converted, generated, enable_type_reduction=True)
+        typed = _parse_typed_config(generated)
+        config, annotated = _canonical_typed_config(raw, typed)
+
+    return config, {
+        "enabled": True,
+        "onnxRuntimeVersion": runtime_version,
+        "optimizationLevels": ["disable", "all"],
+        "targetPlatform": "arm",
+        "convertedModelCount": len(converted),
+        "annotatedOperatorEntries": annotated,
+    }
+
+
 def _load_export(
     report_path: pathlib.Path,
     *,
     expected_model_id: str,
     development: bool,
-) -> tuple[dict[tuple[str, int], set[str]], dict[str, Any]]:
+) -> tuple[dict[tuple[str, int], set[str]], dict[str, Any], pathlib.Path]:
     report_path = report_path.absolute()
     report, report_sha = _load_json(report_path, f"{expected_model_id} export report")
     if (
@@ -200,13 +401,17 @@ def _load_export(
         raise RuntimeOperatorConfigError(
             f"{expected_model_id} operator config does not match its signed manifest"
         )
-    return required, {
-        "appCommit": app_commit,
-        "exportReportSha256": report_sha,
-        "manifestSha256": manifest_sha,
-        "modelSha256": model_details["sha256"],
-        "operatorsSha256": model_sources.file_sha256(config_path),
-    }
+    return (
+        required,
+        {
+            "appCommit": app_commit,
+            "exportReportSha256": report_sha,
+            "manifestSha256": manifest_sha,
+            "modelSha256": model_details["sha256"],
+            "operatorsSha256": model_sources.file_sha256(config_path),
+        },
+        model_path,
+    )
 
 
 def _canonical_config(required: dict[tuple[str, int], set[str]]) -> bytes:
@@ -236,21 +441,30 @@ def _atomic_write(path: pathlib.Path, payload: bytes) -> None:
 
 
 def assemble(args: argparse.Namespace) -> dict[str, Any]:
+    type_reduction_enabled = bool(getattr(args, "type_reduction", False))
+    if not args.development and not type_reduction_enabled:
+        raise RuntimeOperatorConfigError("release operator configuration requires type reduction")
     combined: dict[tuple[str, int], set[str]] = {}
     inputs = {}
+    model_paths = {}
     for model_id, report_path in (
         ("swipe-latin-v1", args.swipe_export_report),
         ("context-en-de-v1", args.context_export_report),
     ):
-        required, details = _load_export(
+        required, details, model_path = _load_export(
             report_path,
             expected_model_id=model_id,
             development=args.development,
         )
         inputs[model_id] = details
+        model_paths[model_id] = model_path
         for key, operators in required.items():
             combined.setdefault(key, set()).update(operators)
-    config = _canonical_config(combined)
+    if type_reduction_enabled:
+        config, type_reduction = _generate_type_reduced_config(model_paths, combined)
+    else:
+        config = _canonical_config(combined)
+        type_reduction = {"enabled": False}
     config_name = "required_operators-development.config" if args.development else "required_operators.config"
     report_name = "runtime-operators-development.json" if args.development else "runtime-operators.json"
     output_root = args.output_root.absolute()
@@ -261,6 +475,7 @@ def assemble(args: argparse.Namespace) -> dict[str, Any]:
         "releaseEligible": not args.development,
         "toolSha256": model_sources.file_sha256(pathlib.Path(__file__)),
         "inputs": inputs,
+        "typeReduction": type_reduction,
         "operators": {
             "file": config_name,
             "bytes": len(config),
@@ -283,6 +498,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--context-export-report", type=pathlib.Path, default=DEFAULT_CONTEXT_REPORT)
     parser.add_argument("--output-root", type=pathlib.Path, default=DEFAULT_OUTPUT_ROOT)
     parser.add_argument("--development", action="store_true")
+    parser.add_argument("--type-reduction", action="store_true")
     return parser.parse_args(argv)
 
 

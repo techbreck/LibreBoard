@@ -19,6 +19,8 @@ import tempfile
 import time
 import zipfile
 
+import assemble_runtime_operator_config
+
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "third_party" / "onnxruntime"
@@ -37,18 +39,30 @@ EXPECTED_KEYS = {
 }
 EXPECTED_ABIS = ["armeabi-v7a", "arm64-v8a", "x86", "x86_64"]
 EXPECTED_NDK_REVISION = "28.0.13004108"
-REQUIRED_PARAMETERS = {
+REQUIRED_PARAMETERS = [
     "--android",
     "--parallel",
     "--cmake_generator=Ninja",
     "--build_java",
     "--build_shared_lib",
     "--cmake_extra_defines=onnxruntime_BUILD_UNIT_TESTS=OFF",
+    "--cmake_extra_defines=CMAKE_C_FLAGS_RELEASE=-Oz -DNDEBUG",
+    "--cmake_extra_defines=CMAKE_CXX_FLAGS_RELEASE=-Oz -DNDEBUG",
+    "--cmake_extra_defines=onnxruntime_DISABLE_EXTERNAL_INITIALIZERS=ON",
+    "--disable_generation_ops",
     "--disable_ml_ops",
+    "--disable_rtti",
+    "--disable_types",
+    "float4",
+    "float8",
+    "optional",
+    "sparsetensor",
+    "string",
+    "--enable_reduced_operator_type_support",
     "--enable_lto",
     "--skip_submodule_sync",
     "--skip_tests",
-}
+]
 FORBIDDEN_PARAMETER_FRAGMENTS = (
     "nnapi",
     "xnnpack",
@@ -61,10 +75,10 @@ EXPECTED_LIBRARIES = {"libonnxruntime.so", "libonnxruntime4j_jni.so"}
 EXPECTED_PYTHON_PACKAGES = {
     "flatbuffers": "25.12.19",
     "numpy": "2.2.6",
+    "onnxruntime": "1.26.0",
     "packaging": "26.3",
     "protobuf": "7.36.1",
 }
-OPS_LINE = re.compile(r"^[A-Za-z0-9_.-]+;[1-9][0-9]*;[A-Za-z0-9_.,-]+$")
 CANONICAL_ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 PROCESS_EXHAUSTION_MARKERS = (
     "resource temporarily unavailable",
@@ -139,7 +153,16 @@ def run(
             ) from exc
         if result.returncode == 0:
             return result.stdout.strip()
-        detail = result.stderr.strip() or result.stdout.strip() or f"exit status {result.returncode}"
+        output = result.stdout.strip()
+        errors = result.stderr.strip()
+        detail = "\n".join(
+            part
+            for part in (
+                f"stderr:\n{errors}" if errors else "",
+                f"stdout:\n{output}" if output else "",
+            )
+            if part
+        ) or f"exit status {result.returncode}"
         if attempt < process_exhaustion_retries and _is_process_exhaustion(detail):
             print(
                 "ONNX Runtime command hit transient process exhaustion; "
@@ -187,7 +210,7 @@ def load_settings(path: pathlib.Path = SETTINGS) -> dict:
     parameters = settings["buildParameters"]
     if not isinstance(parameters, list) or any(not isinstance(value, str) for value in parameters):
         raise BuildConfigurationError("runtime build parameters must be strings")
-    if set(parameters) != REQUIRED_PARAMETERS or len(parameters) != len(REQUIRED_PARAMETERS):
+    if parameters != REQUIRED_PARAMETERS:
         raise BuildConfigurationError("runtime build parameters do not match the audited CPU-only set")
     lowered = " ".join(parameters).lower()
     if any(fragment in lowered for fragment in FORBIDDEN_PARAMETER_FRAGMENTS):
@@ -196,18 +219,17 @@ def load_settings(path: pathlib.Path = SETTINGS) -> dict:
 
 
 def validate_ops_config(path: pathlib.Path) -> None:
-    if not path.is_file():
-        raise BuildConfigurationError(f"reduced-operator configuration is missing: {path}")
-    meaningful = []
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if not OPS_LINE.fullmatch(line):
-            raise BuildConfigurationError(f"invalid reduced-operator configuration line: {line}")
-        meaningful.append(line)
-    if not meaningful:
-        raise BuildConfigurationError("reduced-operator configuration contains no operators")
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+        required = assemble_runtime_operator_config._parse_typed_config(path)
+    except (OSError, UnicodeDecodeError, assemble_runtime_operator_config.RuntimeOperatorConfigError) as exc:
+        raise BuildConfigurationError(f"invalid reduced-operator configuration: {exc}") from exc
+    if lines[:1] != [
+        "# Generated from the exact LibreBoard ONNX graphs plus deterministic raw/optimized type analysis; do not edit by hand."
+    ]:
+        raise BuildConfigurationError("reduced-operator configuration has an unexpected provenance header")
+    if not any(annotation is not None for operators in required.values() for annotation in operators.values()):
+        raise BuildConfigurationError("reduced-operator configuration contains no type specialization")
 
 
 def validate_source(settings: dict) -> None:

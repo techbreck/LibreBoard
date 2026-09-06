@@ -3,8 +3,12 @@
 LibreBoard pins ONNX Runtime 1.26.0 as the `third_party/onnxruntime` Git submodule at commit
 `8c546c37b43caaca1fa25db430dab94b901cf277`. The committed settings build only the CPU execution
 provider for API 26 and all four application ABIs. NNAPI, XNNPACK, WebGPU, Play Services, Runtime
-Extensions, training APIs, upstream unit-test/example-plugin targets, and the Maven ONNX Runtime AAR
-are not used.
+Extensions, generation operators, RTTI, unused float4/float8/optional/sparse/string tensor support,
+training APIs, upstream unit-test/example-plugin targets, and the Maven ONNX Runtime AAR are not
+used. Release compilation uses Clang's size optimization and disables external tensor initializers,
+which the signed self-contained model format already rejects. Full ONNX model loading remains
+enabled; LibreBoard does not substitute ORT-format-only minimal builds for its signed `.onnx` model
+contract.
 
 The build is intentionally fail-closed until the accepted ONNX models and their generated reduced
 operator configurations exist. `tools/assemble_runtime_operator_config.py` verifies each exported
@@ -17,7 +21,7 @@ uv venv --python 3.11 build/onnxruntime-venv
 uv pip install --python build/onnxruntime-venv/bin/python \
   --require-hashes -r models/training/requirements-onnxruntime-build-linux-x86_64.lock
 git submodule update --init --recursive third_party/onnxruntime
-python3 tools/assemble_runtime_operator_config.py
+build/onnxruntime-venv/bin/python tools/assemble_runtime_operator_config.py --type-reduction
 build/onnxruntime-venv/bin/python tools/build_onnxruntime_android.py \
   --ops-config build/model-export/onnxruntime/required_operators.config \
   --jobs 4
@@ -25,6 +29,11 @@ build/onnxruntime-venv/bin/python tools/build_onnxruntime_android.py \
 
 `--jobs` bounds native compilation parallelism without changing the audited build configuration or
 artifact contract. Lower it on a machine concurrently running model training.
+
+The assembler converts copies of both exact ONNX graphs at disabled and full optimization levels to
+temporary ORT graphs solely to discover the complete operator/type kernel inventory. It unions that
+inventory with the raw ONNX operators, writes a canonical type-specialized configuration, and deletes
+the temporary graphs. The signed and shipped model artifacts remain the original `.onnx` files.
 
 The wrapper resumes an ABI build through a bounded retry only when Ninja reports the exact
 `posix_spawn: Resource temporarily unavailable` process-exhaustion condition. Compiler, linker,

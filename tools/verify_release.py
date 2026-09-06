@@ -1094,6 +1094,7 @@ def source_checks(errors: list[str]) -> None:
         (
             "flatbuffers==25.12.19",
             "numpy==2.2.6",
+            "onnxruntime==1.26.0",
             "packaging==26.3",
             "protobuf==7.36.1",
         ),

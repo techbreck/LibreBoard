@@ -51,22 +51,50 @@ class OnnxRuntimeBuildTest(unittest.TestCase):
         self.assertEqual(2, process.call_count)
         sleep.assert_called_once_with(0.25)
 
+        split_stream_failure = builder.subprocess.CompletedProcess(
+            ["fixture"],
+            1,
+            stdout="ninja: fatal: posix_spawn: Resource temporarily unavailable",
+            stderr="child build traceback",
+        )
+        with (
+            mock.patch.object(
+                builder.subprocess,
+                "run",
+                side_effect=[split_stream_failure, succeeded],
+            ) as process,
+            mock.patch.object(builder.time, "sleep") as sleep,
+        ):
+            self.assertEqual(
+                "resumed",
+                builder.run(
+                    ["fixture"],
+                    cwd=pathlib.Path.cwd(),
+                    process_exhaustion_retries=1,
+                    retry_delay_seconds=0.25,
+                ),
+            )
+        self.assertEqual(2, process.call_count)
+        sleep.assert_called_once_with(0.25)
+
         ordinary_failure = builder.subprocess.CompletedProcess(
             ["fixture"],
             1,
-            stdout="",
+            stdout="compiler stdout context",
             stderr="compiler error",
         )
         with (
             mock.patch.object(builder.subprocess, "run", return_value=ordinary_failure) as process,
             mock.patch.object(builder.time, "sleep") as sleep,
         ):
-            with self.assertRaisesRegex(builder.BuildConfigurationError, "compiler error"):
+            with self.assertRaises(builder.BuildConfigurationError) as failure:
                 builder.run(
                     ["fixture"],
                     cwd=pathlib.Path.cwd(),
                     process_exhaustion_retries=12,
                 )
+        self.assertIn("compiler error", str(failure.exception))
+        self.assertIn("compiler stdout context", str(failure.exception))
         process.assert_called_once()
         sleep.assert_not_called()
 
@@ -115,7 +143,7 @@ class OnnxRuntimeBuildTest(unittest.TestCase):
         settings = builder.load_settings()
         self.assertEqual(builder.EXPECTED_ABIS, settings["abis"])
         self.assertEqual(builder.EXPECTED_NDK_REVISION, settings["ndkRevision"])
-        self.assertEqual(builder.REQUIRED_PARAMETERS, set(settings["buildParameters"]))
+        self.assertEqual(builder.REQUIRED_PARAMETERS, settings["buildParameters"])
         self.assertFalse(any(
             marker in " ".join(settings["buildParameters"]).lower()
             for marker in builder.FORBIDDEN_PARAMETER_FRAGMENTS
@@ -138,14 +166,29 @@ class OnnxRuntimeBuildTest(unittest.TestCase):
     def test_operator_configuration_must_be_nonempty_and_strict(self):
         with tempfile.TemporaryDirectory() as temp:
             path = pathlib.Path(temp) / "ops.config"
-            path.write_text("# generated\nai.onnx;18;Add,MatMul,Softmax\n", encoding="utf-8")
+            header = (
+                "# Generated from the exact LibreBoard ONNX graphs plus deterministic raw/optimized "
+                "type analysis; do not edit by hand.\n"
+            )
+            path.write_text(
+                header + 'ai.onnx;18;Add{"inputs":{"0":["float"]}},MatMul,Softmax\n',
+                encoding="utf-8",
+            )
             builder.validate_ops_config(path)
 
-            path.write_text("ai.onnx;18;Add\nmalformed\n", encoding="utf-8")
+            path.write_text(header + "ai.onnx;18;Add\nmalformed\n", encoding="utf-8")
             with self.assertRaises(builder.BuildConfigurationError):
                 builder.validate_ops_config(path)
 
-            path.write_text("# no operators\n", encoding="utf-8")
+            path.write_text(header + "ai.onnx;18;Add,MatMul\n", encoding="utf-8")
+            with self.assertRaisesRegex(builder.BuildConfigurationError, "no type specialization"):
+                builder.validate_ops_config(path)
+
+            path.write_text("# wrong provenance\n" + 'ai.onnx;18;Add{"inputs":{"0":["float"]}}\n', encoding="utf-8")
+            with self.assertRaisesRegex(builder.BuildConfigurationError, "provenance"):
+                builder.validate_ops_config(path)
+
+            path.write_text(header, encoding="utf-8")
             with self.assertRaises(builder.BuildConfigurationError):
                 builder.validate_ops_config(path)
 
@@ -154,6 +197,12 @@ class OnnxRuntimeBuildTest(unittest.TestCase):
         parameters = builder.resolved_build_parameters(settings, 2)
         self.assertIn("--parallel=2", parameters)
         self.assertNotIn("--parallel", parameters)
+        self.assertIn("--cmake_extra_defines=CMAKE_C_FLAGS_RELEASE=-Oz -DNDEBUG", parameters)
+        self.assertIn("--cmake_extra_defines=CMAKE_CXX_FLAGS_RELEASE=-Oz -DNDEBUG", parameters)
+        self.assertIn(
+            "--cmake_extra_defines=onnxruntime_DISABLE_EXTERNAL_INITIALIZERS=ON",
+            parameters,
+        )
         with self.assertRaises(builder.BuildConfigurationError):
             builder.resolved_build_parameters(settings, 0)
 
