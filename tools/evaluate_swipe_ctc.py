@@ -2,8 +2,9 @@
 """Evaluate an exported LibreBoard swipe CTC model with the production beam semantics.
 
 This is an offline model diagnostic. It deliberately uses only train/validation vocabulary and the
-held-out test paths, but it does not replace Phase 0 device evidence: the production dictionary,
-geometric union, shared scorer, Android runtime, latency, and memory still have to be measured there.
+held-out test paths. It mirrors the CTC beam, geometric template cost, normalized decoder union, and
+static scorer, but it does not replace Phase 0 device evidence: the production dictionary, complete
+shared scorer, Android runtime, latency, and memory still have to be measured there.
 """
 
 from __future__ import annotations
@@ -121,6 +122,21 @@ class ScoredLexiconEntry:
     @property
     def word(self) -> str:
         return self.entry.word
+
+
+@dataclasses.dataclass(frozen=True)
+class GeometricLexiconIndex:
+    words: tuple[LexiconEntry, ...]
+    templates: Any
+    sequences: Any
+    sequence_lengths: Any
+    turn_counts: Any
+    word_ids: Any
+    buckets: dict[tuple[str, int], Any]
+    enabled_centers: Any
+    enabled_classes: Any
+    key_width: float
+    key_height: float
 
 
 class TrieNode:
@@ -604,6 +620,234 @@ def rank_static_fusion(candidates: Sequence[ScoredLexiconEntry]) -> list[Lexicon
     return [item[0].entry for item in ranked[:31]]
 
 
+def _gesture_length(word: str) -> int:
+    return sum(character not in {"'", "\N{RIGHT SINGLE QUOTATION MARK}", "-"} for character in _normalize(word))
+
+
+def _resample_template(points: Any, numpy: Any, count: int = 64) -> Any:
+    if len(points) == 1:
+        return numpy.repeat(points, count, axis=0)
+    deltas = points[1:] - points[:-1]
+    segment_lengths = numpy.sqrt(numpy.sum(deltas * deltas, axis=1))
+    keep = numpy.concatenate((numpy.asarray([True]), segment_lengths > 0))
+    points = points[keep]
+    if len(points) == 1:
+        return numpy.repeat(points, count, axis=0)
+    deltas = points[1:] - points[:-1]
+    cumulative = numpy.concatenate((numpy.asarray([0.0]), numpy.cumsum(
+        numpy.sqrt(numpy.sum(deltas * deltas, axis=1)),
+    )))
+    targets = numpy.linspace(0.0, float(cumulative[-1]), count)
+    return numpy.stack((
+        numpy.interp(targets, cumulative, points[:, 0]),
+        numpy.interp(targets, cumulative, points[:, 1]),
+    ), axis=1).astype(numpy.float32)
+
+
+def _turn_count(points: Any, numpy: Any) -> int:
+    if len(points) < 3:
+        return 0
+    first = points[1:-1] - points[:-2]
+    second = points[2:] - points[1:-1]
+    cross = first[:, 0] * second[:, 1] - first[:, 1] * second[:, 0]
+    directions = numpy.sign(cross[numpy.abs(cross) > 0.002])
+    if len(directions) < 2:
+        return 0
+    return int(numpy.count_nonzero(directions[1:] != directions[:-1]))
+
+
+def build_geometric_index(
+    lexicon: dict[str, list[LexiconEntry]],
+    layout: dict[str, Any],
+    numpy: Any,
+) -> GeometricLexiconIndex:
+    centers_by_class = numpy.asarray(layout["keyCenters"], dtype=numpy.float32).reshape(64, 2)
+    enabled_indices = numpy.flatnonzero(numpy.asarray(layout["keyMask"], dtype=numpy.int8))
+    enabled_centers = centers_by_class[enabled_indices]
+    enabled_classes = enabled_indices.astype(numpy.int16) + 1
+
+    rows: dict[float, list[float]] = collections.defaultdict(list)
+    for x, y in enabled_centers.tolist():
+        rows[round(y, 6)].append(x)
+    x_steps = [
+        right - left
+        for values in rows.values()
+        for left, right in zip(sorted(set(values)), sorted(set(values))[1:])
+        if right > left
+    ]
+    ys = sorted(rows)
+    y_steps = [right - left for left, right in zip(ys, ys[1:]) if right > left]
+    if not x_steps or not y_steps:
+        raise SwipeEvaluationError("prepared swipe layout cannot derive live key dimensions")
+    key_width = sorted(x_steps)[len(x_steps) // 2]
+    key_height = sorted(y_steps)[len(y_steps) // 2]
+
+    words: list[LexiconEntry] = []
+    word_index: dict[tuple[str, str], int] = {}
+    templates = []
+    sequences = []
+    word_ids = []
+    canonical_lengths = []
+    languages = []
+    for language in sorted(lexicon):
+        for entry in lexicon[language]:
+            key = (_normalize(entry.word), entry.language)
+            index = word_index.get(key)
+            if index is None:
+                index = len(words)
+                word_index[key] = index
+                words.append(entry)
+            points = centers_by_class[numpy.asarray(entry.emissions, dtype=numpy.int16) - 1]
+            templates.append(_resample_template(points, numpy))
+            sequences.append(entry.emissions)
+            word_ids.append(index)
+            canonical_lengths.append(_gesture_length(entry.word))
+            languages.append(entry.language)
+    if not templates:
+        raise SwipeEvaluationError("training vocabulary produced no geometric templates")
+
+    maximum_length = max(map(len, sequences))
+    padded = numpy.full((len(sequences), maximum_length), -1, dtype=numpy.int16)
+    lengths = numpy.asarray([len(sequence) for sequence in sequences], dtype=numpy.int16)
+    for index, sequence in enumerate(sequences):
+        padded[index, :len(sequence)] = sequence
+    template_array = numpy.stack(templates).astype(numpy.float32)
+    turns = numpy.asarray([_turn_count(template, numpy) for template in template_array], dtype=numpy.int16)
+    buckets: dict[tuple[str, int], Any] = {}
+    grouped: dict[tuple[str, int], list[int]] = collections.defaultdict(list)
+    for index, (language, length) in enumerate(zip(languages, canonical_lengths, strict=True)):
+        grouped[(language, length)].append(index)
+    for key, indices in grouped.items():
+        buckets[key] = numpy.asarray(indices, dtype=numpy.int32)
+    return GeometricLexiconIndex(
+        words=tuple(words),
+        templates=template_array,
+        sequences=padded,
+        sequence_lengths=lengths,
+        turn_counts=turns,
+        word_ids=numpy.asarray(word_ids, dtype=numpy.int32),
+        buckets=buckets,
+        enabled_centers=enabled_centers,
+        enabled_classes=enabled_classes,
+        key_width=key_width,
+        key_height=key_height,
+    )
+
+
+def _trace_classes(path: Any, index: GeometricLexiconIndex, numpy: Any) -> Any:
+    difference = path[:, None, :] - index.enabled_centers[None, :, :]
+    difference[:, :, 0] /= index.key_width
+    difference[:, :, 1] /= index.key_height
+    nearest = index.enabled_classes[numpy.argmin(numpy.sum(difference * difference, axis=2), axis=1)]
+    if len(nearest) <= 1:
+        return nearest
+    return nearest[numpy.concatenate((numpy.asarray([True]), nearest[1:] != nearest[:-1]))]
+
+
+def _normalized_edit_distances(trace: Any, sequences: Any, lengths: Any, numpy: Any) -> Any:
+    rows, maximum_length = sequences.shape
+    if rows == 0:
+        return numpy.empty(0, dtype=numpy.float64)
+    if len(trace) == 0:
+        return numpy.ones(rows, dtype=numpy.float64)
+    previous = numpy.broadcast_to(
+        numpy.arange(maximum_length + 1, dtype=numpy.int16),
+        (rows, maximum_length + 1),
+    ).copy()
+    current = numpy.empty_like(previous)
+    for trace_index, output_class in enumerate(trace, 1):
+        current[:, 0] = trace_index
+        for sequence_index in range(1, maximum_length + 1):
+            current[:, sequence_index] = numpy.minimum(
+                numpy.minimum(
+                    current[:, sequence_index - 1] + 1,
+                    previous[:, sequence_index] + 1,
+                ),
+                previous[:, sequence_index - 1] +
+                (sequences[:, sequence_index - 1] != output_class),
+            )
+        previous, current = current, previous
+    distances = previous[numpy.arange(rows), lengths]
+    return distances.astype(numpy.float64) / numpy.maximum(len(trace), lengths)
+
+
+def geometric_decode(
+    path_values: Sequence[float],
+    language: str,
+    index: GeometricLexiconIndex,
+    numpy: Any,
+    *,
+    maximum_results: int = 32,
+) -> list[ScoredLexiconEntry]:
+    approximate_length = path_length_estimate(path_values, {
+        "keyCenters": index.enabled_centers.reshape(-1).tolist(),
+        "keyMask": [1] * len(index.enabled_centers),
+    })
+    minimum = max(1, approximate_length - LENGTH_TOLERANCE_BELOW)
+    maximum = min(64, approximate_length + LENGTH_TOLERANCE_ABOVE)
+    selected = [index.buckets[(language, length)] for length in range(minimum, maximum + 1)
+                if (language, length) in index.buckets]
+    if not selected:
+        return []
+    indices = numpy.concatenate(selected)
+    path = numpy.asarray(path_values, dtype=numpy.float32).reshape(64, 2)
+    templates = index.templates[indices]
+    shape_cost = numpy.sqrt(numpy.sum((templates - path[None, :, :]) ** 2, axis=2)).mean(axis=1)
+    start_end_cost = (
+        numpy.sqrt(numpy.sum((templates[:, 0, :] - path[0]) ** 2, axis=1)) +
+        numpy.sqrt(numpy.sum((templates[:, -1, :] - path[-1]) ** 2, axis=1))
+    )
+    trace = _trace_classes(path, index, numpy)
+    trace_cost = _normalized_edit_distances(
+        trace,
+        index.sequences[indices],
+        index.sequence_lengths[indices],
+        numpy,
+    )
+    turn_cost = numpy.abs(index.turn_counts[indices] - _turn_count(path, numpy)) / numpy.maximum(
+        index.sequence_lengths[indices],
+        1,
+    )
+    costs = shape_cost * 2.2 + start_end_cost * 1.4 + trace_cost * 0.8 + turn_cost * 0.25
+    word_costs = numpy.full(len(index.words), numpy.inf, dtype=numpy.float64)
+    numpy.minimum.at(word_costs, index.word_ids[indices], costs)
+    available = numpy.flatnonzero(numpy.isfinite(word_costs))
+    ordered = sorted(
+        available.tolist(),
+        key=lambda word_id: (
+            float(word_costs[word_id]),
+            -index.words[word_id].frequency,
+            index.words[word_id].word,
+            index.words[word_id].language,
+        ),
+    )[:maximum_results]
+    return [ScoredLexiconEntry(index.words[word_id], -float(word_costs[word_id])) for word_id in ordered]
+
+
+def merge_swipe_slates(
+    ctc_candidates: Sequence[ScoredLexiconEntry],
+    geometric_candidates: Sequence[ScoredLexiconEntry],
+) -> list[ScoredLexiconEntry]:
+    merged: dict[tuple[str, str], ScoredLexiconEntry] = {}
+    for slate in (ctc_candidates, geometric_candidates):
+        normalized = _z_normalize([candidate.spatial for candidate in slate])
+        for candidate, score in zip(slate, normalized, strict=True):
+            key = (_normalize(candidate.word), candidate.entry.language)
+            previous = merged.get(key)
+            replacement = ScoredLexiconEntry(candidate.entry, score)
+            if previous is None or score > previous.spatial:
+                merged[key] = replacement
+    return sorted(
+        merged.values(),
+        key=lambda candidate: (
+            -candidate.spatial,
+            -candidate.entry.frequency,
+            candidate.entry.word,
+            candidate.entry.language,
+        ),
+    )[:32]
+
+
 def _dependencies():
     try:
         import numpy
@@ -659,6 +903,7 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
         for language, entries in lexicon.items()
     }
     numpy, onnxruntime, versions = _dependencies()
+    geometric_index = build_geometric_index(lexicon, layout, numpy)
 
     options = onnxruntime.SessionOptions()
     options.intra_op_num_threads = args.threads
@@ -690,9 +935,19 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
         name: {"rows": 0, "top1": 0, "top3": 0, "inVocabulary": 0, "lengthWindowEligible": 0}
         for name in metric_names
     }
+    geometric_metrics = {
+        name: {"rows": 0, "top1": 0, "top3": 0, "inVocabulary": 0, "lengthWindowEligible": 0}
+        for name in metric_names
+    }
+    ctc_geometric_metrics = {
+        name: {"rows": 0, "top1": 0, "top3": 0, "inVocabulary": 0, "lengthWindowEligible": 0}
+        for name in metric_names
+    }
     inference_ms = []
     decode_ms = []
     total_ms = []
+    geometric_ms = []
+    fused_total_ms = []
     greedy_exact = 0
     greedy_blank_fallbacks = 0
 
@@ -722,9 +977,17 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
             trie_cache[cache_key] = trie
         decoded = prefix_beam_decode_scored(logits, trie, beam_width=args.beam_width)
         static_fusion = rank_static_fusion(decoded)
+        ctc_finished = time.perf_counter_ns()
+        geometric_started = time.perf_counter_ns()
+        geometric = geometric_decode(row.path, row.language, geometric_index, numpy)
+        geometric_fusion = rank_static_fusion(geometric)
+        merged = merge_swipe_slates(decoded, geometric)
+        ctc_geometric_fusion = rank_static_fusion(merged)
         finished = time.perf_counter_ns()
         predictions = [entry.word for entry in decoded]
         static_predictions = [entry.word for entry in static_fusion]
+        geometric_predictions = [entry.word for entry in geometric_fusion]
+        ctc_geometric_predictions = [entry.word for entry in ctc_geometric_fusion]
         in_vocabulary = row.target in lexicon_words.get(row.language, set())
         length_window_eligible = (
             approximate_length - LENGTH_TOLERANCE_BELOW
@@ -735,6 +998,8 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
         for name in names:
             metric = metrics[name]
             static_metric = static_fusion_metrics[name]
+            geometric_metric = geometric_metrics[name]
+            ctc_geometric_metric = ctc_geometric_metrics[name]
             metric["rows"] += 1
             metric["top1"] += bool(predictions and predictions[0] == row.target)
             metric["top3"] += row.target in predictions[:3]
@@ -745,9 +1010,23 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
             static_metric["top3"] += row.target in static_predictions[:3]
             static_metric["inVocabulary"] += in_vocabulary
             static_metric["lengthWindowEligible"] += length_window_eligible
+            geometric_metric["rows"] += 1
+            geometric_metric["top1"] += bool(geometric_predictions and geometric_predictions[0] == row.target)
+            geometric_metric["top3"] += row.target in geometric_predictions[:3]
+            geometric_metric["inVocabulary"] += in_vocabulary
+            geometric_metric["lengthWindowEligible"] += length_window_eligible
+            ctc_geometric_metric["rows"] += 1
+            ctc_geometric_metric["top1"] += bool(
+                ctc_geometric_predictions and ctc_geometric_predictions[0] == row.target
+            )
+            ctc_geometric_metric["top3"] += row.target in ctc_geometric_predictions[:3]
+            ctc_geometric_metric["inVocabulary"] += in_vocabulary
+            ctc_geometric_metric["lengthWindowEligible"] += length_window_eligible
         inference_ms.append((inference_finished - inference_started) / 1_000_000)
-        decode_ms.append((finished - inference_finished) / 1_000_000)
-        total_ms.append((finished - started) / 1_000_000)
+        decode_ms.append((ctc_finished - inference_finished) / 1_000_000)
+        total_ms.append((ctc_finished - started) / 1_000_000)
+        geometric_ms.append((finished - geometric_started) / 1_000_000)
+        fused_total_ms.append((finished - started) / 1_000_000)
         if index % 250 == 0:
             print(f"evaluated {index}/{len(rows)} held-out swipes", file=sys.stderr, flush=True)
 
@@ -765,6 +1044,8 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
 
     metric_report = report_metrics(metrics)
     static_metric_report = report_metrics(static_fusion_metrics)
+    geometric_metric_report = report_metrics(geometric_metrics)
+    ctc_geometric_metric_report = report_metrics(ctc_geometric_metrics)
     isolated_thresholds = (
         metric_report["overall"]["top1Accuracy"] >= 0.90
         and metric_report["overall"]["top3Accuracy"] >= 0.95
@@ -776,6 +1057,17 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
         and static_metric_report["overall"]["top3Accuracy"] >= 0.95
         and static_metric_report["short"]["top3Accuracy"] >= 0.90
         and static_metric_report["return_trip"]["top3Accuracy"] >= 0.90
+    )
+    ctc_geometric_thresholds = (
+        ctc_geometric_metric_report["overall"]["top1Accuracy"] >= 0.90
+        and ctc_geometric_metric_report["overall"]["top3Accuracy"] >= 0.95
+        and ctc_geometric_metric_report["short"]["top3Accuracy"] >= 0.90
+        and ctc_geometric_metric_report["return_trip"]["top3Accuracy"] >= 0.90
+    )
+    geometric_error = 1.0 - geometric_metric_report["overall"]["top1Accuracy"]
+    ctc_geometric_error = 1.0 - ctc_geometric_metric_report["overall"]["top1Accuracy"]
+    relative_error_reduction = (
+        (geometric_error - ctc_geometric_error) / geometric_error if geometric_error > 0 else 0.0
     )
     return {
         "schemaVersion": 1,
@@ -806,18 +1098,28 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
             "beamWidth": args.beam_width,
             "greedyExactAccuracy": greedy_exact / len(rows),
             "greedyBlankFallbacks": greedy_blank_fallbacks,
+            "geometricAlgorithm": "production-template-cost-v1",
+            "geometricTemplates": len(geometric_index.templates),
+            "decoderSlatesNormalizedBeforeUnion": True,
         },
         "metrics": metric_report,
         "staticFusionMetrics": static_metric_report,
+        "geometricMetrics": geometric_metric_report,
+        "ctcGeometricFusionMetrics": ctc_geometric_metric_report,
         "latencyMs": {
             "hostDiagnosticOnly": True,
             "inference": _percentiles(inference_ms),
             "prefixBeam": _percentiles(decode_ms),
             "total": _percentiles(total_ms),
+            "vectorizedGeometricAndFusion": _percentiles(geometric_ms),
+            "ctcGeometricFusionTotal": _percentiles(fused_total_ms),
         },
         "qualitySnapshot": {
             "meetsPhase0SwipeThresholdsInCtcIsolation": isolated_thresholds,
             "meetsPhase0SwipeThresholdsWithStaticFusion": static_fusion_thresholds,
+            "meetsPhase0SwipeThresholdsWithCtcGeometricFusion": ctc_geometric_thresholds,
+            "ctcGeometricTop1RelativeErrorReductionOverGeometric": relative_error_reduction,
+            "meetsTwentyPercentRelativeErrorReductionOverGeometric": relative_error_reduction >= 0.20,
             "doesNotSatisfyPhase0": True,
         },
         "artifacts": {
@@ -831,7 +1133,7 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
         "limitations": [
             "Host CPU timing is not Android device latency or memory evidence.",
             "The diagnostic lexicon is corpus-derived rather than the production AOSP dictionary.",
-            "Geometric, personal, context, language-lock, and complete final fusion are not measured.",
+            "Personal, context, language-lock, retained AOSP gesture suggestions, and complete final fusion are not measured.",
         ],
     }
 

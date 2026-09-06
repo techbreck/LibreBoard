@@ -57,11 +57,11 @@ request.
 After a full swipe export, `build/model-venv/bin/python tools/evaluate_swipe_ctc.py` measures the
 real ONNX graph with the production CTC prefix-beam rules on 5,000 deterministically selected
 held-out gestures, including at least 500 from each required stratum. Its corpus-derived lexicon is
-built only from train and validation targets. The report preserves the raw prefix-beam ranking and
-also applies the production scorer's z-normalized spatial/static-frequency weighting to the same CTC
-slate. The resulting host report is a model diagnostic, not Phase 0 evidence; device runtime,
-production dictionaries, geometric and complete scorer fusion, memory, and latency remain part of
-the bound Android measurements.
+built only from train and validation targets. The report preserves the raw prefix-beam ranking,
+measures the production geometric cost and applies the production scorer's z-normalized
+spatial/static-frequency weighting to the isolated and normalized-union slates. The resulting host
+report is a model diagnostic, not Phase 0 evidence; device runtime, production dictionaries,
+complete scorer fusion, memory, and latency remain part of the bound Android measurements.
 
 The Phase 0 evaluator binds each test row to a unique metadata-declared device run. Release-sized
 evidence requires at least 100 tap and 100 swipe latency samples from each stock Android,

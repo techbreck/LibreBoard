@@ -27,9 +27,9 @@ The swipe build path is now implemented without committing or pretending to acce
   from the exact graph.
 - `tools/evaluate_swipe_ctc.py` verifies the release export and pinned held-out data, then runs a
   deterministic 5,000-gesture, all-strata diagnostic with the Android prefix-beam semantics. It
-  reports both raw beam order and production-equivalent spatial/static-frequency scoring of the
-  isolated CTC slate. Its lexicon excludes test targets and its report remains explicitly
-  insufficient for Phase 0.
+  reports raw beam order, the geometric fallback, production-equivalent spatial/static-frequency
+  scoring, and the independently normalized CTC/geometric union. Its lexicon excludes test targets
+  and its report remains explicitly insufficient for Phase 0.
 - `models/training/requirements-linux-x86_64.lock` pins and hashes the build-only CPU toolchain. These
   packages are not Android dependencies and never enter an APK.
 

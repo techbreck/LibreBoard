@@ -6,6 +6,11 @@ import pathlib
 import sys
 import unittest
 
+try:
+    import numpy
+except ImportError:
+    numpy = None
+
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import evaluate_swipe_ctc as evaluator  # noqa: E402
@@ -90,6 +95,44 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
 
         self.assertEqual("common", ranked[0].word)
         self.assertEqual("rare", ranked[1].word)
+
+    def test_decoder_slate_merge_normalizes_ctc_and_geometric_scales(self):
+        ctc = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cat", "en", (1,), 10), -0.1),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("car", "en", (2,), 9), -0.2),
+        ]
+        geometric = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("dog", "en", (3,), 8), -100.0),
+        ]
+
+        merged = evaluator.merge_swipe_slates(ctc, geometric)
+
+        self.assertEqual({"cat", "car", "dog"}, {candidate.word for candidate in merged})
+        self.assertEqual(1.0, next(candidate.spatial for candidate in merged if candidate.word == "dog"))
+
+    @unittest.skipUnless(numpy is not None, "NumPy is part of the optional model toolchain")
+    def test_geometric_decoder_ranks_an_exact_live_geometry_trace_first(self):
+        labels = ["a", "b", "c", "d"] + [None] * 60
+        centers = [0.25, 0.2, 0.75, 0.2, 0.25, 0.8, 0.75, 0.8] + [0.0] * 120
+        layout = {
+            "keyLabels": labels,
+            "keyCenters": centers,
+            "keyMask": [1, 1, 1, 1] + [0] * 60,
+        }
+        lexicon = {"en": [
+            evaluator.LexiconEntry("ab", "en", (1, 2), 10),
+            evaluator.LexiconEntry("ac", "en", (1, 3), 100),
+            evaluator.LexiconEntry("dc", "en", (4, 3), 100),
+        ]}
+        index = evaluator.build_geometric_index(lexicon, layout, numpy)
+        path = evaluator._resample_template(
+            numpy.asarray([[0.25, 0.2], [0.75, 0.2]], dtype=numpy.float32),
+            numpy,
+        ).reshape(-1).tolist()
+
+        decoded = evaluator.geometric_decode(path, "en", index, numpy)
+
+        self.assertEqual("ab", decoded[0].word)
 
     def test_german_popup_letters_have_scoped_base_key_emissions(self):
         labels = {character: index + 1 for index, character in enumerate("tase")}
