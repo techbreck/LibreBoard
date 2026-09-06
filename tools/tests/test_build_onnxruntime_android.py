@@ -77,6 +77,32 @@ class OnnxRuntimeBuildTest(unittest.TestCase):
         self.assertEqual(2, process.call_count)
         sleep.assert_called_once_with(0.25)
 
+        shell_fork_failure = builder.subprocess.CompletedProcess(
+            ["fixture"],
+            1,
+            stdout="",
+            stderr="/bin/sh: fork: Resource temporarily unavailable",
+        )
+        with (
+            mock.patch.object(
+                builder.subprocess,
+                "run",
+                side_effect=[shell_fork_failure, succeeded],
+            ) as process,
+            mock.patch.object(builder.time, "sleep") as sleep,
+        ):
+            self.assertEqual(
+                "resumed",
+                builder.run(
+                    ["fixture"],
+                    cwd=pathlib.Path.cwd(),
+                    process_exhaustion_retries=1,
+                    retry_delay_seconds=0.25,
+                ),
+            )
+        self.assertEqual(2, process.call_count)
+        sleep.assert_called_once_with(0.25)
+
         ordinary_failure = builder.subprocess.CompletedProcess(
             ["fixture"],
             1,

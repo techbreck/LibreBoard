@@ -35,9 +35,9 @@ temporary ORT graphs solely to discover the complete operator/type kernel invent
 inventory with the raw ONNX operators, writes a canonical type-specialized configuration, and deletes
 the temporary graphs. The signed and shipped model artifacts remain the original `.onnx` files.
 
-The wrapper resumes an ABI build through a bounded retry only when Ninja reports the exact
-`posix_spawn: Resource temporarily unavailable` process-exhaustion condition. Compiler, linker,
-configuration, verification, and all other build failures remain terminal.
+The wrapper resumes an ABI build or AAR packaging through a bounded retry only when a process launch
+reports `Resource temporarily unavailable` together with `posix_spawn`, `fork`, or errno 35.
+Compiler, linker, configuration, verification, and all other build failures remain terminal.
 
 The builder verifies the source commit, clean source tree, initialized nested submodules, exact build
 settings, exact NDK 28.0.13004108, reduced-operator configuration, native size ceiling, and 16 KiB ELF

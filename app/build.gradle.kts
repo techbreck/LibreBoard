@@ -70,6 +70,7 @@ val verifiedOnnxRuntimeAar = onnxRuntimeAarProperty?.let { aarPath ->
     require(manifest["pythonPackages"] == mapOf(
         "flatbuffers" to "25.12.19",
         "numpy" to "2.2.6",
+        "onnxruntime" to "1.26.0",
         "packaging" to "26.3",
         "protobuf" to "7.36.1",
     )) { "The ONNX Runtime AAR was built with unapproved Python packages" }

@@ -80,10 +80,8 @@ EXPECTED_PYTHON_PACKAGES = {
     "protobuf": "7.36.1",
 }
 CANONICAL_ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
-PROCESS_EXHAUSTION_MARKERS = (
-    "resource temporarily unavailable",
-    "posix_spawn",
-)
+PROCESS_EXHAUSTION_RESOURCE_MARKER = "resource temporarily unavailable"
+PROCESS_EXHAUSTION_LAUNCH_MARKERS = ("posix_spawn", "fork", "errno 35")
 PROCESS_EXHAUSTION_RETRIES = 12
 PROCESS_EXHAUSTION_RETRY_SECONDS = 10.0
 
@@ -118,7 +116,9 @@ def validate_python_toolchain(
 
 def _is_process_exhaustion(detail: str) -> bool:
     lowered = detail.lower()
-    return all(marker in lowered for marker in PROCESS_EXHAUSTION_MARKERS)
+    return PROCESS_EXHAUSTION_RESOURCE_MARKER in lowered and any(
+        marker in lowered for marker in PROCESS_EXHAUSTION_LAUNCH_MARKERS
+    )
 
 
 def run(
@@ -421,7 +421,12 @@ def build_aar(
         "clean",
         "assembleRelease",
     ]
-    run(gradle_command, cwd=SOURCE / "java", env=env)
+    run(
+        gradle_command,
+        cwd=SOURCE / "java",
+        env=env,
+        process_exhaustion_retries=PROCESS_EXHAUSTION_RETRIES,
+    )
     generated = aar_build / "outputs" / "aar" / "onnxruntime-release.aar"
     if not generated.is_file():
         raise BuildConfigurationError("Android packaging did not produce the runtime AAR")
