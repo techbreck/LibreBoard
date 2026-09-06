@@ -21,6 +21,21 @@ APK is fully usable on supported GrapheneOS hardware without installing sandboxe
 
 Run on a currently supported Pixel with the current stable GrapheneOS release and no Google Play:
 
+Before filling the release record, capture the connected device's read-only prerequisites:
+
+```sh
+python3 tools/capture_android_device.py \
+  --adb "$ANDROID_SDK_ROOT/platform-tools/adb" \
+  --output build/reports/grapheneos-device-inventory.json
+```
+
+The collector rejects ambiguous/offline targets, records bounded build identity, detects qemu and
+the three sandboxed Google Play packages for the active Android user, and confirms LibreBoard is
+installed. Its output is intentionally marked `isReleaseEvidence: false`: the operator must still
+confirm current stable GrapheneOS, keep exploit protection compatibility mode disabled, and execute
+the full matrix below. The final release verifier accepts only the separately completed schema-2
+record.
+
 1. Install the reproducible release APK and verify it appears in the system keyboard picker.
 2. Reboot and type before first unlock using static dictionaries/layouts. Confirm clipboard,
    personalization, models, and their files remain unavailable.
