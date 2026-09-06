@@ -2,6 +2,7 @@
 package helium314.keyboard.latin.database
 
 import helium314.keyboard.latin.ClipboardHistoryEntry
+import helium314.keyboard.latin.engine.FieldPolicy
 import java.util.Locale
 
 /** Hard limits and in-memory search rules for credential-encrypted clipboard history. */
@@ -21,6 +22,16 @@ object ClipboardHistoryPolicy {
     const val MAX_FILENAME_CHARS = 255
     const val MAX_MIME_TYPES = 16
     const val MAX_MIME_TYPE_CHARS = 255
+
+    /**
+     * Clipboard history is private persistence. An editor restriction, incognito mode, or the
+     * platform sensitive-content marker independently vetoes capture.
+     */
+    fun allowsCapture(
+        fieldPolicy: FieldPolicy,
+        incognito: Boolean,
+        markedSensitive: Boolean,
+    ): Boolean = fieldPolicy.allowsClipboardCapture && !incognito && !markedSensitive
 
     fun acceptsText(text: String): Boolean = text.isNotEmpty() && text.length <= MAX_TEXT_CHARS
 

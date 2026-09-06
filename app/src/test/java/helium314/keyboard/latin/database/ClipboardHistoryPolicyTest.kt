@@ -3,6 +3,7 @@ package helium314.keyboard.latin.database
 
 import helium314.keyboard.latin.ClipboardHistoryEntry
 import helium314.keyboard.latin.common.Constants.Separators
+import helium314.keyboard.latin.engine.FieldPolicy
 import helium314.keyboard.latin.utils.ToolbarKey
 import helium314.keyboard.latin.utils.defaultClipboardToolbarPref
 import org.junit.Assert.assertEquals
@@ -11,6 +12,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ClipboardHistoryPolicyTest {
+    @Test fun captureRequiresAnOrdinaryFieldOutsideIncognitoAndNonSensitiveContent() {
+        assertTrue(ClipboardHistoryPolicy.allowsCapture(FieldPolicy.NORMAL, false, false))
+        assertFalse(ClipboardHistoryPolicy.allowsCapture(FieldPolicy.SENSITIVE, false, false))
+        assertFalse(ClipboardHistoryPolicy.allowsCapture(FieldPolicy.EMAIL_URI, false, false))
+        assertFalse(ClipboardHistoryPolicy.allowsCapture(FieldPolicy.NORMAL, true, false))
+        assertFalse(ClipboardHistoryPolicy.allowsCapture(FieldPolicy.NORMAL, false, true))
+    }
+
     @Test fun textPayloadsAreStrictlyBounded() {
         assertFalse(ClipboardHistoryPolicy.acceptsText(""))
         assertTrue(ClipboardHistoryPolicy.acceptsText("x".repeat(ClipboardHistoryPolicy.MAX_TEXT_CHARS)))

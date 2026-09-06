@@ -7,8 +7,10 @@ correct, fast, and compatible with GrapheneOS.
 
 `./gradlew testRunTestsUnitTest` exercises engine contracts, field policy, candidate fusion,
 language lock, geometric swipe, CTC feature tensors and lexicon beam decoding, model-manifest and
-ONNX validation, bounded context tensors, persistence, deadlines, and stale-result handling. Context
-tests enforce field-policy gates, candidate/language score identity, masks, field classes, tokenizer
+ONNX validation, bounded context tensors, persistence, deadlines, and stale-result handling.
+Clipboard-policy tests require the platform sensitive-content marker, restricted fields, and
+incognito mode to veto history capture independently. Context tests enforce field-policy gates,
+candidate/language score identity, masks, field classes, tokenizer
 bounds, strict BPE schema/merge/special-token validation, Unicode normalization, and malformed/runtime
 fallback. Runtime adapter tests lock exact tensor names/types/shapes, dynamic batch dimensions,
 direct-buffer invocation, output bounds, native-wrapper cleanup, core-only absence, and hard deadline
