@@ -15,11 +15,16 @@ build/model-venv/bin/python tools/evaluate_swipe_ctc.py
 ```
 
 The default report is `build/model-export/swipe-latin-v1/ctc-evaluation-report.json`. It contains
-overall and per-stratum top-1/top-3 accuracy, vocabulary coverage, greedy accuracy, and host timing.
-It explicitly marks itself diagnostic-only. Host timing is not Android performance evidence, the
-corpus lexicon is not the production AOSP dictionary, and the command does not evaluate geometric,
-personal, language-lock, context, or final scorer fusion. Consequently, even a report that clears
-the numerical swipe thresholds does not satisfy Phase 0.
+overall and per-stratum top-1/top-3 accuracy, vocabulary coverage, greedy accuracy, host timing, and
+two rankings of the same isolated CTC slate. `metrics` preserves the prefix-beam order, while
+`staticFusionMetrics` applies the production scorer's per-slate z-normalized spatial evidence and
+0.65 static-frequency weight. The latter intentionally reserves one of the 32 bounded scorer slots
+for the empty swipe raw placeholder, matching the Android publication path.
+
+The report explicitly marks itself diagnostic-only. Host timing is not Android performance
+evidence, the corpus lexicon is not the production AOSP dictionary, and the command does not
+evaluate geometric, personal, language-lock, context, or complete final fusion. Consequently, even
+a report that clears the numerical swipe thresholds does not satisfy Phase 0.
 
 The Android CTC decoder uses its unconstrained greedy emissions to choose a bounded lexicon-length
 window before prefix search. The geometric fallback instead estimates length from total path length

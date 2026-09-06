@@ -113,6 +113,16 @@ class LexiconEntry:
     frequency: int
 
 
+@dataclasses.dataclass(frozen=True)
+class ScoredLexiconEntry:
+    entry: LexiconEntry
+    spatial: float
+
+    @property
+    def word(self) -> str:
+        return self.entry.word
+
+
 class TrieNode:
     __slots__ = ("children", "words")
 
@@ -495,13 +505,13 @@ def path_length_estimate(path: Sequence[float], layout: dict[str, Any]) -> int:
     return max(1, min(64, round(path_length_in_keys / 3.9) + 1))
 
 
-def prefix_beam_decode(
+def prefix_beam_decode_scored(
     logits: Sequence[Sequence[float]],
     trie: TrieNode,
     *,
     beam_width: int = 64,
     maximum_results: int = 32,
-) -> list[LexiconEntry]:
+) -> list[ScoredLexiconEntry]:
     if not logits or beam_width <= 0 or maximum_results <= 0:
         return []
     beam: dict[tuple[int, ...], tuple[float, float, TrieNode]] = {(): (0.0, LOG_ZERO, trie)}
@@ -534,16 +544,64 @@ def prefix_beam_decode(
         score = _log_add(blank, non_blank) / len(logits)
         candidates.extend((score, entry) for entry in node.words)
     candidates.sort(key=lambda item: (-item[0], -item[1].frequency, item[1].word, item[1].language))
-    result = []
+    result: list[ScoredLexiconEntry] = []
     seen = set()
-    for _score, entry in candidates:
+    for score, entry in candidates:
         key = (_normalize(entry.word), entry.language)
         if key not in seen:
             seen.add(key)
-            result.append(entry)
+            result.append(ScoredLexiconEntry(entry, score))
             if len(result) >= maximum_results:
                 break
     return result
+
+
+def prefix_beam_decode(
+    logits: Sequence[Sequence[float]],
+    trie: TrieNode,
+    *,
+    beam_width: int = 64,
+    maximum_results: int = 32,
+) -> list[LexiconEntry]:
+    return [
+        scored.entry
+        for scored in prefix_beam_decode_scored(
+            logits,
+            trie,
+            beam_width=beam_width,
+            maximum_results=maximum_results,
+        )
+    ]
+
+
+def _z_normalize(values: Sequence[float]) -> list[float]:
+    if len(values) == 1:
+        return [1.0]
+    if not values:
+        return []
+    mean = sum(values) / len(values)
+    variance = sum((value - mean) ** 2 for value in values) / len(values)
+    deviation = math.sqrt(variance)
+    if deviation < 1e-9:
+        return [0.0] * len(values)
+    return [(value - mean) / deviation for value in values]
+
+
+def rank_static_fusion(candidates: Sequence[ScoredLexiconEntry]) -> list[LexiconEntry]:
+    """Mirror the production scorer's spatial/static weighting for the isolated CTC slate."""
+    spatial = _z_normalize([candidate.spatial for candidate in candidates])
+    frequencies = _z_normalize([math.log1p(candidate.entry.frequency) for candidate in candidates])
+    ranked = sorted(
+        zip(candidates, spatial, frequencies, strict=True),
+        key=lambda item: (
+            -(item[1] + item[2] * 0.65),
+            _normalize(item[0].entry.word),
+            item[0].entry.language,
+        ),
+    )
+    # Production reserves one of its 32 bounded slots for the empty swipe raw form;
+    # LegacySuggestionFusion removes that placeholder before publication.
+    return [item[0].entry for item in ranked[:31]]
 
 
 def _dependencies():
@@ -628,6 +686,10 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
         name: {"rows": 0, "top1": 0, "top3": 0, "inVocabulary": 0, "lengthWindowEligible": 0}
         for name in metric_names
     }
+    static_fusion_metrics = {
+        name: {"rows": 0, "top1": 0, "top3": 0, "inVocabulary": 0, "lengthWindowEligible": 0}
+        for name in metric_names
+    }
     inference_ms = []
     decode_ms = []
     total_ms = []
@@ -658,9 +720,11 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
         if trie is None:
             trie = build_trie(lexicon.get(row.language, ()), approximate_length)
             trie_cache[cache_key] = trie
-        decoded = prefix_beam_decode(logits, trie, beam_width=args.beam_width)
+        decoded = prefix_beam_decode_scored(logits, trie, beam_width=args.beam_width)
+        static_fusion = rank_static_fusion(decoded)
         finished = time.perf_counter_ns()
         predictions = [entry.word for entry in decoded]
+        static_predictions = [entry.word for entry in static_fusion]
         in_vocabulary = row.target in lexicon_words.get(row.language, set())
         length_window_eligible = (
             approximate_length - LENGTH_TOLERANCE_BELOW
@@ -670,32 +734,48 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
         names = ["overall", *sorted(row.strata)]
         for name in names:
             metric = metrics[name]
+            static_metric = static_fusion_metrics[name]
             metric["rows"] += 1
             metric["top1"] += bool(predictions and predictions[0] == row.target)
             metric["top3"] += row.target in predictions[:3]
             metric["inVocabulary"] += in_vocabulary
             metric["lengthWindowEligible"] += length_window_eligible
+            static_metric["rows"] += 1
+            static_metric["top1"] += bool(static_predictions and static_predictions[0] == row.target)
+            static_metric["top3"] += row.target in static_predictions[:3]
+            static_metric["inVocabulary"] += in_vocabulary
+            static_metric["lengthWindowEligible"] += length_window_eligible
         inference_ms.append((inference_finished - inference_started) / 1_000_000)
         decode_ms.append((finished - inference_finished) / 1_000_000)
         total_ms.append((finished - started) / 1_000_000)
         if index % 250 == 0:
             print(f"evaluated {index}/{len(rows)} held-out swipes", file=sys.stderr, flush=True)
 
-    metric_report = {}
-    for name, counts in metrics.items():
-        row_count = counts["rows"]
-        metric_report[name] = {
-            **counts,
-            "top1Accuracy": counts["top1"] / row_count,
-            "top3Accuracy": counts["top3"] / row_count,
-            "vocabularyCoverage": counts["inVocabulary"] / row_count,
-            "lengthWindowCoverage": counts["lengthWindowEligible"] / row_count,
+    def report_metrics(values: dict[str, dict[str, int]]) -> dict[str, dict[str, int | float]]:
+        return {
+            name: {
+                **counts,
+                "top1Accuracy": counts["top1"] / counts["rows"],
+                "top3Accuracy": counts["top3"] / counts["rows"],
+                "vocabularyCoverage": counts["inVocabulary"] / counts["rows"],
+                "lengthWindowCoverage": counts["lengthWindowEligible"] / counts["rows"],
+            }
+            for name, counts in values.items()
         }
+
+    metric_report = report_metrics(metrics)
+    static_metric_report = report_metrics(static_fusion_metrics)
     isolated_thresholds = (
         metric_report["overall"]["top1Accuracy"] >= 0.90
         and metric_report["overall"]["top3Accuracy"] >= 0.95
         and metric_report["short"]["top3Accuracy"] >= 0.90
         and metric_report["return_trip"]["top3Accuracy"] >= 0.90
+    )
+    static_fusion_thresholds = (
+        static_metric_report["overall"]["top1Accuracy"] >= 0.90
+        and static_metric_report["overall"]["top3Accuracy"] >= 0.95
+        and static_metric_report["short"]["top3Accuracy"] >= 0.90
+        and static_metric_report["return_trip"]["top3Accuracy"] >= 0.90
     )
     return {
         "schemaVersion": 1,
@@ -728,6 +808,7 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
             "greedyBlankFallbacks": greedy_blank_fallbacks,
         },
         "metrics": metric_report,
+        "staticFusionMetrics": static_metric_report,
         "latencyMs": {
             "hostDiagnosticOnly": True,
             "inference": _percentiles(inference_ms),
@@ -736,6 +817,7 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
         },
         "qualitySnapshot": {
             "meetsPhase0SwipeThresholdsInCtcIsolation": isolated_thresholds,
+            "meetsPhase0SwipeThresholdsWithStaticFusion": static_fusion_thresholds,
             "doesNotSatisfyPhase0": True,
         },
         "artifacts": {
@@ -749,7 +831,7 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
         "limitations": [
             "Host CPU timing is not Android device latency or memory evidence.",
             "The diagnostic lexicon is corpus-derived rather than the production AOSP dictionary.",
-            "Geometric, personal, context, language-lock, and final scorer fusion are not measured.",
+            "Geometric, personal, context, language-lock, and complete final fusion are not measured.",
         ],
     }
 

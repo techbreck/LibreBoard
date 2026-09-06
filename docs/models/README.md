@@ -26,8 +26,10 @@ The swipe build path is now implemented without committing or pretending to acce
   the full ONNX checker, rejects external data/custom domains, and derives the reduced-operator file
   from the exact graph.
 - `tools/evaluate_swipe_ctc.py` verifies the release export and pinned held-out data, then runs a
-  deterministic 5,000-gesture, all-strata diagnostic with the Android prefix-beam semantics. Its
-  lexicon excludes test targets and its report remains explicitly insufficient for Phase 0.
+  deterministic 5,000-gesture, all-strata diagnostic with the Android prefix-beam semantics. It
+  reports both raw beam order and production-equivalent spatial/static-frequency scoring of the
+  isolated CTC slate. Its lexicon excludes test targets and its report remains explicitly
+  insufficient for Phase 0.
 - `models/training/requirements-linux-x86_64.lock` pins and hashes the build-only CPU toolchain. These
   packages are not Android dependencies and never enter an APK.
 

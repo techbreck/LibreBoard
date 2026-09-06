@@ -72,6 +72,25 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
 
         self.assertEqual("don't", evaluator.prefix_beam_decode(logits([1, 2, 3, 4]), trie(entries))[0].word)
 
+    def test_static_fusion_uses_production_z_scores_and_frequency_weight(self):
+        rare = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("rare", "en", (1,), 1),
+            spatial=-0.10,
+        )
+        common = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("common", "en", (2,), 10_000),
+            spatial=-0.11,
+        )
+        distant = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("distant", "en", (3,), 100),
+            spatial=-2.0,
+        )
+
+        ranked = evaluator.rank_static_fusion([rare, common, distant])
+
+        self.assertEqual("common", ranked[0].word)
+        self.assertEqual("rare", ranked[1].word)
+
     def test_german_popup_letters_have_scoped_base_key_emissions(self):
         labels = {character: index + 1 for index, character in enumerate("tase")}
 
