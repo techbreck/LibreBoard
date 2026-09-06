@@ -26,3 +26,7 @@ window before prefix search. The geometric fallback instead estimates length fro
 in live-key units; counting every crossed key substantially overestimates normal continuous swipes.
 The bounded three-below/four-above window covers more than 99% of the pinned validation partition
 without consulting held-out targets.
+
+German candidates remain language-tagged while popup-only `ä`, `ö`, `ü`, and `ß` receive bounded
+German-only gesture variants over their visible base keys. The original surface is retained, and the
+same aliases are used by both Android decoders and the offline CTC evaluator.

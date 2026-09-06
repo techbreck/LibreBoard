@@ -16,6 +16,7 @@ import helium314.keyboard.latin.engine.WordLock
 import helium314.keyboard.latin.engine.geometric.LexiconWord
 import helium314.keyboard.latin.engine.geometric.SwipeLexicon
 import helium314.keyboard.latin.engine.geometric.SwipeLengthEstimate
+import helium314.keyboard.latin.engine.geometric.SwipeWordGesture
 import helium314.keyboard.latin.engine.normalizeCandidate
 import java.util.Locale
 import kotlin.math.exp
@@ -201,30 +202,24 @@ class CtcSwipeDecoder(
             inspected++
             val word = iterator.next()
             if (word.languageTag !in allowedLanguageTags) continue
-            val emissions = emissionClasses(word.word, classByLabel) ?: continue
-            trie.add(emissions, word)
+            val emissions = emissionClasses(word, classByLabel)
+            emissions.forEach { trie.add(it, word) }
         }
         return trie
     }
 
-    private fun emissionClasses(word: String, classByLabel: Map<String, Int>): IntArray? {
-        val classes = ArrayList<Int>(word.length)
-        val normalized = normalizeCandidate(word).lowercase(Locale.ROOT)
-        if (normalized.codePointCount(0, normalized.length) > MAX_EMISSION_LENGTH) return null
-        var index = 0
-        while (index < normalized.length) {
-            val codePoint = normalized.codePointAt(index)
-            val label = String(Character.toChars(codePoint))
-            val outputClass = classByLabel[label]
-            when {
-                outputClass != null -> classes += outputClass
-                codePoint == '\''.code || codePoint == 0x2019 || codePoint == '-'.code -> Unit
-                else -> return null
+    private fun emissionClasses(word: LexiconWord, classByLabel: Map<String, Int>): List<IntArray> =
+        SwipeWordGesture.variants(word.word, word.languageTag).mapNotNull { gesture ->
+            val classes = ArrayList<Int>(gesture.length)
+            var index = 0
+            while (index < gesture.length) {
+                val codePoint = gesture.codePointAt(index)
+                val outputClass = classByLabel[String(Character.toChars(codePoint))] ?: return@mapNotNull null
+                classes += outputClass
+                index += Character.charCount(codePoint)
             }
-            index += Character.charCount(codePoint)
-        }
-        return classes.takeIf { it.isNotEmpty() }?.toIntArray()
-    }
+            classes.takeIf { it.isNotEmpty() && it.size <= MAX_EMISSION_LENGTH }?.toIntArray()
+        }.distinctBy { it.toList() }
 
     private fun validOutput(result: CtcInferenceResult): Boolean {
         val logits = result.logits ?: return false

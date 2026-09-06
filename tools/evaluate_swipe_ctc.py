@@ -252,15 +252,40 @@ def _class_by_label(layout: dict[str, Any]) -> dict[str, int]:
     }
 
 
-def emission_classes(word: str, class_by_label: dict[str, int]) -> tuple[int, ...] | None:
-    result = []
+def gesture_variants(word: str, language: str) -> list[str]:
+    german = language.lower().split("-", 1)[0] == "de"
+    variants = [""]
     for character in _normalize(word):
-        output_class = class_by_label.get(character)
-        if output_class is not None:
-            result.append(output_class)
-        elif character not in {"'", "\N{RIGHT SINGLE QUOTATION MARK}", "-"}:
-            return None
-    return tuple(result) or None
+        if character in {"'", "\N{RIGHT SINGLE QUOTATION MARK}", "-"}:
+            alternatives = [""]
+        elif not german:
+            alternatives = [character]
+        else:
+            alternatives = {
+                "ä": ["ä", "a"],
+                "ö": ["ö", "o"],
+                "ü": ["ü", "u"],
+                "ß": ["ß", "s", "ss"],
+            }.get(character, [character])
+        variants = list(dict.fromkeys(
+            prefix + alternative
+            for prefix in variants
+            for alternative in alternatives
+        ))[:8]
+    return [variant for variant in variants if variant]
+
+
+def emission_variants(
+    word: str,
+    class_by_label: dict[str, int],
+    language: str,
+) -> list[tuple[int, ...]]:
+    results = []
+    for gesture in gesture_variants(word, language):
+        emissions = tuple(class_by_label.get(character, 0) for character in gesture)
+        if emissions and 0 not in emissions and len(emissions) <= 64 and emissions not in results:
+            results.append(emissions)
+    return results
 
 
 def _parse_test_row(line: bytes, layout: dict[str, Any]) -> EvaluationRow:
@@ -306,8 +331,8 @@ def _parse_test_row(line: bytes, layout: dict[str, Any]) -> EvaluationRow:
         or len(strata) != len(set(strata))
     ):
         raise SwipeEvaluationError("held-out swipe row has invalid strata")
-    expected_labels = emission_classes(target, _class_by_label(layout))
-    if expected_labels != tuple(labels):
+    expected_labels = emission_variants(target, _class_by_label(layout), language)
+    if tuple(labels) not in expected_labels:
         raise SwipeEvaluationError("held-out target and CTC labels disagree")
     return EvaluationRow(
         identifier=identifier,
@@ -383,13 +408,15 @@ def build_lexicon(data_root: pathlib.Path, layout: dict[str, Any]) -> dict[str, 
                     raise SwipeEvaluationError(f"{filename} contains an invalid target")
                 frequencies[(_normalize(target), language)] += 1
     class_by_label = _class_by_label(layout)
+    surfaces = sorted(
+        ((word, language, frequency) for (word, language), frequency in frequencies.items()),
+        key=lambda item: (-item[2], item[0], item[1]),
+    )[:MAXIMUM_LEXICON_WORDS]
     entries = []
-    for (word, language), frequency in frequencies.items():
-        emissions = emission_classes(word, class_by_label)
-        if emissions is not None and len(emissions) <= 64:
+    for word, language, frequency in surfaces:
+        for emissions in emission_variants(word, class_by_label, language):
             entries.append(LexiconEntry(word, language, emissions, frequency))
     entries.sort(key=lambda entry: (-entry.frequency, entry.word, entry.language))
-    entries = entries[:MAXIMUM_LEXICON_WORDS]
     by_language: dict[str, list[LexiconEntry]] = collections.defaultdict(list)
     for entry in entries:
         by_language[entry.language].append(entry)
@@ -688,7 +715,8 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
             "sourceSplits": ["train", "validation"],
             "testTargetsExcludedFromConstruction": True,
             "maximumWords": MAXIMUM_LEXICON_WORDS,
-            "words": sum(len(entries) for entries in lexicon.values()),
+            "words": len({(entry.word, entry.language) for entries in lexicon.values() for entry in entries}),
+            "gestureVariants": sum(len(entries) for entries in lexicon.values()),
             "languages": sorted(lexicon),
             "lengthToleranceBelow": LENGTH_TOLERANCE_BELOW,
             "lengthToleranceAbove": LENGTH_TOLERANCE_ABOVE,

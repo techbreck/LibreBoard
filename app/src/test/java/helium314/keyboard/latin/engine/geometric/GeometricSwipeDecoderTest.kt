@@ -91,4 +91,35 @@ class GeometricSwipeDecoderTest {
         assertTrue(crossedKeyCount > "both".length)
         assertEquals("both".length, estimatedLength)
     }
+
+    @Test
+    fun germanPopupLetterSurfaceCanUseItsBaseGestureKey() {
+        val germanGeometry = KeyGeometry(
+            300f,
+            100f,
+            listOf(
+                KeySlot(1, "f", 50f, 50f, 90f, 90f),
+                KeySlot(2, "u", 150f, 50f, 90f, 90f),
+                KeySlot(3, "r", 250f, 50f, 90f, 90f),
+            ),
+        )
+        val request = TypingRequest.bounded(
+            rawText = "",
+            path = listOf(TouchPoint(50f, 50f), TouchPoint(150f, 50f), TouchPoint(250f, 50f)),
+            geometry = germanGeometry,
+            enabledLanguages = listOf("de"),
+            wordLock = WordLock.Automatic("de"),
+            fieldPolicy = FieldPolicy.NORMAL,
+            inputStyle = InputStyle.SWIPE,
+            sequenceId = 1,
+        )
+
+        val result = GeometricSwipeDecoder(
+            SwipeLexicon { _, _ -> sequenceOf(LexiconWord("für", "de", 100)) },
+        ).decode(request, Deadline.afterMillis(100))
+
+        assertEquals("für", result.candidates.first().surface)
+        assertEquals(listOf("tät"), SwipeWordGesture.variants("tät", "en-US"))
+        assertTrue("tat" in SwipeWordGesture.variants("tät", "de"))
+    }
 }

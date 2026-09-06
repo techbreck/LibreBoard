@@ -12,6 +12,8 @@ import helium314.keyboard.latin.engine.SwipeDecodeResult
 import helium314.keyboard.latin.engine.SwipeDecoder
 import helium314.keyboard.latin.engine.TouchPoint
 import helium314.keyboard.latin.engine.TypingRequest
+import helium314.keyboard.latin.engine.normalizeCandidate
+import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.ln1p
@@ -51,14 +53,17 @@ class GeometricSwipeDecoder(private val lexicon: SwipeLexicon) : SwipeDecoder {
                 }.take(32))
             }
             if (entry.languageTag !in request.enabledLanguages) continue
-            val template = template(entry.word, request.geometry) ?: continue
-            val shapeCost = averageDistance(normalizedPath, template)
-            val startEndCost = distance(normalizedPath.first(), template.first()) +
-                distance(normalizedPath.last(), template.last())
-            val traceEditCost = normalizedEditDistance(traced, entry.word)
-            val turnCost = abs(turnCount(normalizedPath) - turnCount(template)).toDouble() /
-                (entry.word.length.coerceAtLeast(1))
-            val cost = shapeCost * 2.2 + startEndCost * 1.4 + traceEditCost * 0.8 + turnCost * 0.25
+            val gestureVariants = SwipeWordGesture.variants(entry.word, entry.languageTag)
+            val cost = gestureVariants.mapNotNull { gesture ->
+                val template = template(gesture, request.geometry) ?: return@mapNotNull null
+                val shapeCost = averageDistance(normalizedPath, template)
+                val startEndCost = distance(normalizedPath.first(), template.first()) +
+                    distance(normalizedPath.last(), template.last())
+                val traceEditCost = normalizedEditDistance(traced, gesture)
+                val turnCost = abs(turnCount(normalizedPath) - turnCount(template)).toDouble() /
+                    gesture.length.coerceAtLeast(1)
+                shapeCost * 2.2 + startEndCost * 1.4 + traceEditCost * 0.8 + turnCost * 0.25
+            }.minOrNull() ?: continue
             scored += Candidate(
                 surface = entry.word,
                 languageTag = entry.languageTag,
@@ -198,6 +203,38 @@ object TraceKeySequence {
         }
         return out.toString()
     }
+}
+
+/** Language-scoped surface-to-gesture aliases; candidates retain their original tagged surface. */
+internal object SwipeWordGesture {
+    fun variants(word: String, languageTag: String): List<String> {
+        val german = Locale.forLanguageTag(languageTag).language == "de"
+        var variants = listOf("")
+        val normalized = normalizeCandidate(word)
+        var index = 0
+        while (index < normalized.length) {
+            val codePoint = normalized.codePointAt(index)
+            val character = String(Character.toChars(codePoint))
+            val alternatives = when {
+                codePoint == '\''.code || codePoint == 0x2019 || codePoint == '-'.code -> listOf("")
+                !german -> listOf(character)
+                character == "ä" -> listOf("ä", "a")
+                character == "ö" -> listOf("ö", "o")
+                character == "ü" -> listOf("ü", "u")
+                character == "ß" -> listOf("ß", "s", "ss")
+                else -> listOf(character)
+            }
+            variants = variants.asSequence()
+                .flatMap { prefix -> alternatives.asSequence().map { prefix + it } }
+                .distinct()
+                .take(MAX_VARIANTS)
+                .toList()
+            index += Character.charCount(codePoint)
+        }
+        return variants.filter(String::isNotEmpty)
+    }
+
+    private const val MAX_VARIANTS = 8
 }
 
 /**

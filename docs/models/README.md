@@ -94,7 +94,9 @@ are masked. It returns finite `logits` `float32[1,32,65]`, where class zero is C
 1–64 correspond to the supplied key-slot order. Output validation, CTC blank/repeat handling,
 lexicon-constrained prefix beam search, language filtering, and candidate construction live in pure
 Kotlin rather than inside the model or runtime bridge. Apostrophes and hyphens may be absent from a
-gesture emission while the lexicon retains the canonical surface form.
+gesture emission while the lexicon retains the canonical surface form. German-tagged candidates
+may also map popup-only `ä`, `ö`, `ü`, and `ß` to bounded base-key gesture variants; those aliases
+are never applied to an English-tagged candidate and never change the committed surface.
 
 `context-en-de-v1.onnx` also has a fixed candidate-scoring ABI. It receives `input_ids`
 `int64[N,32]`, `attention_mask` `int64[N,32]`, `candidate_mask` `float32[N,32]`, and `field_class`

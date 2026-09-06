@@ -39,7 +39,9 @@ German compound evidence to stay within one explicitly tagged dictionary; they a
 language locks, deadline exits, generated provenance, raw-word vetoes, and multilingual source-order
 invariance. CTC tests cover
 double letters, return-trip words, canonical contractions, language locks, malformed tensors,
-runtime failure, and deadline fallback. Backup tests additionally exercise ZIP path traversal,
+German-only popup-letter gesture aliases, runtime failure, and deadline fallback. Geometric tests
+exercise the same German surface preservation and reject crossed-key count as a word-length proxy.
+Backup tests additionally exercise ZIP path traversal,
 canonical aliases, entry and expanded-size limits, strict typed-settings parsing, preservation of excluded private
 state, and process-death recovery on both sides of the restore commit point. Learned-data tests
 require idempotent removal without deleting clipboard, model, or explicit dictionary fixtures.

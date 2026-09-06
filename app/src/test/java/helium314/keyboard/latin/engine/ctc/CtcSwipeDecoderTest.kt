@@ -109,6 +109,21 @@ class CtcSwipeDecoderTest {
     }
 
     @Test
+    fun germanUmlautSurfaceUsesLanguageScopedBaseKeyGesture() {
+        val decoder = CtcSwipeDecoder(
+            fixedSession("tat".map(::classFor)),
+            SwipeLexicon { _, _ -> sequenceOf(LexiconWord("tät", "de", 100)) },
+        )
+
+        val result = decoder.decode(
+            request(enabledLanguages = listOf("de"), wordLock = WordLock.Manual("de")),
+            Deadline.afterMillis(500),
+        )
+
+        assertEquals("tät", result.candidates.first().surface)
+    }
+
+    @Test
     fun manualLanguageLockRestrictsTheDecodedSlate() {
         val session = fixedSession("cat".map(::classFor))
         val lexicon = SwipeLexicon { _, _ ->

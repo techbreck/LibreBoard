@@ -64,13 +64,23 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
 
     def test_apostrophe_free_emissions_retain_contraction_surface(self):
         labels = {character: index + 1 for index, character in enumerate("dont")}
-        self.assertEqual((1, 2, 3, 4), evaluator.emission_classes("don't", labels))
+        self.assertEqual([(1, 2, 3, 4)], evaluator.emission_variants("don't", labels, "en"))
         entries = [
             evaluator.LexiconEntry("dont", "en", (1, 2, 3, 4), 10),
             evaluator.LexiconEntry("don't", "en", (1, 2, 3, 4), 100),
         ]
 
         self.assertEqual("don't", evaluator.prefix_beam_decode(logits([1, 2, 3, 4]), trie(entries))[0].word)
+
+    def test_german_popup_letters_have_scoped_base_key_emissions(self):
+        labels = {character: index + 1 for index, character in enumerate("tase")}
+
+        self.assertEqual([], evaluator.emission_variants("tät", labels, "en-US"))
+        self.assertEqual([(1, 2, 1)], evaluator.emission_variants("tät", labels, "de-DE"))
+        self.assertEqual(
+            [(1, 3), (1, 3, 3)],
+            evaluator.emission_variants("tß", labels, "de"),
+        )
 
     def test_stratified_selection_is_order_independent_and_meets_every_minimum(self):
         rows = [row(index, {stratum}) for index, stratum in enumerate(evaluator.REQUIRED_STRATA)]
