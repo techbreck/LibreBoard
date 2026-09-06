@@ -5,6 +5,7 @@ import argparse
 import importlib.util
 import json
 import pathlib
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -116,7 +117,12 @@ class ExportContextModelTest(unittest.TestCase):
             }, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
             tokenizer_sha = model_sources.file_sha256(tokenizer_path)
             data_manifest_sha = "b" * 64
-            app_commit = "a" * 40
+            app_commit = subprocess.run(
+                ("git", "-C", str(model_sources.ROOT), "rev-parse", "HEAD"),
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
             weights_path = root / "weights.safetensors"
             torch.manual_seed(7)
             model = ContextCandidateModel(spec.architecture)

@@ -226,6 +226,13 @@ def export(args: argparse.Namespace) -> dict[str, Any]:
     spec = context_model_contract.load_spec(args.spec)
     report_path = args.training_report.resolve()
     report = _load_training_report(report_path, args.development, spec)
+    try:
+        model_sources.verify_git_sources_at_commit(
+            report["appCommit"],
+            ("tools/train_context_model.py", "models/training/context_model.py"),
+        )
+    except model_sources.ModelSourceError as failure:
+        raise ContextExportError(f"context model source provenance failed: {failure}") from failure
     artifacts = {}
     for artifact_name in ("weights", "tokenizer"):
         details = report[artifact_name]

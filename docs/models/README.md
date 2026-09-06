@@ -20,9 +20,11 @@ The swipe build path is now implemented without committing or pretending to acce
 - `models/swipe/model-spec.json` fixes the 821,121-parameter layout-conditioned architecture and
   tensor ABI. `tools/train_swipe_model.py` uses deterministic CTC training and writes hash-bound
   safetensors, with atomic epoch checkpoints that restore model, optimizer, and RNG state only when
-  every execution binding still matches. `tools/export_swipe_model.py` stores learned initializers as FP16, retains float32
-  external tensors/CPU compute, runs the full ONNX checker, rejects external data/custom domains,
-  and derives the reduced-operator file from the exact graph.
+  every execution binding still matches. `tools/export_swipe_model.py` first proves that the current
+  trainer and model implementation are byte-identical to their blobs at the training report's Git
+  commit, then stores learned initializers as FP16, retains float32 external tensors/CPU compute, runs
+  the full ONNX checker, rejects external data/custom domains, and derives the reduced-operator file
+  from the exact graph.
 - `tools/evaluate_swipe_ctc.py` verifies the release export and pinned held-out data, then runs a
   deterministic 5,000-gesture, all-strata diagnostic with the Android prefix-beam semantics. Its
   lexicon excludes test targets and its report remains explicitly insufficient for Phase 0.
@@ -61,9 +63,10 @@ release artifact:
   report includes evaluation on the untouched test split.
 - `tools/context_tokenizer_contract.py` mirrors the Android tokenizer's strict schema and adds the
   release requirement for exactly 16,384 dense token IDs.
-- `tools/export_context_model.py` binds the pinned Hanse2 teacher, corpus manifest, tokenizer,
-  safetensors and app commit; converts the source graph to blockwise INT4; verifies the exact custom
-  operator counts; and runs CPU inference at batch sizes 1 and 32.
+- `tools/export_context_model.py` binds the pinned Hanse2 teacher, corpus manifest, tokenizer and
+  safetensors; proves the trainer and model sources match the report's app commit; converts the source
+  graph to blockwise INT4; verifies the exact custom operator counts; and runs CPU inference at batch
+  sizes 1 and 32.
 - `models/training/requirements-context-linux-x86_64.lock` hashes the complete build-only distillation
   and export environment, including Transformers and ONNX Runtime 1.26 tooling.
 - `tools/assemble_runtime_operator_config.py` independently checks both exported model hashes and

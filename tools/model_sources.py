@@ -15,6 +15,7 @@ import json
 import os
 import pathlib
 import re
+import subprocess
 import sys
 import urllib.parse
 import urllib.request
@@ -98,6 +99,78 @@ def file_sha256(path: pathlib.Path) -> str:
         while chunk := stream.read(CHUNK_BYTES):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def verify_git_sources_at_commit(
+    commit: str,
+    relative_paths: Iterable[str],
+    *,
+    root: pathlib.Path = ROOT,
+) -> dict[str, str]:
+    """Prove that current model source files equal the blobs recorded by a training commit."""
+
+    if not isinstance(commit, str) or not REVISION.fullmatch(commit):
+        raise ModelSourceError("model source commit must be a full lowercase Git revision")
+    root = root.resolve()
+    selected = tuple(relative_paths)
+    if not selected or len(selected) > 32 or len(selected) != len(set(selected)):
+        raise ModelSourceError("model source paths must be a non-empty bounded unique list")
+
+    normalized: list[tuple[str, pathlib.Path]] = []
+    for value in selected:
+        if not isinstance(value, str) or not value or "\\" in value:
+            raise ModelSourceError("model source path must be a normalized relative POSIX path")
+        pure_path = pathlib.PurePosixPath(value)
+        if (
+            pure_path.is_absolute()
+            or any(part in {"", ".", ".."} for part in pure_path.parts)
+            or str(pure_path) != value
+        ):
+            raise ModelSourceError("model source path must be a normalized relative POSIX path")
+        current = root.joinpath(*pure_path.parts)
+        try:
+            resolved = current.resolve(strict=True)
+            resolved.relative_to(root)
+        except (OSError, ValueError) as failure:
+            raise ModelSourceError(f"model source is missing or escapes the repository: {value}") from failure
+        if not current.is_file() or current.is_symlink():
+            raise ModelSourceError(f"model source is not a regular file: {value}")
+        normalized.append((value, current))
+
+    environment = os.environ.copy()
+    environment.update({
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_NO_REPLACE_OBJECTS": "1",
+        "LANG": "C",
+        "LC_ALL": "C",
+    })
+
+    def git(*arguments: str) -> bytes:
+        try:
+            result = subprocess.run(
+                ("git", "-C", str(root), *arguments),
+                check=False,
+                capture_output=True,
+                env=environment,
+                timeout=30,
+            )
+        except (OSError, subprocess.TimeoutExpired) as failure:
+            raise ModelSourceError(f"cannot inspect recorded model source commit: {failure}") from failure
+        if result.returncode != 0:
+            detail = result.stderr.decode("utf-8", errors="replace").strip()
+            raise ModelSourceError(f"cannot inspect recorded model source commit: {detail or 'Git failed'}")
+        return result.stdout
+
+    git("cat-file", "-e", f"{commit}^{{commit}}")
+    hashes: dict[str, str] = {}
+    for value, current in normalized:
+        recorded = git("cat-file", "blob", f"{commit}:{value}")
+        payload = current.read_bytes()
+        if payload != recorded:
+            raise ModelSourceError(f"model source differs from recorded commit: {value}")
+        hashes[value] = hashlib.sha256(payload).hexdigest()
+    return hashes
 
 
 def _require_exact_keys(value: dict[str, Any], expected: set[str], location: str) -> None:

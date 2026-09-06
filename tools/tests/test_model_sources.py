@@ -5,6 +5,7 @@ import hashlib
 import io
 import json
 import pathlib
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -52,6 +53,54 @@ def write_manifest(root: pathlib.Path, value: dict) -> pathlib.Path:
 
 
 class ModelSourcesTest(unittest.TestCase):
+    def test_model_sources_are_bound_to_the_recorded_git_commit(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            subprocess.run(("git", "init", "-q", str(root)), check=True)
+            subprocess.run(("git", "-C", str(root), "config", "user.name", "LibreBoard Test"), check=True)
+            subprocess.run(
+                ("git", "-C", str(root), "config", "user.email", "test@libreboard.invalid"),
+                check=True,
+            )
+            source = root / "models" / "training" / "fixture.py"
+            source.parent.mkdir(parents=True)
+            source.write_bytes(b"model = 'v1'\n")
+            subprocess.run(("git", "-C", str(root), "add", "models/training/fixture.py"), check=True)
+            subprocess.run(("git", "-C", str(root), "commit", "-qm", "fixture"), check=True)
+            commit = subprocess.run(
+                ("git", "-C", str(root), "rev-parse", "HEAD"),
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+
+            result = model_sources.verify_git_sources_at_commit(
+                commit,
+                ("models/training/fixture.py",),
+                root=root,
+            )
+            self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(), result["models/training/fixture.py"])
+
+            source.write_bytes(b"model = 'changed'\n")
+            with self.assertRaisesRegex(model_sources.ModelSourceError, "differs from recorded commit"):
+                model_sources.verify_git_sources_at_commit(
+                    commit,
+                    ("models/training/fixture.py",),
+                    root=root,
+                )
+
+    def test_model_source_commit_and_paths_are_strictly_validated(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            (root / "fixture.py").write_text("pass\n", encoding="utf-8")
+            with self.assertRaisesRegex(model_sources.ModelSourceError, "full lowercase Git revision"):
+                model_sources.verify_git_sources_at_commit("HEAD", ("fixture.py",), root=root)
+            with self.assertRaisesRegex(model_sources.ModelSourceError, "normalized relative POSIX"):
+                model_sources.verify_git_sources_at_commit("a" * 40, ("../fixture.py",), root=root)
+            subprocess.run(("git", "init", "-q", str(root)), check=True)
+            with self.assertRaisesRegex(model_sources.ModelSourceError, "cannot inspect recorded model source"):
+                model_sources.verify_git_sources_at_commit("a" * 40, ("fixture.py",), root=root)
+
     def test_committed_sources_pin_the_permissive_inputs_by_hash(self):
         manifest = model_sources.load_manifest()
         swipe = manifest.source("futo-swipe-dataset-v1")

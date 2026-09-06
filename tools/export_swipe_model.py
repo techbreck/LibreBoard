@@ -4,9 +4,7 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
-import math
 import os
 import pathlib
 import shutil
@@ -286,6 +284,13 @@ def export(args: argparse.Namespace) -> dict[str, Any]:
     spec = swipe_model_contract.load_spec(args.spec)
     training_report_path = args.training_report.resolve()
     training_report = _load_training_report(training_report_path, args.development)
+    try:
+        model_sources.verify_git_sources_at_commit(
+            training_report["appCommit"],
+            ("tools/train_swipe_model.py", "models/training/swipe_model.py"),
+        )
+    except model_sources.ModelSourceError as failure:
+        raise SwipeExportError(f"swipe model source provenance failed: {failure}") from failure
     if training_report.get("modelSpecSha256") != spec.sha256:
         raise SwipeExportError("training report was produced from a different model spec")
     weights_path = training_report_path.parent / training_report["weights"]["file"]
