@@ -34,6 +34,9 @@ temporarily to keep upstream review practical; the Android application ID is `or
 - Content-addressed MIT swipe-data and Apache-2.0 teacher-source manifests; deterministic
   session-separated CTC corpus preparation; and a hash-locked, tested 821,121-parameter swipe
   train/export path. Partial runs are visibly marked `development` and cannot become release input.
+- A separately pinned CC-BY-4.0 Google TSI evaluation source and deterministic adapter provide 1,268
+  honest human word-level tap errors without consuming publisher model scores; the remaining tap
+  corpus requirement stays visibly gated rather than being filled with synthetic duplicates.
 - Model-qualified builds package the source-built reduced ONNX Runtime, signed swipe archive, and
   fixed project key as one fail-closed set. After first unlock, a background bootstrap activates CTC
   and discovers the optional signed en/de context-model provider without blocking classic input.

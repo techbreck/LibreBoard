@@ -1,0 +1,46 @@
+{
+    "schemaVersion": 1,
+    "sources": [
+        {
+            "id": "google-tsi-tap-dataset-v1",
+            "kind": "dataset",
+            "repositoryType": "dataset",
+            "repository": "google-research-datasets/tap-typing-with-touch-sensing-images",
+            "revision": "b7a6d7fb3d2ce9f8d5bb24ec492a720636da7bd4",
+            "license": "CC-BY-4.0",
+            "sourceUrl": "https://github.com/google-research-datasets/tap-typing-with-touch-sensing-images",
+            "artifacts": [
+                {
+                    "path": "LICENSE",
+                    "purpose": "license",
+                    "bytes": 18656,
+                    "sha256": "9e5f1b3c610b9c2da5c313bf81d577a7d1acec686bdb0384edefa6df0f90cd94"
+                },
+                {
+                    "path": "README.md",
+                    "purpose": "documentation",
+                    "bytes": 20412,
+                    "sha256": "856aa2af2c345e2bd6e372b220e06889a7e7a85eaab7a5cd15116ee288741229"
+                },
+                {
+                    "path": "keyboard_data.json",
+                    "purpose": "layout",
+                    "bytes": 5409,
+                    "sha256": "642e95984ed8b04f5bb7c56bb6237c6654034c5ff0c15aef55a127c93530213d"
+                },
+                {
+                    "path": "prompt_data.csv",
+                    "purpose": "evaluation-data",
+                    "bytes": 89172,
+                    "sha256": "c0992922ff3f85440c7f3eaf2537d82df75202a9882d20757e49859ae5d13ba6"
+                },
+                {
+                    "path": "touch_data.csv",
+                    "purpose": "evaluation-data",
+                    "bytes": 28332692,
+                    "sha256": "f6aaa9c79596a5d61c5d2429d722db30013fd92d333d28863adc77e54ef4d8a3"
+                }
+            ]
+        }
+    ]
+}

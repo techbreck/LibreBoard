@@ -66,3 +66,32 @@ python3 tools/prepare_tap_evaluation.py collected-taps.jsonl \
 The prepared records still need to be replayed through stock HeliBoard, fused, personal, and neural
 paths on the declared device runs. Only their artifact-bound prediction/latency JSONL is accepted by
 the [Phase 0 measurement evaluator](phase-0-dataset-schema.md).
+
+## Pinned human tap component
+
+`models/evaluation/sources-v1.json` pins Google's CC-BY-4.0 Tap Typing with Touch Sensing Images
+(TSI) dataset at an immutable Git commit, including exact sizes and SHA-256 values for its license,
+documentation, keyboard geometry, prompts, and touch table. Fetching remains an explicit network
+operation; later conversion and verification are offline:
+
+```sh
+python3 tools/model_sources.py --manifest models/evaluation/sources-v1.json \
+  fetch google-tsi-tap-dataset-v1
+python3 tools/prepare_tsi_tap_dataset.py
+python3 tools/prepare_tap_evaluation.py \
+  build/evaluation-sources/google-tsi-tap-v1/tap-errors.jsonl \
+  --source-manifest build/evaluation-sources/google-tsi-tap-v1/source-manifest.json \
+  --output-root build/evaluation-data/google-tsi-tap-v1 --allow-small
+```
+
+The adapter consumes only publisher-aligned reference characters, touch centroids, relative
+timestamps, public prompts, and keyboard geometry. It deliberately ignores heatmaps, ellipse
+features, submitted strings, and the publisher's language-model scores. It reconstructs complete
+phrase words from non-deleted aligned touches, replays transpositions in timestamp order, normalizes
+coordinates without clamping, and splits on the participant identity so one person's motor pattern
+cannot cross train, validation, and test.
+
+The pinned corpus currently yields 1,268 honest word-level spatial errors, including 236 in the
+participant-disjoint test split. It is therefore useful evidence but explicitly not release-eligible
+alone. Additional independently licensed human tap sources are required; duplicate or synthetic
+variants must not be used to inflate the 3,000 held-out-example gate.

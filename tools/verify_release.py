@@ -25,6 +25,7 @@ import model_sources
 import prepare_context_dataset
 import prepare_swipe_dataset
 import prepare_tap_evaluation
+import prepare_tsi_tap_dataset
 import score_context_teacher
 import swipe_model_contract
 
@@ -934,6 +935,9 @@ def source_checks(errors: list[str]) -> None:
 
     try:
         source_manifest = model_sources.load_manifest()
+        evaluation_source_manifest = model_sources.load_manifest(
+            prepare_tsi_tap_dataset.DEFAULT_SOURCE_MANIFEST
+        )
         swipe_policy = prepare_swipe_dataset.load_policy()
         prepare_tap_evaluation.load_policy()
         context_policy = prepare_context_dataset.load_policy()
@@ -949,6 +953,7 @@ def source_checks(errors: list[str]) -> None:
         swipe_source = source_manifest.source(swipe_policy.source_id)
         context_source = source_manifest.source(context_policy.source_id)
         teacher_source = source_manifest.source("hanse2-100m-base-teacher-v1")
+        tsi_source = evaluation_source_manifest.source(prepare_tsi_tap_dataset.SOURCE_ID)
     except (
         build_context_tokenizer.ContextTokenizerBuildError,
         score_context_teacher.ContextTeacherError,
@@ -963,6 +968,15 @@ def source_checks(errors: list[str]) -> None:
     else:
         if swipe_source.repository != "futo-org/swipe.futo.org" or swipe_source.license != "MIT":
             fail(errors, "swipe training must remain pinned to the MIT FUTO gesture dataset")
+        if (
+            tsi_source.repository
+            != "google-research-datasets/tap-typing-with-touch-sensing-images"
+            or tsi_source.revision != "b7a6d7fb3d2ce9f8d5bb24ec492a720636da7bd4"
+            or tsi_source.license != "CC-BY-4.0"
+            or {artifact.path for artifact in tsi_source.artifacts}
+            != {"LICENSE", "README.md", "keyboard_data.json", "prompt_data.csv", "touch_data.csv"}
+        ):
+            fail(errors, "tap evaluation must remain pinned to the reviewed CC-BY-4.0 Google TSI source")
         if teacher_source.repository != "Evicka/Hanse2-100M-Base" or teacher_source.license != "Apache-2.0":
             fail(errors, "context distillation teacher must remain the Apache-2.0 Hanse2 base model")
         if (

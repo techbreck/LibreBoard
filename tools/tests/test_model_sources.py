@@ -53,6 +53,36 @@ def write_manifest(root: pathlib.Path, value: dict) -> pathlib.Path:
 
 
 class ModelSourcesTest(unittest.TestCase):
+    def test_github_dataset_url_is_immutable_and_revision_qualified(self):
+        payload = source_document()
+        source = payload["sources"][0]
+        source["repository"] = "example/tap-data"
+        source["sourceUrl"] = "https://github.com/example/tap-data"
+        source["license"] = "CC-BY-4.0"
+        with tempfile.TemporaryDirectory() as temporary:
+            manifest_path = pathlib.Path(temporary) / "sources.json"
+            manifest_path.write_text(json.dumps(payload))
+
+            parsed = model_sources.load_manifest(manifest_path).sources[0]
+
+        self.assertEqual(
+            "https://raw.githubusercontent.com/example/tap-data/"
+            f"{parsed.revision}/LICENSE",
+            model_sources.artifact_url(parsed, parsed.artifact("LICENSE")),
+        )
+
+    def test_github_teacher_source_is_rejected(self):
+        payload = source_document()
+        source = payload["sources"][0]
+        source["repositoryType"] = "model"
+        source["kind"] = "teacher-model"
+        source["sourceUrl"] = "https://github.com/example/fixture"
+        with tempfile.TemporaryDirectory() as temporary:
+            manifest_path = pathlib.Path(temporary) / "sources.json"
+            manifest_path.write_text(json.dumps(payload))
+            with self.assertRaisesRegex(model_sources.ModelSourceError, "sourceUrl"):
+                model_sources.load_manifest(manifest_path)
+
     def test_model_sources_are_bound_to_the_recorded_git_commit(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)

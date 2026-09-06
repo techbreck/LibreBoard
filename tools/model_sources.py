@@ -34,7 +34,7 @@ SHA256 = re.compile(r"^[0-9a-f]{64}$")
 REVISION = re.compile(r"^[0-9a-f]{40}$")
 REPOSITORY = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 SOURCE_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
-ALLOWED_LICENSES = {"Apache-2.0", "MIT"}
+ALLOWED_LICENSES = {"Apache-2.0", "CC-BY-4.0", "MIT"}
 ALLOWED_KINDS = {"dataset", "teacher-model"}
 ALLOWED_REPOSITORY_TYPES = {"dataset", "model"}
 SOURCE_KEYS = {
@@ -223,7 +223,7 @@ def _validate_source(raw: Any, index: int) -> Source:
         raise ModelSourceError(f"{identifier}: unsupported repository type")
     repository = raw["repository"]
     if not isinstance(repository, str) or not REPOSITORY.fullmatch(repository):
-        raise ModelSourceError(f"{identifier}: invalid Hugging Face repository")
+        raise ModelSourceError(f"{identifier}: invalid source repository")
     revision = raw["revision"]
     if not isinstance(revision, str) or not REVISION.fullmatch(revision):
         raise ModelSourceError(f"{identifier}: revision must be a full immutable commit")
@@ -231,8 +231,10 @@ def _validate_source(raw: Any, index: int) -> Source:
     if license_name not in ALLOWED_LICENSES:
         raise ModelSourceError(f"{identifier}: license is not allowlisted")
     prefix = "datasets/" if repository_type == "dataset" else ""
-    expected_url = f"https://huggingface.co/{prefix}{repository}"
-    if raw["sourceUrl"] != expected_url:
+    expected_urls = {f"https://huggingface.co/{prefix}{repository}"}
+    if repository_type == "dataset":
+        expected_urls.add(f"https://github.com/{repository}")
+    if raw["sourceUrl"] not in expected_urls:
         raise ModelSourceError(f"{identifier}: sourceUrl does not match the pinned repository")
     artifacts_raw = raw["artifacts"]
     if not isinstance(artifacts_raw, list) or not artifacts_raw or len(artifacts_raw) > 128:
@@ -284,6 +286,12 @@ def load_manifest(path: pathlib.Path = DEFAULT_MANIFEST) -> SourceManifest:
 
 
 def artifact_url(source: Source, artifact: Artifact) -> str:
+    if source.source_url.startswith("https://github.com/"):
+        quoted_path = urllib.parse.quote(artifact.path, safe="/")
+        return (
+            f"https://raw.githubusercontent.com/{source.repository}/"
+            f"{source.revision}/{quoted_path}"
+        )
     prefix = "datasets/" if source.repository_type == "dataset" else ""
     quoted_path = urllib.parse.quote(artifact.path, safe="/")
     return f"https://huggingface.co/{prefix}{source.repository}/resolve/{source.revision}/{quoted_path}"
