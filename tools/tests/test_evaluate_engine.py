@@ -21,10 +21,14 @@ def example(
     session: str | None = None,
     strata: list[str] | None = None,
     should_correct: bool | None = None,
+    environment_kind: str = "stock_android_hardware",
+    test_run_id: str = "stock-run",
+    latency_overrides: dict[str, float] | None = None,
 ):
     latency = {system: 20.0 for system in predictions}
+    latency.update(latency_overrides or {})
     value = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "id": f"example-{number}",
         "sessionId": session or f"session-{number}",
         "split": split,
@@ -35,6 +39,9 @@ def example(
         "latencyMs": latency,
         "strata": strata or [],
     }
+    if split == "test":
+        value["environmentKind"] = environment_kind
+        value["testRunId"] = test_run_id
     if should_correct is not None:
         value["shouldCorrect"] = should_correct
     return parse_example(value, number)
@@ -42,7 +49,7 @@ def example(
 
 def metadata():
     return {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "appCommit": "a" * 40,
         "coreApkSha256": "b" * 64,
         "swipeModelSha256": "c" * 64,
@@ -105,6 +112,14 @@ class EvaluateEngineTest(unittest.TestCase):
         }
         rows += [example(6, "swipe", "target", "", swipe_systems, strata=["short"])]
         rows += [example(7, "swipe", "target", "", swipe_systems, strata=["return_trip"])]
+        rows += [example(8, "tap_error", "target", "targte", tap_systems,
+                         environment_kind="grapheneos_hardware", test_run_id="graphene-run")]
+        rows += [example(9, "swipe", "target", "", swipe_systems, strata=["medium"],
+                         environment_kind="grapheneos_hardware", test_run_id="graphene-run")]
+        rows += [example(10, "tap_error", "target", "targte", tap_systems,
+                         environment_kind="low_ram_emulator", test_run_id="low-ram-run")]
+        rows += [example(11, "swipe", "target", "", swipe_systems, strata=["long"],
+                         environment_kind="low_ram_emulator", test_run_id="low-ram-run")]
 
         result = evaluate(
             rows,
@@ -213,6 +228,68 @@ class EvaluateEngineTest(unittest.TestCase):
                 enforce_minimum_counts=False,
             )
 
+    def test_measurement_run_must_match_declared_environment(self):
+        rows = self._minimum_rows()
+        rows[0] = example(
+            11,
+            "tap_error",
+            "target",
+            "raw",
+            {system: list(values) for system, values in rows[0].predictions.items()},
+            environment_kind="grapheneos_hardware",
+            test_run_id="stock-run",
+        )
+        with self.assertRaisesRegex(EvaluationError, "environmentKind disagrees"):
+            evaluate(rows, metadata(), measurement_sha256="e" * 64, enforce_minimum_counts=False)
+
+    def test_release_evidence_requires_substantial_measurements_from_each_environment(self):
+        with self.assertRaisesRegex(EvaluationError, "measurement coverage for stock_android_hardware"):
+            evaluate(
+                self._minimum_rows(),
+                metadata(),
+                measurement_sha256="e" * 64,
+                enforce_minimum_counts=True,
+            )
+
+    def test_metadata_rejects_duplicate_run_ids(self):
+        value = metadata()
+        value["environments"][1]["testRunId"] = "stock-run"
+        with self.assertRaisesRegex(EvaluationError, "duplicate testRunId"):
+            evaluate(
+                self._minimum_rows(),
+                value,
+                measurement_sha256="e" * 64,
+                enforce_minimum_counts=False,
+            )
+
+    def test_each_environment_controls_its_own_latency_gate(self):
+        rows = self._minimum_rows()
+        tap = {
+            "heliboard": ["target"],
+            "fused": ["target", "raw"],
+            "fused_personal": ["target", "raw"],
+            "fused_neural": ["target", "raw"],
+        }
+        rows.extend(
+            example(100 + index, "tap_error", "target", "raw", tap,
+                    latency_overrides={"fused_neural": 1.0})
+            for index in range(30)
+        )
+        rows[3] = example(
+            14,
+            "tap_error",
+            "target",
+            "raw",
+            tap,
+            environment_kind="grapheneos_hardware",
+            test_run_id="graphene-run",
+            latency_overrides={"fused_neural": 81.0},
+        )
+        result = evaluate(rows, metadata(), measurement_sha256="e" * 64, enforce_minimum_counts=False)
+        self.assertLessEqual(result["systems"]["fused_neural"]["latencyMs"]["p95"], 80.0)
+        self.assertEqual(81.0, result["environmentLatencyMs"]["grapheneos_hardware"]["tap"]["p95"])
+        self.assertFalse(result["checks"]["tap_p95_latency"])
+
     @staticmethod
     def _minimum_rows():
         tap = {
@@ -226,6 +303,14 @@ class EvaluateEngineTest(unittest.TestCase):
             example(11, "tap_error", "target", "raw", tap),
             example(12, "valid_word", "target", "target", tap, should_correct=False),
             example(13, "swipe", "target", "", swipe, strata=["short", "return_trip"]),
+            example(14, "tap_error", "target", "raw", tap,
+                    environment_kind="grapheneos_hardware", test_run_id="graphene-run"),
+            example(15, "swipe", "target", "", swipe, strata=["medium"],
+                    environment_kind="grapheneos_hardware", test_run_id="graphene-run"),
+            example(16, "tap_error", "target", "raw", tap,
+                    environment_kind="low_ram_emulator", test_run_id="low-ram-run"),
+            example(17, "swipe", "target", "", swipe, strata=["long"],
+                    environment_kind="low_ram_emulator", test_run_id="low-ram-run"),
         ]
 
 

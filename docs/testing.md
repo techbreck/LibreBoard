@@ -49,6 +49,10 @@ session-separated swipe preparation, split/hash reproducibility, model architect
 CTC utilities, and ONNX operator-file ordering. These dependency-free tests run for every pull
 request.
 
+The Phase 0 evaluator binds each test row to a unique metadata-declared device run. Release-sized
+evidence requires at least 100 tap and 100 swipe latency samples from each stock Android,
+GrapheneOS-without-Play, and low-RAM run, and enforces the p95 budgets independently on all three.
+
 The source release gate also validates the Phase 1 Fastlane metadata. Only reviewed English and
 German copy may ship initially; titles and length bounds are checked, the zero-network and geometric-
 fallback contract must remain explicit, and inherited instructions for proprietary swipe libraries

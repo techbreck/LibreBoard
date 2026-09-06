@@ -515,13 +515,21 @@ class VerifyReleaseEvidenceTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         documents = []
+        environments = (
+            ("stock_android_hardware", "stock-run"),
+            ("grapheneos_hardware", "graphene-run"),
+            ("low_ram_emulator", "low-ram-run"),
+        )
 
         def add(number, category, target, raw, predictions, *, strata=None, should_correct=None):
+            environment_kind, test_run_id = environments[(number - 1) % len(environments)]
             document = {
-                "schemaVersion": 1,
+                "schemaVersion": evaluate_engine.SCHEMA_VERSION,
                 "id": f"release-example-{number}",
                 "sessionId": f"release-session-{number}",
                 "split": "test",
+                "environmentKind": environment_kind,
+                "testRunId": test_run_id,
                 "category": category,
                 "target": target,
                 "raw": raw,
@@ -610,7 +618,7 @@ class VerifyReleaseEvidenceTest(unittest.TestCase):
 
     def phase0_metadata(self):
         return {
-            "schemaVersion": 1,
+            "schemaVersion": evaluate_engine.SCHEMA_VERSION,
             "appCommit": "a" * 40,
             "coreApkSha256": self.apk_hash,
             "swipeModelSha256": "b" * 64,
@@ -738,6 +746,24 @@ class VerifyReleaseEvidenceTest(unittest.TestCase):
         self.write_reports(phase0=phase0)
         self.assertIn(
             "Phase 0 report does not contain the three reference environments",
+            self.verify(),
+        )
+
+    def test_rejects_unbound_environment_measurement_counts(self):
+        phase0 = self.phase0()
+        phase0["environmentCounts"]["grapheneos_hardware"]["tap"] = 0
+        self.write_reports(phase0=phase0)
+        self.assertIn(
+            "Phase 0 report does not bind sufficient measurements to every environment",
+            self.verify(),
+        )
+
+    def test_rejects_invalid_per_environment_latency(self):
+        phase0 = self.phase0()
+        phase0["environmentLatencyMs"]["grapheneos_hardware"]["tap"]["p95"] = "fast"
+        self.write_reports(phase0=phase0)
+        self.assertIn(
+            "Phase 0 report has invalid per-environment latency evidence",
             self.verify(),
         )
 

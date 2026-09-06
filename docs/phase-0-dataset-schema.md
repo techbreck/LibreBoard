@@ -3,10 +3,13 @@
 `tools/evaluate_engine.py` is the release-gate evaluator. It accepts one JSON object per line with
 these fields:
 
-- `schemaVersion`: `1`.
+- `schemaVersion`: `2`.
 - `id`: stable, unique example ID.
 - `sessionId`: collection session; a session may occur in exactly one split.
 - `split`: `train`, `validation`, or `test`.
+- `environmentKind` and `testRunId`: required for every `test` row and forbidden for training or
+  validation rows. The kind is one of `stock_android_hardware`, `grapheneos_hardware`, or
+  `low_ram_emulator`; the run ID must exactly match the corresponding metadata record.
 - `category`: `tap_error`, `valid_word`, `spacing`, `lexical`, or `swipe`.
 - `target` and `raw`: expected and observed text.
 - `predictions`: ranked strings for every applicable system, capped at 32.
@@ -39,8 +42,12 @@ Metadata is a JSON object that binds the report to the artifacts and required en
 
 The evaluator copies this normalized evidence into the output report. Missing device classes,
 placeholder artifact identifiers, a non-physical GrapheneOS run, or a GrapheneOS run with sandboxed
-Google Play cannot produce a passing report. It also computes `measurementDatasetSha256` directly
-from the input JSONL and places that hash in the report; callers cannot supply or override it.
+Google Play cannot produce a passing report. Run IDs must be unique. Release evidence must bind at
+least 100 tap and 100 swipe measurements to each environment; the 80/200 ms p95 gates are evaluated
+independently for every environment, so fast stock-device samples cannot hide a slow or absent
+GrapheneOS run. The report exposes these values as `environmentCounts` and
+`environmentLatencyMs`. It also computes `measurementDatasetSha256` directly from the input JSONL
+and places that hash in the report; callers cannot supply or override it.
 
 ```sh
 python3 tools/evaluate_engine.py measurements.jsonl \

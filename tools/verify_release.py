@@ -1252,7 +1252,7 @@ def read_json_object(errors: list[str], path: pathlib.Path, label: str) -> dict 
 
 
 def validate_phase0_report(errors: list[str], report: dict, apk_hash: str) -> dict | None:
-    if report.get("schemaVersion") != 1:
+    if report.get("schemaVersion") != evaluate_engine.SCHEMA_VERSION:
         fail(errors, "Phase 0 report has an unsupported schema")
     if report.get("passed") is not True:
         fail(errors, "Phase 0 report did not pass")
@@ -1277,6 +1277,35 @@ def validate_phase0_report(errors: list[str], report: dict, apk_hash: str) -> di
         for stratum, minimum in MINIMUM_PHASE0_SWIPE_STRATA_COUNTS.items()
     ):
         fail(errors, "Phase 0 report does not satisfy swipe stratum minimums")
+    environment_counts = report.get("environmentCounts")
+    if (
+        not isinstance(environment_counts, dict)
+        or set(environment_counts) != PHASE0_ENVIRONMENTS
+        or any(
+            not isinstance(environment_counts.get(kind), dict)
+            or not isinstance(environment_counts[kind].get("tap"), int)
+            or isinstance(environment_counts[kind].get("tap"), bool)
+            or environment_counts[kind]["tap"] < evaluate_engine.MINIMUM_ENVIRONMENT_TAP_SAMPLES
+            or not isinstance(environment_counts[kind].get("swipe"), int)
+            or isinstance(environment_counts[kind].get("swipe"), bool)
+            or environment_counts[kind]["swipe"] < evaluate_engine.MINIMUM_ENVIRONMENT_SWIPE_SAMPLES
+            for kind in PHASE0_ENVIRONMENTS
+        )
+    ):
+        fail(errors, "Phase 0 report does not bind sufficient measurements to every environment")
+    environment_latency = report.get("environmentLatencyMs")
+    if (
+        not isinstance(environment_latency, dict)
+        or set(environment_latency) != PHASE0_ENVIRONMENTS
+        or any(
+            not isinstance(environment_latency.get(kind), dict)
+            or not isinstance(environment_latency[kind].get(path), dict)
+            or not finite_number(environment_latency[kind][path].get("p95"))
+            for kind in PHASE0_ENVIRONMENTS
+            for path in ("tap", "swipe")
+        )
+    ):
+        fail(errors, "Phase 0 report has invalid per-environment latency evidence")
 
     evidence = report.get("evidence")
     if not isinstance(evidence, dict):
@@ -1422,7 +1451,7 @@ def evidence_checks(
             measurements = evaluate_engine.read_jsonl(phase0_measurements_path)
             recomputed = evaluate_engine.evaluate(
                 measurements,
-                {"schemaVersion": 1, **phase0_evidence},
+                {"schemaVersion": evaluate_engine.SCHEMA_VERSION, **phase0_evidence},
                 measurement_sha256=measurement_hash,
                 enforce_minimum_counts=True,
             )

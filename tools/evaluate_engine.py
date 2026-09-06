@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from typing import Any, Iterable
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 TAP_SYSTEMS = ("heliboard", "fused", "fused_personal", "fused_neural")
 SWIPE_SYSTEMS = ("geometric", "ctc", "fused_swipe")
 ALL_SYSTEMS = TAP_SYSTEMS + SWIPE_SYSTEMS
@@ -47,6 +47,8 @@ REQUIRED_ENVIRONMENTS = {
     "grapheneos_hardware",
     "low_ram_emulator",
 }
+MINIMUM_ENVIRONMENT_TAP_SAMPLES = 100
+MINIMUM_ENVIRONMENT_SWIPE_SAMPLES = 100
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 GIT_COMMIT = re.compile(r"^[0-9a-f]{40,64}$")
 
@@ -59,6 +61,8 @@ class EvaluationError(ValueError):
 class Example:
     identifier: str
     session_id: str
+    environment_kind: str
+    test_run_id: str
     split: str
     category: str
     target: str
@@ -87,6 +91,18 @@ def parse_example(raw: dict[str, Any], line_number: int) -> Example:
         raise EvaluationError(f"{location}: unsupported category")
     if not isinstance(raw.get("raw"), str):
         raise EvaluationError(f"{location}: raw must be a string")
+    environment_kind = raw.get("environmentKind")
+    test_run_id = raw.get("testRunId")
+    if raw["split"] == "test":
+        if not isinstance(environment_kind, str) or environment_kind not in REQUIRED_ENVIRONMENTS:
+            raise EvaluationError(f"{location}: test example requires a valid environmentKind")
+        if not isinstance(test_run_id, str) or not test_run_id or len(test_run_id) > 512:
+            raise EvaluationError(f"{location}: test example requires testRunId")
+    else:
+        if environment_kind is not None or test_run_id is not None:
+            raise EvaluationError(f"{location}: only test examples may identify a measurement run")
+        environment_kind = ""
+        test_run_id = ""
 
     systems = SWIPE_SYSTEMS if raw["category"] == "swipe" else TAP_SYSTEMS
     predictions_raw = raw.get("predictions")
@@ -132,6 +148,8 @@ def parse_example(raw: dict[str, Any], line_number: int) -> Example:
     return Example(
         identifier=raw["id"],
         session_id=raw["sessionId"],
+        environment_kind=environment_kind,
+        test_run_id=test_run_id,
         split=raw["split"],
         category=raw["category"],
         target=raw["target"],
@@ -219,8 +237,9 @@ def validate_swipe_strata(
 
 def check_dataset(
     examples: list[Example],
+    environments: list[dict[str, Any]],
     enforce_minimum_counts: bool,
-) -> tuple[list[Example], dict[str, int], dict[str, int]]:
+) -> tuple[list[Example], dict[str, int], dict[str, int], dict[str, dict[str, int]]]:
     ids = Counter(example.identifier for example in examples)
     duplicates = sorted(identifier for identifier, count in ids.items() if count > 1)
     if duplicates:
@@ -233,6 +252,39 @@ def check_dataset(
         raise EvaluationError(f"sessions cross dataset splits: {', '.join(leaked[:5])}")
 
     test = [example for example in examples if example.split == "test"]
+    run_to_kind = {environment["testRunId"]: environment["kind"] for environment in environments}
+    for example in test:
+        expected_kind = run_to_kind.get(example.test_run_id)
+        if expected_kind is None:
+            raise EvaluationError(
+                f"example {example.identifier}: testRunId is not declared by metadata"
+            )
+        if expected_kind != example.environment_kind:
+            raise EvaluationError(
+                f"example {example.identifier}: environmentKind disagrees with metadata"
+            )
+
+    environment_counts: dict[str, dict[str, int]] = {}
+    for environment in environments:
+        kind = environment["kind"]
+        run_id = environment["testRunId"]
+        rows = [example for example in test if example.test_run_id == run_id]
+        tap_count = sum(example.category != "swipe" for example in rows)
+        swipe_count = sum(example.category == "swipe" for example in rows)
+        environment_counts[kind] = {
+            "tap": tap_count,
+            "swipe": swipe_count,
+            "total": len(rows),
+        }
+        if enforce_minimum_counts and (
+            tap_count < MINIMUM_ENVIRONMENT_TAP_SAMPLES
+            or swipe_count < MINIMUM_ENVIRONMENT_SWIPE_SAMPLES
+        ):
+            raise EvaluationError(
+                f"measurement coverage for {kind} is insufficient: "
+                f"tap={tap_count}<{MINIMUM_ENVIRONMENT_TAP_SAMPLES}, "
+                f"swipe={swipe_count}<{MINIMUM_ENVIRONMENT_SWIPE_SAMPLES}"
+            )
     counts = Counter(example.category for example in test)
     if enforce_minimum_counts:
         missing = [f"{category}={counts[category]}<{minimum}" for category, minimum in MINIMUM_COUNTS.items()
@@ -244,7 +296,7 @@ def check_dataset(
         swipe,
         MINIMUM_SWIPE_STRATA_COUNTS if enforce_minimum_counts else {"short": 1, "return_trip": 1},
     )
-    return test, dict(sorted(counts.items())), strata
+    return test, dict(sorted(counts.items())), strata, environment_counts
 
 
 def validate_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
@@ -269,12 +321,13 @@ def validate_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
         raise EvaluationError("metadata requires exactly the three reference environments")
     validated_environments: list[dict[str, Any]] = []
     seen: set[str] = set()
+    seen_run_ids: set[str] = set()
     for index, environment in enumerate(environments):
         location = f"metadata environment {index + 1}"
         if not isinstance(environment, dict):
             raise EvaluationError(f"{location} must be an object")
         kind = environment.get("kind")
-        if kind not in REQUIRED_ENVIRONMENTS or kind in seen:
+        if not isinstance(kind, str) or kind not in REQUIRED_ENVIRONMENTS or kind in seen:
             raise EvaluationError(f"{location} has an invalid or duplicate kind")
         seen.add(kind)
         required_strings = ["deviceModel", "buildFingerprint", "testRunId"]
@@ -284,6 +337,10 @@ def validate_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
             value = environment.get(field)
             if not isinstance(value, str) or not value or len(value) > 512:
                 raise EvaluationError(f"{location} requires {field}")
+        test_run_id = environment["testRunId"]
+        if test_run_id in seen_run_ids:
+            raise EvaluationError(f"{location} has a duplicate testRunId")
+        seen_run_ids.add(test_run_id)
         api_level = environment.get("apiLevel")
         if isinstance(api_level, bool) or not isinstance(api_level, int) or api_level < 26 or api_level > 100:
             raise EvaluationError(f"{location} has an invalid apiLevel")
@@ -324,8 +381,12 @@ def evaluate(
 ) -> dict[str, Any]:
     if not isinstance(measurement_sha256, str) or not SHA256.fullmatch(measurement_sha256):
         raise EvaluationError("measurement dataset requires a lowercase SHA-256")
-    test, counts, swipe_strata = check_dataset(examples, enforce_minimum_counts)
     evidence = validate_metadata(metadata)
+    test, counts, swipe_strata, environment_counts = check_dataset(
+        examples,
+        evidence["environments"],
+        enforce_minimum_counts,
+    )
     evidence["measurementDatasetSha256"] = measurement_sha256
     peak_memory = evidence["peakAddedNeuralMemoryMiB"]
 
@@ -338,6 +399,8 @@ def evaluate(
         "evidence": evidence,
         "counts": counts,
         "swipeStrataCounts": swipe_strata,
+        "environmentCounts": environment_counts,
+        "environmentLatencyMs": {},
         "systems": {},
     }
     for system in TAP_SYSTEMS:
@@ -359,6 +422,24 @@ def evaluate(
                 "p50": percentile([row.latency_ms[system] for row in swipe], 0.50),
                 "p95": percentile([row.latency_ms[system] for row in swipe], 0.95),
                 "p99": percentile([row.latency_ms[system] for row in swipe], 0.99),
+            },
+        }
+
+    for environment in evidence["environments"]:
+        kind = environment["kind"]
+        run_id = environment["testRunId"]
+        environment_taps = [row for row in tap_all if row.test_run_id == run_id]
+        environment_swipes = [row for row in swipe if row.test_run_id == run_id]
+        metrics["environmentLatencyMs"][kind] = {
+            "tap": {
+                "p50": percentile([row.latency_ms["fused_neural"] for row in environment_taps], 0.50),
+                "p95": percentile([row.latency_ms["fused_neural"] for row in environment_taps], 0.95),
+                "p99": percentile([row.latency_ms["fused_neural"] for row in environment_taps], 0.99),
+            },
+            "swipe": {
+                "p50": percentile([row.latency_ms["fused_swipe"] for row in environment_swipes], 0.50),
+                "p95": percentile([row.latency_ms["fused_swipe"] for row in environment_swipes], 0.95),
+                "p99": percentile([row.latency_ms["fused_swipe"] for row in environment_swipes], 0.99),
             },
         }
 
@@ -390,8 +471,14 @@ def evaluate(
         "swipe_short_top3": gates["swipeShortTop3"] >= 0.90,
         "swipe_return_trip_top3": gates["swipeReturnTripTop3"] >= 0.90,
         "swipe_geometric_relative_error_reduction": gates["swipeGeometricRelativeErrorReduction"] >= 0.20,
-        "tap_p95_latency": metrics["systems"]["fused_neural"]["latencyMs"]["p95"] <= 80.0,
-        "swipe_p95_latency": metrics["systems"]["fused_swipe"]["latencyMs"]["p95"] <= 200.0,
+        "tap_p95_latency": all(
+            values["tap"]["p95"] <= 80.0
+            for values in metrics["environmentLatencyMs"].values()
+        ),
+        "swipe_p95_latency": all(
+            values["swipe"]["p95"] <= 200.0
+            for values in metrics["environmentLatencyMs"].values()
+        ),
         "peak_neural_memory": peak_memory <= 64.0,
     }
     metrics["checks"] = checks
@@ -406,6 +493,12 @@ def render(metrics: dict[str, Any]) -> str:
         lines.append(
             f"{system:16} top1={values['top1']:.3%} top3={values['top3']:.3%} "
             f"p95={latency['p95']:.1f}ms"
+        )
+    lines.append("")
+    for kind, values in metrics["environmentLatencyMs"].items():
+        lines.append(
+            f"{kind:24} tap-p95={values['tap']['p95']:.1f}ms "
+            f"swipe-p95={values['swipe']['p95']:.1f}ms"
         )
     lines.append("")
     lines.extend(f"{'PASS' if passed else 'FAIL'} {name}" for name, passed in metrics["checks"].items())

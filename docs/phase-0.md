@@ -12,7 +12,8 @@ may be measured only outside the repository as a black-box reference.
 JSONL. Its versioned input contract is documented in `docs/phase-0-dataset-schema.md`, and its own
 tests run in CI. Reports are cryptographically bound by SHA-256 to the APK and both models and must
 identify stock hardware, physical GrapheneOS hardware without sandboxed Google Play, and a low-RAM
-emulator. The swipe source, split, training, and ONNX export contracts are executable and tested, and
+emulator. Every measured test row is bound to one declared device run, with minimum tap/swipe
+coverage and separate latency gates per environment. The swipe source, split, training, and ONNX export contracts are executable and tested, and
 the exact million-gesture corpus manifest is committed. The context student architecture, tokenizer
 contract, INT4 exporter and hash-locked toolchain are also executable. Its pinned 68,748-sentence
 English/German corpus uses whole-session 90/5/5 splits and produces a deterministic 16,384-token BPE
