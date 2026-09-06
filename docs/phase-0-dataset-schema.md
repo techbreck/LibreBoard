@@ -28,6 +28,11 @@ unchanged words from diluting the context-sensitive neural test.
 Tap systems are `heliboard`, `fused`, `fused_personal`, and `fused_neural`. Swipe systems are
 `geometric`, `ctc`, and `fused_swipe`.
 
+Measured rows must contain exactly their applicable prediction and latency systems; tap and swipe
+results cannot be mixed in one row. Candidate slates must be normalization-distinct, identity/text
+fields and JSONL lines are bounded, duplicate strata are rejected, and `shouldCorrect` cannot be
+attached to any category other than `valid_word`.
+
 Every measured LibreBoard tap slate (`fused`, `fused_personal`, and `fused_neural`) must contain the
 exact `raw` surface, including capitalization and punctuation. The evaluator rejects a report that
 cannot prove the one-tap raw-word fallback; normalization is used only for accuracy scoring.

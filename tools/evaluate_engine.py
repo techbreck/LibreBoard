@@ -53,6 +53,9 @@ MINIMUM_VALID_WORD_CORRECTIONS = 500
 MINIMUM_VALID_WORD_KEEPS = 500
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 GIT_COMMIT = re.compile(r"^[0-9a-f]{40,64}$")
+MAXIMUM_JSONL_LINE_BYTES = 1024 * 1024
+MAXIMUM_IDENTITY_LENGTH = 512
+MAXIMUM_TEXT_LENGTH = 4_096
 
 
 class EvaluationError(ValueError):
@@ -87,12 +90,19 @@ def parse_example(raw: dict[str, Any], line_number: int) -> Example:
     for field in required_strings:
         if not isinstance(raw.get(field), str) or not raw[field]:
             raise EvaluationError(f"{location}: {field} must be a non-empty string")
+    for field in ("id", "sessionId"):
+        if len(raw[field]) > MAXIMUM_IDENTITY_LENGTH:
+            raise EvaluationError(f"{location}: {field} is too long")
+    if len(raw["target"]) > MAXIMUM_TEXT_LENGTH:
+        raise EvaluationError(f"{location}: target is too long")
     if raw["split"] not in {"train", "validation", "test"}:
         raise EvaluationError(f"{location}: unsupported split")
     if raw["category"] not in {*TAP_CATEGORIES, "swipe"}:
         raise EvaluationError(f"{location}: unsupported category")
     if not isinstance(raw.get("raw"), str):
         raise EvaluationError(f"{location}: raw must be a string")
+    if len(raw["raw"]) > MAXIMUM_TEXT_LENGTH:
+        raise EvaluationError(f"{location}: raw is too long")
     environment_kind = raw.get("environmentKind")
     test_run_id = raw.get("testRunId")
     if raw["split"] == "test":
@@ -112,15 +122,22 @@ def parse_example(raw: dict[str, Any], line_number: int) -> Example:
     if raw["split"] == "test":
         if not isinstance(predictions_raw, dict) or not isinstance(latency_raw, dict):
             raise EvaluationError(f"{location}: test examples require predictions and latencyMs")
-        missing = [system for system in systems if system not in predictions_raw or system not in latency_raw]
-        if missing:
-            raise EvaluationError(f"{location}: missing systems: {', '.join(missing)}")
+    if predictions_raw is not None and (
+        not isinstance(predictions_raw, dict) or set(predictions_raw) != set(systems)
+    ):
+        raise EvaluationError(f"{location}: predictions must contain exactly the applicable systems")
+    if latency_raw is not None and (
+        not isinstance(latency_raw, dict) or set(latency_raw) != set(systems)
+    ):
+        raise EvaluationError(f"{location}: latencyMs must contain exactly the applicable systems")
     predictions: dict[str, tuple[str, ...]] = {}
     for system, values in (predictions_raw or {}).items():
         if system not in ALL_SYSTEMS or not isinstance(values, list) or not values or len(values) > 32:
             raise EvaluationError(f"{location}: invalid prediction list for {system}")
-        if any(not isinstance(value, str) or not value for value in values):
+        if any(not isinstance(value, str) or not value or len(value) > MAXIMUM_TEXT_LENGTH for value in values):
             raise EvaluationError(f"{location}: predictions must be non-empty strings")
+        if len({normalized(value) for value in values}) != len(values):
+            raise EvaluationError(f"{location}: predictions must be normalization-distinct")
         predictions[system] = tuple(values)
     if raw["split"] == "test" and raw["category"] != "swipe":
         if not raw["raw"]:
@@ -139,13 +156,17 @@ def parse_example(raw: dict[str, Any], line_number: int) -> Example:
         latency[system] = float(value)
 
     strata_raw = raw.get("strata", [])
-    if not isinstance(strata_raw, list) or any(not isinstance(value, str) or not value for value in strata_raw):
+    if (
+        not isinstance(strata_raw, list)
+        or any(not isinstance(value, str) or not value for value in strata_raw)
+        or len(strata_raw) != len(set(strata_raw))
+    ):
         raise EvaluationError(f"{location}: strata must be strings")
     should_correct = raw.get("shouldCorrect")
     if raw["category"] == "valid_word" and not isinstance(should_correct, bool):
         raise EvaluationError(f"{location}: valid_word examples require shouldCorrect")
-    if should_correct is not None and not isinstance(should_correct, bool):
-        raise EvaluationError(f"{location}: shouldCorrect must be boolean")
+    if raw["category"] != "valid_word" and should_correct is not None:
+        raise EvaluationError(f"{location}: shouldCorrect is valid only for valid_word examples")
 
     return Example(
         identifier=raw["id"],
@@ -165,11 +186,15 @@ def parse_example(raw: dict[str, Any], line_number: int) -> Example:
 
 def read_jsonl(path: pathlib.Path) -> list[Example]:
     examples: list[Example] = []
-    with path.open(encoding="utf-8") as stream:
+    with path.open("rb") as stream:
         for line_number, line in enumerate(stream, 1):
+            if len(line) > MAXIMUM_JSONL_LINE_BYTES:
+                raise EvaluationError(f"line {line_number}: exceeds the byte limit")
             if line.strip():
                 try:
                     value = json.loads(line)
+                except UnicodeDecodeError as failure:
+                    raise EvaluationError(f"line {line_number}: invalid UTF-8") from failure
                 except json.JSONDecodeError as failure:
                     raise EvaluationError(f"line {line_number}: invalid JSON: {failure.msg}") from failure
                 if not isinstance(value, dict):

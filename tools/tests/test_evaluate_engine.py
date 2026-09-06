@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import pathlib
 import sys
+import tempfile
 import unittest
 
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from evaluate_engine import EvaluationError, evaluate, parse_example, validate_swipe_strata  # noqa: E402
+from evaluate_engine import EvaluationError, evaluate, parse_example, read_jsonl, validate_swipe_strata  # noqa: E402
 
 
 def example(
@@ -174,6 +175,43 @@ class EvaluateEngineTest(unittest.TestCase):
         }
         with self.assertRaisesRegex(EvaluationError, "fused does not preserve the exact raw"):
             example(1, "tap_error", "target", "raw", systems)
+
+    def test_measurement_rows_reject_cross_path_systems_and_duplicate_candidates(self):
+        systems = {
+            "heliboard": ["target"],
+            "fused": ["target", "raw"],
+            "fused_personal": ["target", "raw"],
+            "fused_neural": ["target", "raw"],
+            "ctc": ["target"],
+        }
+        with self.assertRaisesRegex(EvaluationError, "exactly the applicable systems"):
+            example(1, "tap_error", "target", "raw", systems)
+
+        systems.pop("ctc")
+        systems["fused"] = ["target", "raw", "RAW"]
+        with self.assertRaisesRegex(EvaluationError, "normalization-distinct"):
+            example(2, "tap_error", "target", "raw", systems)
+
+    def test_should_correct_is_rejected_outside_valid_word_rows(self):
+        systems = {
+            "heliboard": ["target"],
+            "fused": ["target", "raw"],
+            "fused_personal": ["target", "raw"],
+            "fused_neural": ["target", "raw"],
+        }
+        with self.assertRaisesRegex(EvaluationError, "only for valid_word"):
+            example(1, "tap_error", "target", "raw", systems, should_correct=True)
+
+    def test_jsonl_reader_rejects_unbounded_or_invalid_utf8_rows(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = pathlib.Path(temporary) / "measurements.jsonl"
+            path.write_bytes(b"x" * (1024 * 1024 + 1) + b"\n")
+            with self.assertRaisesRegex(EvaluationError, "byte limit"):
+                read_jsonl(path)
+
+            path.write_bytes(b"\xff\n")
+            with self.assertRaisesRegex(EvaluationError, "invalid UTF-8"):
+                read_jsonl(path)
 
     def test_release_swipe_strata_require_substantial_coverage(self):
         swipe = {system: ["target"] for system in ("geometric", "ctc", "fused_swipe")}
