@@ -238,7 +238,7 @@ sealed interface KeyData : AbstractKeyData {
                 return this
             val id = Settings.getInstance().getStringResIdByName("label_$this")
             if (id == 0) {
-                Log.w("TextKeyData", "no resource for label $this in ${params.mId}")
+                Log.w("TextKeyData", "no resource for a text-key label in ${params.mId}")
                 return this
             }
             return getStringInLocale(id, params)

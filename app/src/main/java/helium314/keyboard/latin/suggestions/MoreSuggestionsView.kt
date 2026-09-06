@@ -97,12 +97,12 @@ class MoreSuggestionsView @JvmOverloads constructor(
 
     override fun onKeyInput(key: Key, x: Int, y: Int) {
         if (key !is MoreSuggestionKey) {
-            Log.e(TAG, "Expected key is MoreSuggestionKey, but found ${key.javaClass.name}")
+            Log.e(TAG, "Expected key is MoreSuggestionKey, but found a different key type")
             return
         }
         val keyboard = keyboard
         if (keyboard !is MoreSuggestions) {
-            Log.e(TAG, "Expected keyboard is MoreSuggestions, but found ${keyboard?.javaClass?.name}")
+            Log.e(TAG, "Expected keyboard is MoreSuggestions, but found a different keyboard type")
             return
         }
         val suggestedWords = keyboard.mSuggestedWords

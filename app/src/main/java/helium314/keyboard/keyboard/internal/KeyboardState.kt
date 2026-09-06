@@ -217,7 +217,7 @@ class KeyboardState(private val switchActions: SwitchActions) {
 
     fun onPressKey(code: Int, pointerCount: Int, autoCapsFlags: Int, recapitalizeMode: RecapitalizeMode?) {
         if (DEBUG_EVENT) {
-            Log.d(TAG, ("onPressKey: code=${Constants.printableCode(code)} pointerCount=$pointerCount ${stateToString(autoCapsFlags, recapitalizeMode)}"))
+            Log.d(TAG, "onPressKey: pointerCount=$pointerCount ${stateToString(autoCapsFlags, recapitalizeMode)}")
         }
         if (code != KeyCode.SHIFT) {
             // Because the double tap shift key timer is to detect two consecutive shift key press,
@@ -250,7 +250,7 @@ class KeyboardState(private val switchActions: SwitchActions) {
 
     fun onReleaseKey(code: Int, withSliding: Boolean, autoCapsFlags: Int, recapitalizeMode: RecapitalizeMode?) {
         if (DEBUG_EVENT) {
-            Log.d(TAG, "onReleaseKey: code=${Constants.printableCode(code)} sliding=$withSliding ${stateToString(autoCapsFlags, recapitalizeMode)}")
+            Log.d(TAG, "onReleaseKey: sliding=$withSliding ${stateToString(autoCapsFlags, recapitalizeMode)}")
         }
         when (code) {
             KeyCode.SHIFT        -> onReleaseShift(withSliding, autoCapsFlags, recapitalizeMode)
@@ -459,7 +459,7 @@ class KeyboardState(private val switchActions: SwitchActions) {
     fun onEvent(event: Event, autoCapsFlags: Int, recapitalizeMode: RecapitalizeMode?) {
         val code = if (event.isFunctionalKeyEvent) event.keyCode else event.codePoint
         if (DEBUG_EVENT) {
-            Log.d(TAG, "onEvent: code=${Constants.printableCode(code)} ${stateToString(autoCapsFlags, recapitalizeMode)}")
+            Log.d(TAG, "onEvent: functional=${event.isFunctionalKeyEvent} ${stateToString(autoCapsFlags, recapitalizeMode)}")
         }
 
         if (mode in Settings.getValues().mAlphaAfterSpace) {

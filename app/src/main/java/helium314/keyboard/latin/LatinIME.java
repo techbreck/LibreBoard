@@ -1163,12 +1163,9 @@ public class LatinIME extends InputMethodService implements
     @Override
     public void onDisplayCompletions(final CompletionInfo[] applicationSpecifiedCompletions) {
         if (DebugFlags.DEBUG_ENABLED) {
-            Log.i(TAG, "Received completions:");
-            if (applicationSpecifiedCompletions != null) {
-                for (int i = 0; i < applicationSpecifiedCompletions.length; i++) {
-                    Log.i(TAG, "  #" + i + ": " + applicationSpecifiedCompletions[i]);
-                }
-            }
+            final int completionCount = applicationSpecifiedCompletions == null
+                    ? 0 : applicationSpecifiedCompletions.length;
+            Log.i(TAG, "Received application completions; count=" + completionCount);
         }
         if (!mSettings.getCurrent().mInputAttributes.mApplicationSpecifiedCompletionOn) {
             return;

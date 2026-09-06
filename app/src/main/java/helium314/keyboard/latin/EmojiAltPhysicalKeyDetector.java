@@ -46,7 +46,7 @@ public final class EmojiAltPhysicalKeyDetector {
 
         public void onKeyDown(@NonNull final KeyEvent keyEvent) {
             if (DEBUG) {
-                Log.d(TAG, "EmojiHotKeys.onKeyDown() - " + mName + " - considering " + keyEvent);
+                Log.d(TAG, "EmojiHotKeys.onKeyDown() - " + mName + " - considering event");
             }
 
             final Pair<Integer, Integer> key =
@@ -67,7 +67,7 @@ public final class EmojiAltPhysicalKeyDetector {
 
         public void onKeyUp(@NonNull final KeyEvent keyEvent) {
             if (DEBUG) {
-                Log.d(TAG, "EmojiHotKeys.onKeyUp() - " + mName + " - considering " + keyEvent);
+                Log.d(TAG, "EmojiHotKeys.onKeyUp() - " + mName + " - considering event");
             }
 
             final int keyCode = keyEvent.getKeyCode();
@@ -137,7 +137,7 @@ public final class EmojiAltPhysicalKeyDetector {
 
     public void onKeyDown(@NonNull final KeyEvent keyEvent) {
         if (DEBUG) {
-            Log.d(TAG, "onKeyDown(): " + keyEvent);
+            Log.d(TAG, "onKeyDown(): checking emoji hot keys");
         }
 
         if (shouldProcessEvent(keyEvent)) {
@@ -149,7 +149,7 @@ public final class EmojiAltPhysicalKeyDetector {
 
     public void onKeyUp(@NonNull final KeyEvent keyEvent) {
         if (DEBUG) {
-            Log.d(TAG, "onKeyUp(): " + keyEvent);
+            Log.d(TAG, "onKeyUp(): checking emoji hot keys");
         }
 
         if (shouldProcessEvent(keyEvent)) {

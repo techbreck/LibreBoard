@@ -60,7 +60,7 @@ class AndroidSpellCheckerSession(service: AndroidSpellCheckerService) : AndroidW
                 val newSuggestionsInfo = SuggestionsInfo(newFlags, EMPTY_STRING_ARRAY)
                 newSuggestionsInfo.setCookieAndSequence(suggestionsInfo.cookie, suggestionsInfo.sequence)
                 if (DBG)
-                    Log.d(TAG, ("Override and remove old span over: $splitText, $offset,$newLength"))
+                    Log.d(TAG, "Override and remove old span at offset=$offset, length=$newLength")
                 additionalOffsets.add(offset)
                 additionalLengths.add(newLength)
                 additionalSuggestionsInfos.add(newSuggestionsInfo)

@@ -144,7 +144,7 @@ class KeyboardParser(private val params: KeyboardParams, private val context: Co
                         Key.LABEL_FLAGS_AUTO_X_SCALE
                     else 0
                 if (DebugFlags.DEBUG_ENABLED)
-                    Log.d(TAG, "adding key ${key.label}, ${key.code}")
+                    Log.d(TAG, "adding parsed key")
                 key.toKeyParams(params, defaultLabelFlags or extraFlags)
             }
         }

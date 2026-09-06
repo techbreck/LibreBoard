@@ -915,7 +915,8 @@ public final class InputLogic {
                     return;
                 }
                 // unknown event
-                Log.e(TAG, "unknown event, key code: "+keyCode+", codepoint "+event.getCodePoint()+", meta: "+event.getMetaState());
+                Log.e(TAG, "Unknown input event; hasCodePoint=" + (event.getCodePoint() >= 0)
+                        + ", hasMetaState=" + (event.getMetaState() != 0));
                 if (DebugFlags.DEBUG_ENABLED)
                     throw new RuntimeException("Unknown event");
         }
@@ -2479,7 +2480,7 @@ public final class InputLogic {
         long startTimeMillis = 0;
         if (DebugFlags.DEBUG_ENABLED) {
             startTimeMillis = SystemClock.elapsedRealtime();
-            Log.d(TAG, "commitChosenWord() : [" + chosenWord + "]");
+            Log.d(TAG, "commitChosenWord(): starting commit");
         }
         // essentially reverted https://github.com/lineageos/android_packages_inputmethods_LatinIME/commit/ee6de1466bc98e27bd414c9a7451f2aee3f9e721
         // can't find any drawback (performance, neither when setting nor when reading)
@@ -2500,7 +2501,6 @@ public final class InputLogic {
             long runTimeMillis = SystemClock.elapsedRealtime() - startTimeMillis;
             Log.d(TAG, "commitChosenWord() : " + runTimeMillis + " ms to run "
                     + "Connection.getNgramContextFromNthPreviousWord()");
-            Log.d(TAG, "commitChosenWord() : NgramContext = " + ngramContext);
             startTimeMillis = SystemClock.elapsedRealtime();
         }
         final String rawWordBeforeCommit = mWordComposer.getTypedWord();

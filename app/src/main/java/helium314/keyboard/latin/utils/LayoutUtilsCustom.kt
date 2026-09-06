@@ -73,7 +73,7 @@ object LayoutUtilsCustom {
         }
         if (keys.any { row -> row.any {
                 if ((it.mLabel?.length ?: 0) > 20) {
-                    Log.w(TAG, "too long text on key: ${it.mLabel}")
+                    Log.w(TAG, "custom key label exceeds the length limit")
                     true
                 } else false
             } }) {
@@ -81,7 +81,7 @@ object LayoutUtilsCustom {
         }
         if (keys.any { row -> row.any {
                 if ((it.mPopupKeys?.size ?: 0) > 20) {
-                    Log.w(TAG, "too many popup keys on key ${it.mLabel}")
+                    Log.w(TAG, "custom key has too many popup keys")
                     true
                 } else false
             } }) {
@@ -89,7 +89,7 @@ object LayoutUtilsCustom {
         }
         if (keys.any { row -> row.any { true == it.mPopupKeys?.any { popupKey ->
                 if ((popupKey.mLabel?.length ?: 0) > 10) {
-                    Log.w(TAG, "too long text on popup key: ${popupKey.mLabel}")
+                    Log.w(TAG, "custom popup-key label exceeds the length limit")
                     true
                 } else false
             } } }) {
@@ -152,7 +152,7 @@ object LayoutUtilsCustom {
     fun removeMissingLayouts(context: Context) {
         val prefs = context.prefs()
         fun remove(type: LayoutType, name: String) {
-            Log.w(TAG, "removing custom layout ${getDisplayName(name)} / $name without file")
+            Log.w(TAG, "removing a custom layout whose backing file is missing")
             SubtypeSettings.onRenameLayout(type, name, null, context)
         }
         LayoutType.entries.forEach { type ->

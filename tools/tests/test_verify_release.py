@@ -315,6 +315,54 @@ class VerifyStoreMetadataTest(unittest.TestCase):
             self.assertTrue(any(error.startswith("cannot read de-DE store metadata title.txt") for error in errors))
 
 
+class VerifyPrivacyLoggingTest(unittest.TestCase):
+    def verify(self, source: str, suffix: str = ".kt") -> list[str]:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            (root / f"Fixture{suffix}").write_text(source, encoding="utf-8")
+            errors = []
+            verify_release.validate_no_content_bearing_logs(errors, root)
+            return errors
+
+    def test_rejects_java_and_kotlin_content_payloads(self):
+        java_errors = self.verify(
+            'Log.d(TAG, "commit=" + chosenWord);\n',
+            suffix=".java",
+        )
+        kotlin_errors = self.verify(
+            'Log.d(TAG, "candidate=${suggestion.mWord}")\n',
+        )
+        direct_errors = self.verify('Log.d(TAG, wordProperty.toString())\n')
+
+        self.assertEqual(1, len(java_errors))
+        self.assertEqual(1, len(kotlin_errors))
+        self.assertEqual(1, len(direct_errors))
+        self.assertTrue(all("content-bearing log call is forbidden" in error for error in (
+            java_errors + kotlin_errors + direct_errors
+        )))
+
+    def test_allows_counts_timings_scores_and_null_checks(self):
+        safe_source = """
+            Log.d(TAG, "length=" + text.length());
+            Log.d(TAG, "suggestionCount=${result.mSuggestions.size}")
+            Log.d(TAG, "hasKey=${key != null}, score=${first.mScore}")
+            Log.d(TAG, "elapsed=" + elapsedMillis);
+        """
+        self.assertEqual([], self.verify(safe_source))
+
+    def test_native_debug_and_profile_logging_are_fail_closed(self):
+        source = pathlib.Path(__file__).resolve().parents[2] / "app/src/main/jni/Android.mk"
+        errors = []
+        verify_release.validate_native_logging_lock(errors, source)
+        self.assertEqual([], errors)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            unlocked = pathlib.Path(temporary) / "Android.mk"
+            unlocked.write_text("FLAG_DBG ?= false\nFLAG_DO_PROFILE ?= false\n", encoding="utf-8")
+            verify_release.validate_native_logging_lock(errors, unlocked)
+        self.assertIn("native debug/profile logging must remain fail-closed", errors)
+
+
 class VerifyGradleDependenciesTest(unittest.TestCase):
     def setUp(self):
         self.source = pathlib.Path(__file__).resolve().parents[2] / "gradle/verification-metadata.xml"

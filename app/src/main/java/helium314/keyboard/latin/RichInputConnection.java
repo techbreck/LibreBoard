@@ -652,8 +652,11 @@ public final class RichInputConnection implements PrivateCommandPerformer {
 
     public void sendKeyEvent(final KeyEvent keyEvent) {
         if (DEBUG_BATCH_NESTING) checkBatchEdit();
-        if (DebugFlags.DEBUG_ENABLED) // no details, might be too sensitive
-            Log.d(TAG, "key event with action "+keyEvent.getAction()+", is control: "+Character.isISOControl(keyEvent.getUnicodeChar()));
+        if (DebugFlags.DEBUG_ENABLED) { // only derived metadata; never log the event/code point
+            final int eventAction = keyEvent.getAction();
+            final boolean isControl = Character.isISOControl(keyEvent.getUnicodeChar());
+            Log.d(TAG, "key event with action " + eventAction + ", is control: " + isControl);
+        }
         if (keyEvent.getAction() == KeyEvent.ACTION_DOWN) {
             if (DEBUG_PREVIOUS_TEXT) checkConsistencyForDebug();
             // This method is only called for enter or backspace when speaking to old applications
@@ -757,7 +760,8 @@ public final class RichInputConnection implements PrivateCommandPerformer {
                 // Note that the check may also fail because the text field is not yet updated, so we don't want to check everything!
                 final CharSequence lastChar = mIC.getTextBeforeCursor(1, 0);
                 if (lastChar == null || lastChar.length() == 0 || text.charAt(text.length() - 1) != lastChar.charAt(0)) {
-                    Log.w(TAG, "did set " + text + ", but got " + mIC.getTextBeforeCursor(text.length(), 0) + " as last character");
+                    Log.w(TAG, "Editor composing-text verification failed; requested length="
+                            + text.length() + ", observed length=" + (lastChar == null ? -1 : lastChar.length()));
                     return false;
                 }
             }

@@ -20,6 +20,16 @@ LOCAL_PATH := $(call my-dir)
 FLAG_DBG ?= false
 FLAG_DO_PROFILE ?= false
 
+# LibreBoard must never compile LatinIME's inherited candidate, key-code, or gesture-path
+# diagnostics. These flags are intentionally unsupported even for local debug builds because
+# an IME cannot safely place entered text or reconstructable input traces in Android logs.
+ifneq ($(strip $(FLAG_DBG)),false)
+    $(error FLAG_DBG is disabled by LibreBoard's no-typed-text-logs policy)
+endif
+ifneq ($(strip $(FLAG_DO_PROFILE)),false)
+    $(error FLAG_DO_PROFILE is disabled by LibreBoard's no-typed-text-logs policy)
+endif
+
 ######################################
 include $(CLEAR_VARS)
 

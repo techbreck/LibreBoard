@@ -39,7 +39,7 @@ public final class PointerTrackerQueue {
     public void add(final Element pointer) {
         synchronized (mExpandableArrayOfActivePointers) {
             if (DEBUG) {
-                Log.d(TAG, "add: " + pointer + " " + this);
+                Log.d(TAG, "add pointer; activeCount=" + mArraySize);
             }
             final ArrayList<Element> expandableArray = mExpandableArrayOfActivePointers;
             final int arraySize = mArraySize;
@@ -55,7 +55,7 @@ public final class PointerTrackerQueue {
     public void remove(final Element pointer) {
         synchronized (mExpandableArrayOfActivePointers) {
             if (DEBUG) {
-                Log.d(TAG, "remove: " + pointer + " " + this);
+                Log.d(TAG, "remove pointer; activeCount=" + mArraySize);
             }
             final ArrayList<Element> expandableArray = mExpandableArrayOfActivePointers;
             final int arraySize = mArraySize;
@@ -64,7 +64,7 @@ public final class PointerTrackerQueue {
                 final Element element = expandableArray.get(index);
                 if (element == pointer) {
                     if (newIndex != index) {
-                        Log.w(TAG, "Found duplicated element in remove: " + pointer);
+                        Log.w(TAG, "Found duplicated pointer while removing");
                     }
                     continue; // Remove this element from the expandableArray.
                 }
@@ -87,7 +87,7 @@ public final class PointerTrackerQueue {
     public void releaseAllPointersOlderThan(final Element pointer, final long eventTime) {
         synchronized (mExpandableArrayOfActivePointers) {
             if (DEBUG) {
-                Log.d(TAG, "releaseAllPointerOlderThan: " + pointer + " " + this);
+                Log.d(TAG, "release pointers older than target; activeCount=" + mArraySize);
             }
             final ArrayList<Element> expandableArray = mExpandableArrayOfActivePointers;
             final int arraySize = mArraySize;
@@ -114,8 +114,7 @@ public final class PointerTrackerQueue {
                 if (element == pointer) {
                     count++;
                     if (count > 1) {
-                        Log.w(TAG, "Found duplicated element in releaseAllPointersOlderThan: "
-                                + pointer);
+                        Log.w(TAG, "Found duplicated pointer while releasing older pointers");
                     }
                 }
                 if (newIndex != index) {
@@ -136,9 +135,9 @@ public final class PointerTrackerQueue {
         synchronized (mExpandableArrayOfActivePointers) {
             if (DEBUG) {
                 if (pointer == null) {
-                    Log.d(TAG, "releaseAllPointers: " + this);
+                    Log.d(TAG, "release all pointers; activeCount=" + mArraySize);
                 } else {
-                    Log.d(TAG, "releaseAllPointerExcept: " + pointer + " " + this);
+                    Log.d(TAG, "release all pointers except target; activeCount=" + mArraySize);
                 }
             }
             final ArrayList<Element> expandableArray = mExpandableArrayOfActivePointers;
@@ -149,8 +148,7 @@ public final class PointerTrackerQueue {
                 if (element == pointer) {
                     count++;
                     if (count > 1) {
-                        Log.w(TAG, "Found duplicated element in releaseAllPointersExcept: "
-                                + pointer);
+                        Log.w(TAG, "Found duplicated pointer while releasing pointers");
                     }
                 } else {
                     element.onPhantomUpEvent(eventTime);
@@ -198,7 +196,7 @@ public final class PointerTrackerQueue {
     public void cancelAllPointerTrackers() {
         synchronized (mExpandableArrayOfActivePointers) {
             if (DEBUG) {
-                Log.d(TAG, "cancelAllPointerTracker: " + this);
+                Log.d(TAG, "cancel all pointer trackers; activeCount=" + mArraySize);
             }
             final int arraySize = mArraySize;
             for (int index = 0; index < arraySize; index++) {

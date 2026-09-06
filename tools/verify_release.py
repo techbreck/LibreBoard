@@ -52,6 +52,62 @@ FORBIDDEN_DEPENDENCY_MARKERS = (
     "com.amplitude",
     "com.appsflyer",
 )
+SENSITIVE_LOG_IDENTIFIERS = (
+    "appLabel",
+    "applicationSpecifiedCompletions",
+    "candidate",
+    "chosenWord",
+    "clipboard",
+    "commitWord",
+    "consideredWord",
+    "key",
+    "keyEvent",
+    "mAutoCorrectionWord",
+    "mComposingText",
+    "mEnteredText",
+    "mSuggestions",
+    "mTypedWord",
+    "mWord",
+    "ngramContext",
+    "phrase",
+    "pointer",
+    "prevWordsContext",
+    "pseudoTypedWordInfo",
+    "rawWord",
+    "rawWordBeforeCommit",
+    "splitText",
+    "suggestion",
+    "targetWord",
+    "tempWord",
+    "text",
+    "typedWord",
+    "word",
+    "wordProperty",
+)
+SENSITIVE_LOG_IDENTIFIER_PATTERN = "|".join(
+    sorted((re.escape(value) for value in SENSITIVE_LOG_IDENTIFIERS), key=len, reverse=True)
+)
+SENSITIVE_LOG_VALUE = re.compile(
+    rf"\b(?:{SENSITIVE_LOG_IDENTIFIER_PATTERN})\b|"
+    r"\bgetTextBeforeCursor\s*\(|\bprintableCode\s*\(",
+)
+SAFE_LOG_METADATA_ACCESS = re.compile(
+    rf"\b(?:{SENSITIVE_LOG_IDENTIFIER_PATTERN})\b\s*(?:\?\.)?\.\s*"
+    r"(?:length|size|count)\b(?:\s*\(\s*\))?",
+)
+SAFE_LOG_NULL_CHECK = re.compile(
+    rf"(?:\b(?:{SENSITIVE_LOG_IDENTIFIER_PATTERN})\b\s*(?:==|!=)\s*null|"
+    rf"null\s*(?:==|!=)\s*\b(?:{SENSITIVE_LOG_IDENTIFIER_PATTERN})\b)",
+)
+LOG_CALL_START = re.compile(r"\b(?:android\.util\.)?Log\.[A-Za-z_]\w*\s*\(")
+KOTLIN_LOG_TEMPLATE = re.compile(r"\$\{([^{}]*)\}|\$([A-Za-z_]\w*)")
+QUOTED_SOURCE_STRING = re.compile(r'"(?:\\.|[^"\\])*"', re.DOTALL)
+NATIVE_LOGGING_LOCK_MARKERS = (
+    "ifneq ($(strip $(FLAG_DBG)),false)",
+    "$(error FLAG_DBG is disabled by LibreBoard's no-typed-text-logs policy)",
+    "ifneq ($(strip $(FLAG_DO_PROFILE)),false)",
+    "$(error FLAG_DO_PROFILE is disabled by LibreBoard's no-typed-text-logs policy)",
+)
 ALLOWED_NATIVE_LIBRARIES = {
     "libjni_latinime.so",
     # Apache-2.0 AndroidX dependency, pinned by the Compose BOM and verified for 16 KiB pages.
@@ -219,6 +275,71 @@ CONTEXT_DISTILLATION_METRIC_FIELDS = {
 
 def fail(errors: list[str], message: str) -> None:
     errors.append(message)
+
+
+def _log_calls(source: str):
+    """Yield complete android.util.Log calls without requiring Java/Kotlin parsing."""
+    for match in LOG_CALL_START.finditer(source):
+        opening = source.find("(", match.start())
+        depth = 0
+        quote = None
+        escaped = False
+        index = opening
+        while index < len(source):
+            character = source[index]
+            if quote is not None:
+                if escaped:
+                    escaped = False
+                elif character == "\\":
+                    escaped = True
+                elif character == quote:
+                    quote = None
+            elif character in {'"', "'"}:
+                quote = character
+            elif character == "(":
+                depth += 1
+            elif character == ")":
+                depth -= 1
+                if depth == 0:
+                    yield match.start(), source[match.start():index + 1]
+                    break
+            index += 1
+
+
+def validate_no_content_bearing_logs(
+        errors: list[str], source_root: pathlib.Path) -> None:
+    """Reject log calls that expose text, candidates, key events, or gesture state."""
+    for path in sorted(source_root.rglob("*")):
+        if path.suffix not in {".java", ".kt"}:
+            continue
+        source = path.read_text(encoding="utf-8")
+        for offset, call in _log_calls(source):
+            template_expressions = "\n".join(
+                group
+                for match in KOTLIN_LOG_TEMPLATE.finditer(call)
+                for group in (match.group(1) or match.group(2),)
+            )
+            outside_strings = QUOTED_SOURCE_STRING.sub('""', call)
+            values = template_expressions + "\n" + outside_strings
+            values = SAFE_LOG_METADATA_ACCESS.sub("", values)
+            values = SAFE_LOG_NULL_CHECK.sub("", values)
+            if SENSITIVE_LOG_VALUE.search(values):
+                line = source.count("\n", 0, offset) + 1
+                try:
+                    display_path = path.relative_to(ROOT)
+                except ValueError:
+                    display_path = path
+                fail(errors, f"content-bearing log call is forbidden: {display_path}:{line}")
+
+
+def validate_native_logging_lock(errors: list[str], makefile: pathlib.Path) -> None:
+    try:
+        source = makefile.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        fail(errors, f"cannot read native build privacy policy: {exc}")
+        return
+    if any(marker not in source for marker in NATIVE_LOGGING_LOCK_MARKERS):
+        fail(errors, "native debug/profile logging must remain fail-closed")
 
 
 def android_attribute(node: ET.Element, name: str) -> str | None:
@@ -734,6 +855,8 @@ def source_checks(errors: list[str]) -> None:
     validate_gradle_dependency_verification(errors)
 
     source_root = ROOT / "app/src/main/java"
+    validate_no_content_bearing_logs(errors, source_root)
+    validate_native_logging_lock(errors, ROOT / "app/src/main/jni/Android.mk")
     dynamic_load = re.compile(r"System\s*\.\s*load\s*\(")
     load_library = re.compile(r"System\s*\.\s*loadLibrary\s*\(\s*([^)]*)\)")
     for path in source_root.rglob("*"):

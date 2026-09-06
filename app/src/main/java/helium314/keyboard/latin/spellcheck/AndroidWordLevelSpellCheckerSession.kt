@@ -155,12 +155,12 @@ abstract class AndroidWordLevelSpellCheckerSession(private val mService: Android
             // Handle normal words.
             if (isInDictForAnyCapitalization(text, capitalizeType)) {
                 if (DebugFlags.DEBUG_ENABLED) {
-                    Log.i(TAG, "onGetSuggestionsInternal() : [$text] is a valid word")
+                    Log.i(TAG, "onGetSuggestionsInternal(): token is valid")
                 }
                 return AndroidSpellCheckerService.getInDictEmptySuggestions()
             }
             if (DebugFlags.DEBUG_ENABLED) {
-                Log.i(TAG, "onGetSuggestionsInternal() : [$text] is NOT a valid word")
+                Log.i(TAG, "onGetSuggestionsInternal(): token is not valid")
             }
 
             // unknown word -> don't show suggestions if switched off
@@ -178,13 +178,7 @@ abstract class AndroidWordLevelSpellCheckerSession(private val mService: Android
                 .getSuggestionResults(locale, composer.composedDataSnapshot, ngramContext, keyboard)
             val result = getResult(capitalizeType, locale, suggestionsLimit, mService.recommendedThreshold, text, suggestionResults)
             if (DebugFlags.DEBUG_ENABLED && !result.mSuggestions.isNullOrEmpty()) {
-                val builder = StringBuilder()
-                for (suggestion in result.mSuggestions) {
-                    builder.append(" [")
-                    builder.append(suggestion)
-                    builder.append("]")
-                }
-                Log.i(TAG, "onGetSuggestionsInternal() : Suggestions =$builder")
+                Log.i(TAG, "onGetSuggestionsInternal(): suggestionCount=${result.mSuggestions.size}")
             }
             // Handle word not in dictionary.
             // This is called only once per unique word, so entering multiple instances of the same word does not

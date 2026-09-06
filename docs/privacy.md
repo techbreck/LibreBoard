@@ -64,6 +64,9 @@ installed static models are outside that wipe boundary.
 ## Automated guard
 
 `python3 tools/verify_release.py --source` rejects network permissions, dynamic native loading,
-known telemetry/Play dependencies, a backup-enabled manifest, and reintroduction of gesture-data
-collection source files. APK verification additionally checks merged permissions, native allowlists,
-ZIP alignment, and 16 KiB ELF segment alignment.
+known telemetry/Play dependencies, a backup-enabled manifest, reintroduction of gesture-data
+collection source files, and Java/Kotlin log calls containing typed text, candidates, key events,
+or gesture state. LatinIME's native debug and profiling modes are fail-closed at build time because
+their inherited diagnostics can contain candidate text and reconstructable gesture traces. APK
+verification additionally checks merged permissions, native allowlists, ZIP alignment, and 16 KiB
+ELF segment alignment.

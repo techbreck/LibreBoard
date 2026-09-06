@@ -54,15 +54,14 @@ public final class WordInputEventForPersonalization {
             if (StringUtils.isEmptyStringOrWhiteSpaces(tempWord)) {
                 // just skip this token
                 if (DEBUG_TOKEN) {
-                    Log.d(TAG, "--- isEmptyStringOrWhiteSpaces: \"" + tempWord + "\"");
+                    Log.d(TAG, "--- skipped an empty or whitespace-only token");
                 }
                 continue;
             }
             if (!DictionaryInfoUtils.looksValidForDictionaryInsertion(
                     tempWord, spacingAndPunctuations)) {
                 if (DEBUG_TOKEN) {
-                    Log.d(TAG, "--- not looksValidForDictionaryInsertion: \""
-                            + tempWord + "\"");
+                    Log.d(TAG, "--- skipped a token that is not eligible for dictionary insertion");
                 }
                 // Sentence terminator found. Split.
                 // TODO: Detect whether the context is beginning-of-sentence.
@@ -70,7 +69,7 @@ public final class WordInputEventForPersonalization {
                 continue;
             }
             if (DEBUG_TOKEN) {
-                Log.d(TAG, "--- word: \"" + tempWord + "\"");
+                Log.d(TAG, "--- accepted a token for personalization");
             }
             final WordInputEventForPersonalization inputEvent =
                     detectWhetherVaildWordOrNotAndGetInputEvent(

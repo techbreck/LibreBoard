@@ -287,12 +287,8 @@ public final class PointerTracker implements PointerTrackerQueue.Element,
         }
         final boolean ignoreModifierKey = mIsInDraggingFinger && key.isModifier();
         if (DEBUG_LISTENER) {
-            Log.d(TAG, String.format(Locale.US, "[%d] onPress    : %s%s%s%s", mPointerId,
-                Constants.printableCode(key.getCode()),
-                ignoreModifierKey ? " ignoreModifier" : "",
-                key.isEnabled() ? "" : " disabled",
-                repeatCount > 0 ? " repeatCount=" + repeatCount : "")
-            );
+            Log.d(TAG, String.format(Locale.US, "[%d] onPress: repeatCount=%d",
+                    mPointerId, repeatCount));
         }
         if (ignoreModifierKey) {
             return false;
@@ -318,11 +314,9 @@ public final class PointerTracker implements PointerTrackerQueue.Element,
         final boolean altersCode = key.altCodeWhileTyping() && sTimerProxy.isTypingState() && !isClearlyInsideKey(key, x, y);
         final int code = altersCode ? key.getAltCode() : primaryCode;
         if (DEBUG_LISTENER) {
-            final String output = code == KeyCode.MULTIPLE_CODE_POINTS
-                    ? key.getOutputText() : Constants.printableCode(code);
-            Log.d(TAG, String.format(Locale.US, "[%d] onCodeInput: %4d %4d %s%s%s%s", mPointerId, x, y,
-                    output, ignoreModifierKey ? " ignoreModifier" : "",
-                    altersCode ? " altersCode" : "", key.isEnabled() ? "" : " disabled"));
+            Log.d(TAG, String.format(Locale.US,
+                    "[%d] onCodeInput: ignoredModifier=%s, altered=%s",
+                    mPointerId, ignoreModifierKey, altersCode));
         }
         if (ignoreModifierKey) {
             return;
@@ -351,10 +345,8 @@ public final class PointerTracker implements PointerTrackerQueue.Element,
         }
         final boolean ignoreModifierKey = mIsInDraggingFinger && key.isModifier();
         if (DEBUG_LISTENER) {
-            Log.d(TAG, String.format(Locale.US, "[%d] onRelease  : %s%s%s%s", mPointerId,
-                    Constants.printableCode(primaryCode),
-                    withSliding ? " sliding" : "", ignoreModifierKey ? " ignoreModifier" : "",
-                    key.isEnabled() ?  "": " disabled"));
+            Log.d(TAG, String.format(Locale.US, "[%d] onRelease: sliding=%s",
+                    mPointerId, withSliding));
         }
         if (ignoreModifierKey) {
             return;
@@ -864,10 +856,8 @@ public final class PointerTracker implements PointerTrackerQueue.Element,
                     / keyDiagonal;
             Log.w(TAG, String.format(Locale.US, "[%d] onMoveEvent:"
                     + " bogus down-move-up event (raidus=%.2f key diagonal) is "
-                    + " translated to up[%d,%d,%s]/down[%d,%d,%s] events",
-                    mPointerId, radiusRatio,
-                    lastX, lastY, Constants.printableCode(oldKey.getCode()),
-                    x, y, Constants.printableCode(key.getCode())));
+                    + " translated to synthetic up/down events",
+                    mPointerId, radiusRatio));
         }
         onUpEventInternal(x, y, eventTime);
         onDownEventInternal(x, y, eventTime);

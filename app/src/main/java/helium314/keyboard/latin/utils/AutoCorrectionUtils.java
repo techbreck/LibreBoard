@@ -34,9 +34,8 @@ public final class AutoCorrectionUtils {
             final float normalizedScore = BinaryDictionaryUtils.calcNormalizedScore(
                     consideredWord, suggestion.mWord, autoCorrectionSuggestionScore);
             if (DebugFlags.DEBUG_ENABLED) {
-                Log.d(TAG, "Normalized " + consideredWord + "," + suggestion + ","
-                        + autoCorrectionSuggestionScore + ", " + normalizedScore
-                        + " (" + threshold + ")");
+                Log.d(TAG, "Autocorrect score=" + autoCorrectionSuggestionScore
+                        + ", normalizedScore=" + normalizedScore + ", threshold=" + threshold);
             }
             if (normalizedScore >= threshold) {
                 if (DebugFlags.DEBUG_ENABLED) {
