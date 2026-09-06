@@ -24,6 +24,7 @@ import evaluate_engine
 import model_sources
 import prepare_context_dataset
 import prepare_swipe_dataset
+import prepare_tap_evaluation
 import score_context_teacher
 import swipe_model_contract
 
@@ -931,6 +932,7 @@ def source_checks(errors: list[str]) -> None:
     try:
         source_manifest = model_sources.load_manifest()
         swipe_policy = prepare_swipe_dataset.load_policy()
+        prepare_tap_evaluation.load_policy()
         context_policy = prepare_context_dataset.load_policy()
         context_project_path = (ROOT / context_policy.project_authored_data).resolve()
         context_project = prepare_context_dataset.load_project_corpus(
@@ -950,6 +952,7 @@ def source_checks(errors: list[str]) -> None:
         model_sources.ModelSourceError,
         prepare_context_dataset.ContextDataError,
         prepare_swipe_dataset.SwipeDataError,
+        prepare_tap_evaluation.TapEvaluationDataError,
         swipe_model_contract.SwipeModelContractError,
         context_model_contract.ContextModelContractError,
     ) as exc:

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "splitSalt": "libreboard-phase0-tap-evaluation-v1",
+  "splitBasisPoints": {
+    "train": 7000,
+    "validation": 1000,
+    "test": 2000
+  },
+  "maximumLineBytes": 65536,
+  "maximumTextCodePoints": 128,
+  "maximumContextCodePoints": 256,
+  "maximumTouchPoints": 256,
+  "minimumCoordinate": -0.5,
+  "maximumCoordinate": 1.5
+}

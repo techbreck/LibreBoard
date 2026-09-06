@@ -46,7 +46,8 @@ require idempotent removal without deleting clipboard, model, or explicit dictio
 `python3 -m unittest discover -s tools/tests` exercises the Phase 0 evaluator and release-evidence
 verifier. It also locks the ONNX Runtime source-build schema, ABI set, SDK levels, CPU-only flags,
 strict reduced-operator configuration parser, immutable model-source manifest/fetch behavior,
-session-separated swipe preparation, split/hash reproducibility, model architecture/parameter count,
+session-separated swipe and tap-evaluation preparation, split/hash reproducibility, bounded and
+licensed tap-source provenance, rejection of synthetic spatial evidence, model architecture/parameter count,
 CTC utilities, and ONNX operator-file ordering. These dependency-free tests run for every pull
 request.
 

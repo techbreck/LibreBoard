@@ -15,6 +15,9 @@ identify stock hardware, physical GrapheneOS hardware without sandboxed Google P
 emulator. Every measured test row is bound to one declared device run, with minimum tap/swipe
 coverage and separate latency gates per environment. Context-dependent corrections and unchanged
 valid words have independent minimums so easy keep cases cannot dilute the neural quality gate. The
+tap-corpus preparation contract is documented in `docs/phase-0-tap-corpus.md`; it hashes collection
+sessions, binds source licensing and consent metadata, rejects synthetic spatial rows, and cannot
+label an undersized corpus release-eligible. The
 swipe source, split, training, and ONNX export contracts are executable and tested, and
 the exact million-gesture corpus manifest is committed. The context student architecture, tokenizer
 contract, INT4 exporter and hash-locked toolchain are also executable. Its pinned 68,748-sentence
