@@ -49,6 +49,8 @@ REQUIRED_ENVIRONMENTS = {
 }
 MINIMUM_ENVIRONMENT_TAP_SAMPLES = 100
 MINIMUM_ENVIRONMENT_SWIPE_SAMPLES = 100
+MINIMUM_VALID_WORD_CORRECTIONS = 500
+MINIMUM_VALID_WORD_KEEPS = 500
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 GIT_COMMIT = re.compile(r"^[0-9a-f]{40,64}$")
 
@@ -239,7 +241,13 @@ def check_dataset(
     examples: list[Example],
     environments: list[dict[str, Any]],
     enforce_minimum_counts: bool,
-) -> tuple[list[Example], dict[str, int], dict[str, int], dict[str, dict[str, int]]]:
+) -> tuple[
+    list[Example],
+    dict[str, int],
+    dict[str, int],
+    dict[str, dict[str, int]],
+    dict[str, int],
+]:
     ids = Counter(example.identifier for example in examples)
     duplicates = sorted(identifier for identifier, count in ids.items() if count > 1)
     if duplicates:
@@ -291,12 +299,31 @@ def check_dataset(
                    if counts[category] < minimum]
         if missing:
             raise EvaluationError("held-out dataset minimums not met: " + ", ".join(missing))
+    valid_word_counts = {
+        "correct": sum(
+            example.category == "valid_word" and example.should_correct is True
+            for example in test
+        ),
+        "keep": sum(
+            example.category == "valid_word" and example.should_correct is False
+            for example in test
+        ),
+    }
+    if enforce_minimum_counts and (
+        valid_word_counts["correct"] < MINIMUM_VALID_WORD_CORRECTIONS
+        or valid_word_counts["keep"] < MINIMUM_VALID_WORD_KEEPS
+    ):
+        raise EvaluationError(
+            "valid-word strata minimums not met: "
+            f"correct={valid_word_counts['correct']}<{MINIMUM_VALID_WORD_CORRECTIONS}, "
+            f"keep={valid_word_counts['keep']}<{MINIMUM_VALID_WORD_KEEPS}"
+        )
     swipe = [example for example in test if example.category == "swipe"]
     strata = validate_swipe_strata(
         swipe,
         MINIMUM_SWIPE_STRATA_COUNTS if enforce_minimum_counts else {"short": 1, "return_trip": 1},
     )
-    return test, dict(sorted(counts.items())), strata, environment_counts
+    return test, dict(sorted(counts.items())), strata, environment_counts, valid_word_counts
 
 
 def validate_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
@@ -382,7 +409,7 @@ def evaluate(
     if not isinstance(measurement_sha256, str) or not SHA256.fullmatch(measurement_sha256):
         raise EvaluationError("measurement dataset requires a lowercase SHA-256")
     evidence = validate_metadata(metadata)
-    test, counts, swipe_strata, environment_counts = check_dataset(
+    test, counts, swipe_strata, environment_counts, valid_word_counts = check_dataset(
         examples,
         evidence["environments"],
         enforce_minimum_counts,
@@ -399,6 +426,7 @@ def evaluate(
         "evidence": evidence,
         "counts": counts,
         "swipeStrataCounts": swipe_strata,
+        "validWordCounts": valid_word_counts,
         "environmentCounts": environment_counts,
         "environmentLatencyMs": {},
         "systems": {},
@@ -445,13 +473,16 @@ def evaluate(
 
     heliboard_tap = accuracy(tap_error, "heliboard")
     fused_tap = accuracy(tap_error, "fused")
+    context_confusions = [row for row in valid_word if row.should_correct is True]
+    fused_context = accuracy(context_confusions, "fused")
+    neural_context = accuracy(context_confusions, "fused_neural")
     fused_valid = accuracy(valid_word, "fused")
     neural_valid = accuracy(valid_word, "fused_neural")
     geometric_swipe = accuracy(swipe, "geometric")
     final_swipe = accuracy(swipe, "fused_swipe")
     metrics["gates"] = {
         "tapRelativeErrorReduction": relative_error_reduction(heliboard_tap, fused_tap),
-        "neuralValidWordRelativeErrorReduction": relative_error_reduction(fused_valid, neural_valid),
+        "neuralContextRelativeErrorReduction": relative_error_reduction(fused_context, neural_context),
         "neuralValidWordAbsoluteGain": neural_valid - fused_valid,
         "falseCorrectionIncrease": false_correction_rate(valid_word, "fused_neural")
             - false_correction_rate(valid_word, "fused"),
@@ -463,7 +494,7 @@ def evaluate(
     gates = metrics["gates"]
     checks = {
         "tap_relative_error_reduction": gates["tapRelativeErrorReduction"] >= 0.20,
-        "neural_valid_word_relative_error_reduction": gates["neuralValidWordRelativeErrorReduction"] >= 0.15,
+        "neural_valid_word_relative_error_reduction": gates["neuralContextRelativeErrorReduction"] >= 0.15,
         "neural_valid_word_absolute_gain": gates["neuralValidWordAbsoluteGain"] >= 0.05,
         "false_correction_ceiling": gates["falseCorrectionIncrease"] <= 0.005,
         "swipe_top1": metrics["systems"]["fused_swipe"]["top1"] >= 0.90,

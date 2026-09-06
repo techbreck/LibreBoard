@@ -1277,6 +1277,18 @@ def validate_phase0_report(errors: list[str], report: dict, apk_hash: str) -> di
         for stratum, minimum in MINIMUM_PHASE0_SWIPE_STRATA_COUNTS.items()
     ):
         fail(errors, "Phase 0 report does not satisfy swipe stratum minimums")
+    valid_word_counts = report.get("validWordCounts")
+    if (
+        not isinstance(valid_word_counts, dict)
+        or set(valid_word_counts) != {"correct", "keep"}
+        or not isinstance(valid_word_counts.get("correct"), int)
+        or isinstance(valid_word_counts.get("correct"), bool)
+        or valid_word_counts["correct"] < evaluate_engine.MINIMUM_VALID_WORD_CORRECTIONS
+        or not isinstance(valid_word_counts.get("keep"), int)
+        or isinstance(valid_word_counts.get("keep"), bool)
+        or valid_word_counts["keep"] < evaluate_engine.MINIMUM_VALID_WORD_KEEPS
+    ):
+        fail(errors, "Phase 0 report does not satisfy valid-word correction and keep minimums")
     environment_counts = report.get("environmentCounts")
     if (
         not isinstance(environment_counts, dict)

@@ -758,6 +758,15 @@ class VerifyReleaseEvidenceTest(unittest.TestCase):
             self.verify(),
         )
 
+    def test_rejects_undersized_valid_word_strata(self):
+        phase0 = self.phase0()
+        phase0["validWordCounts"]["keep"] = 0
+        self.write_reports(phase0=phase0)
+        self.assertIn(
+            "Phase 0 report does not satisfy valid-word correction and keep minimums",
+            self.verify(),
+        )
+
     def test_rejects_invalid_per_environment_latency(self):
         phase0 = self.phase0()
         phase0["environmentLatencyMs"]["grapheneos_hardware"]["tap"]["p95"] = "fast"

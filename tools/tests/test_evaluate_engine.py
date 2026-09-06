@@ -131,6 +131,8 @@ class EvaluateEngineTest(unittest.TestCase):
         self.assertTrue(all(result["checks"].values()))
         self.assertEqual("b" * 64, result["evidence"]["coreApkSha256"])
         self.assertEqual(1, result["swipeStrataCounts"]["short"])
+        self.assertEqual(1.0, result["gates"]["neuralContextRelativeErrorReduction"])
+        self.assertEqual({"correct": 1, "keep": 1}, result["validWordCounts"])
 
     def test_session_crossing_splits_is_rejected(self):
         systems = {
@@ -311,6 +313,12 @@ class EvaluateEngineTest(unittest.TestCase):
                     environment_kind="low_ram_emulator", test_run_id="low-ram-run"),
             example(17, "swipe", "target", "", swipe, strata=["long"],
                     environment_kind="low_ram_emulator", test_run_id="low-ram-run"),
+            example(18, "valid_word", "there", "their", {
+                "heliboard": ["their"],
+                "fused": ["their"],
+                "fused_personal": ["their"],
+                "fused_neural": ["there", "their"],
+            }, should_correct=True),
         ]
 
 

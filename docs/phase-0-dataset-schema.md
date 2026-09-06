@@ -19,6 +19,12 @@ these fields:
   overlap.
 - `shouldCorrect`: required for `valid_word`; false labels measure false corrections.
 
+Release-sized evidence must contain 500 context-dependent valid-word corrections
+(`shouldCorrect: true`) and 500 valid words that must remain unchanged (`shouldCorrect: false`). The
+15% neural relative-error-reduction gate is calculated only over the former, while the five-point
+valid-word gain uses both and the false-correction ceiling uses the latter. This prevents easy
+unchanged words from diluting the context-sensitive neural test.
+
 Tap systems are `heliboard`, `fused`, `fused_personal`, and `fused_neural`. Swipe systems are
 `geometric`, `ctc`, and `fused_swipe`.
 
@@ -28,7 +34,7 @@ cannot prove the one-tap raw-word fallback; normalization is used only for accur
 
 Metadata is a JSON object that binds the report to the artifacts and required environments:
 
-- `schemaVersion`: `1`.
+- `schemaVersion`: `2`.
 - `appCommit`: the full lowercase Git commit tested.
 - `coreApkSha256`, `swipeModelSha256`, and `contextModelSha256`: lowercase SHA-256 values for the
   exact APK and both models used for every reported prediction.
@@ -46,8 +52,9 @@ Google Play cannot produce a passing report. Run IDs must be unique. Release evi
 least 100 tap and 100 swipe measurements to each environment; the 80/200 ms p95 gates are evaluated
 independently for every environment, so fast stock-device samples cannot hide a slow or absent
 GrapheneOS run. The report exposes these values as `environmentCounts` and
-`environmentLatencyMs`. It also computes `measurementDatasetSha256` directly from the input JSONL
-and places that hash in the report; callers cannot supply or override it.
+`environmentLatencyMs`; the valid-word strata are exposed as `validWordCounts`. It also computes
+`measurementDatasetSha256` directly from the input JSONL and places that hash in the report; callers
+cannot supply or override it.
 
 ```sh
 python3 tools/evaluate_engine.py measurements.jsonl \
