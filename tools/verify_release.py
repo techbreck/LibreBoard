@@ -1358,8 +1358,8 @@ def finite_number(value: object) -> bool:
 
 
 def validate_grapheneos_evidence(errors: list[str], report: dict, apk: pathlib.Path, apk_hash: str) -> None:
-    if report.get("schemaVersion") != 1 or report.get("status") != "PASS":
-        fail(errors, "GrapheneOS evidence must use schema 1 with PASS status")
+    if report.get("schemaVersion") != 2 or report.get("status") != "PASS":
+        fail(errors, "GrapheneOS evidence must use schema 2 with PASS status")
     if report.get("apkFilename") != apk.name or report.get("apkSha256") != apk_hash:
         fail(errors, "GrapheneOS evidence does not identify the verified APK")
     if not isinstance(report.get("appCommit"), str) or not GIT_COMMIT.fullmatch(report["appCommit"]):
@@ -1385,8 +1385,8 @@ def validate_grapheneos_evidence(errors: list[str], report: dict, apk: pathlib.P
         fail(errors, "GrapheneOS evidence must come from a physical device")
     if report.get("sandboxedGooglePlayInstalled") is not False:
         fail(errors, "GrapheneOS evidence must run without sandboxed Google Play")
-    if report.get("compatibilityChangesEnabled") is not False:
-        fail(errors, "GrapheneOS evidence must not require compatibility changes")
+    if report.get("exploitProtectionCompatibilityModeEnabled") is not False:
+        fail(errors, "GrapheneOS evidence must keep exploit protection compatibility mode disabled")
 
     checks = report.get("checks")
     if (not isinstance(checks, dict)

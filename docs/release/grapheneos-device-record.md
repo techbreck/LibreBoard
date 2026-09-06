@@ -17,12 +17,14 @@ The completed run must also be serialized using `grapheneos-evidence-schema.md` 
 - Android security patch level:
 - Build fingerprint:
 - Sandboxed Google Play installed: no
+- Exploit protection compatibility mode enabled: no
 - Tester/date:
 
 ## Required results
 
 - [ ] APK passes `tools/verify_release.py --source --apk ...`.
-- [ ] Keyboard can be enabled, selected, and used without compatibility changes.
+- [ ] Keyboard can be enabled, selected, and used with GrapheneOS's per-app Exploit protection
+      compatibility mode disabled.
 - [ ] After reboot and before first unlock, static tap typing works while personal/model/clipboard
       stores remain unavailable.
 - [ ] Plain text tap correction, raw-word recovery, next-word suggestions, and correction revert pass.

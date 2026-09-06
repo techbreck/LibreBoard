@@ -1,7 +1,7 @@
 # GrapheneOS release-evidence schema
 
 The physical-device procedure in `grapheneos-device-record.md` produces a JSON object with
-`schemaVersion: 1` and `status: "PASS"`. The release verifier rejects a partial or stale record.
+`schemaVersion: 2` and `status: "PASS"`. The release verifier rejects a partial or stale record.
 Copy `grapheneos-evidence.template.json` for the run; the checked-in template is intentionally
 `BLOCKED` with empty identifiers and false checks, so it cannot be mistaken for release evidence.
 
@@ -9,7 +9,9 @@ Identity fields bind the run to the exact release: `appCommit`, `apkFilename`, `
 `swipeModelSha256`, `contextModelSha256`, `phase0ReportSha256`, and
 `instrumentationOutputSha256`. Device fields are `deviceModel`, `grapheneOsBuildNumber`, `apiLevel`,
 `securityPatchLevel`, `buildFingerprint`, `physicalDevice: true`,
-`sandboxedGooglePlayInstalled: false`, and `compatibilityChangesEnabled: false`. The record also
+`sandboxedGooglePlayInstalled: false`, and `exploitProtectionCompatibilityModeEnabled: false`. The
+last field refers specifically to GrapheneOS's per-app **Exploit protection compatibility mode**;
+the run does not qualify if that security-reducing workaround was enabled. The record also
 contains `testerId`, UTC `testedAtUtc`, and the `phase0TestRunId` from the matching GrapheneOS
 environment in the Phase 0 report.
 

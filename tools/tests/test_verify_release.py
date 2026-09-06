@@ -658,7 +658,7 @@ class VerifyReleaseEvidenceTest(unittest.TestCase):
 
     def grapheneos(self, phase0_bytes: bytes):
         return {
-            "schemaVersion": 1,
+            "schemaVersion": 2,
             "status": "PASS",
             "appCommit": "a" * 40,
             "apkFilename": self.apk.name,
@@ -672,7 +672,7 @@ class VerifyReleaseEvidenceTest(unittest.TestCase):
             "buildFingerprint": "graphene/fingerprint",
             "physicalDevice": True,
             "sandboxedGooglePlayInstalled": False,
-            "compatibilityChangesEnabled": False,
+            "exploitProtectionCompatibilityModeEnabled": False,
             "testerId": "release-test-1",
             "testedAtUtc": "2026-09-05T12:00:00Z",
             "phase0TestRunId": "graphene-run",
@@ -724,11 +724,16 @@ class VerifyReleaseEvidenceTest(unittest.TestCase):
     def test_rejects_google_play_or_missing_device_check(self):
         def mutate(report):
             report["sandboxedGooglePlayInstalled"] = True
+            report["exploitProtectionCompatibilityModeEnabled"] = True
             report["checks"].pop("direct_boot")
 
         self.write_reports(grapheneos_mutator=mutate)
         errors = self.verify()
         self.assertIn("GrapheneOS evidence must run without sandboxed Google Play", errors)
+        self.assertIn(
+            "GrapheneOS evidence must keep exploit protection compatibility mode disabled",
+            errors,
+        )
         self.assertIn("GrapheneOS evidence does not contain every passing device check", errors)
 
     def test_rejects_phase0_failure_and_artifact_mismatch(self):

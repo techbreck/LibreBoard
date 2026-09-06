@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "status": "BLOCKED",
   "appCommit": "",
   "apkFilename": "",
@@ -13,7 +13,7 @@
   "buildFingerprint": "",
   "physicalDevice": false,
   "sandboxedGooglePlayInstalled": false,
-  "compatibilityChangesEnabled": false,
+  "exploitProtectionCompatibilityModeEnabled": false,
   "testerId": "",
   "testedAtUtc": "",
   "phase0TestRunId": "",

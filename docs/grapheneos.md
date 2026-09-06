@@ -13,6 +13,9 @@ APK is fully usable on supported GrapheneOS hardware without installing sandboxe
 - Models and model packs are data-only, bounded, hashed, signed, operator-allowlisted, and optional.
 - The keyboard remains functional when JIT, native inference, a model provider, or CE storage is
   unavailable. It must not ask users to weaken exploit protection or compatibility settings.
+- GrapheneOS's per-app [Exploit protection compatibility mode](https://grapheneos.org/usage#bugs-uncovered-by-security-features)
+  remains disabled. This preserves hardened_malloc, the extended address space, memory tagging where
+  applicable, and the normal native-debugging restriction described by GrapheneOS.
 
 ## Required device matrix
 
