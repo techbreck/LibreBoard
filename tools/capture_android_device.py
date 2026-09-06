@@ -24,6 +24,7 @@ from typing import Any
 SCHEMA_VERSION = 1
 MAXIMUM_COMMAND_OUTPUT_BYTES = 1024 * 1024
 SERIAL = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+PACKAGE_NAME = re.compile(r"^[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*$")
 SECURITY_PATCH = re.compile(r"^20[0-9]{2}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])$")
 PLAY_PACKAGES = frozenset({
     "com.android.vending",
@@ -118,7 +119,9 @@ def _parse_packages(output: str) -> set[str]:
         if not line.startswith("package:"):
             raise DeviceCaptureError("adb returned an invalid package inventory")
         package = line.removeprefix("package:").strip()
-        if not re.fullmatch(r"[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+", package):
+        # Android's own framework package is the valid single-segment name `android`.
+        # Overlay packages may also contain underscores, including trailing underscores.
+        if not PACKAGE_NAME.fullmatch(package):
             raise DeviceCaptureError("adb returned an invalid package name")
         packages.add(package)
     return packages

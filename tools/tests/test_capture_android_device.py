@@ -60,7 +60,10 @@ class CaptureAndroidDeviceTest(unittest.TestCase):
         )
 
     def test_physical_play_free_device_is_ready_only_for_manual_matrix(self):
-        report = self.inspect(FakeAdb())
+        fake = FakeAdb()
+        fake.packages.add("android")
+
+        report = self.inspect(fake)
 
         self.assertEqual("READY_FOR_MANUAL_MATRIX", report["status"])
         self.assertEqual("2026-09-06T04:00:00Z", report["capturedAtUtc"])
@@ -72,6 +75,15 @@ class CaptureAndroidDeviceTest(unittest.TestCase):
         self.assertFalse(report["isReleaseEvidence"])
         self.assertEqual([], report["blockers"])
         self.assertEqual(4, len(report["manualChecksRequired"]))
+
+    def test_package_inventory_accepts_android_and_rejects_unsafe_names(self):
+        self.assertEqual({"android", "org.libreboard.keyboard"}, capture._parse_packages(
+            "package:android\npackage:org.libreboard.keyboard\n",
+        ))
+        for invalid in ("package:", "package:bad-name", "package:.leading", "package:trailing."):
+            with self.subTest(invalid=invalid):
+                with self.assertRaisesRegex(capture.DeviceCaptureError, "invalid package name"):
+                    capture._parse_packages(invalid)
 
     def test_emulator_play_or_missing_keyboard_remains_blocked(self):
         fake = FakeAdb()
