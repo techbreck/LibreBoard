@@ -27,7 +27,8 @@ locking, CTC/geometric provenance union, missing-model fallback, non-cooperative
 breaking, delayed native-owner cleanup, and batch single-commit metadata. Registry tests prove
 swipe/context activation and rollback slots cannot collide, and explicit runtime rejection restores
 the last-known-good model. Runtime-bootstrap tests also require core-only manual import to fail before
-opening an untrusted URI and bundled activation to occur only for a missing model or app update.
+opening an untrusted URI, low-RAM devices to reject context models through both automatic and manual
+activation paths, and bundled activation to occur only for a missing model or app update.
 Retained input-logic tests exercise
 terminal policy through the editor adapter: tap input creates no composing span, swipe commits
 directly, and duplicate asynchronous tail delivery cannot commit the same gesture twice. Lexical

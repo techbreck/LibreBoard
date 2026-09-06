@@ -36,6 +36,17 @@ internal sealed interface SignedModelImportResult {
     data object Rejected : SignedModelImportResult
 }
 
+/** Device capability gate shared by automatic discovery and explicit local imports. */
+internal object NeuralDevicePolicy {
+    fun allowsModel(modelKind: ModelKind, isLowRamDevice: Boolean): Boolean =
+        modelKind != ModelKind.CONTEXT_RESCORER || !isLowRamDevice
+
+    fun allowsModel(modelKind: ModelKind, context: Context): Boolean = allowsModel(
+        modelKind,
+        context.getSystemService(ActivityManager::class.java)?.isLowRamDevice == true,
+    )
+}
+
 /** Fixed, auditable acceptance policy shared by the bundled swipe and official context models. */
 internal object OfficialModelPolicy {
     val allowedOperators = setOf(
@@ -192,8 +203,7 @@ internal object InstalledModelRuntime {
             }
         }
 
-        val lowRam = context.getSystemService(ActivityManager::class.java)?.isLowRamDevice == true
-        if (lowRam) {
+        if (!NeuralDevicePolicy.allowsModel(ModelKind.CONTEXT_RESCORER, context)) {
             LiveTypingEngine.clearContext()
             synchronized(monitor) { contextReady = true }
             return
@@ -236,6 +246,12 @@ internal object InstalledModelRuntime {
         var activatedRegistry: ModelRegistry? = null
         return try {
             val manifest = readManifest(staged)
+            if (
+                manifest.modelKind == ModelKind.CONTEXT_RESCORER &&
+                !NeuralDevicePolicy.allowsModel(manifest.modelKind, context)
+            ) {
+                return SignedModelImportResult.Unavailable
+            }
             val registry = ModelRegistry(
                 privateContext,
                 OfficialModelPolicy.limits(manifest.modelKind, BuildConfig.VERSION_CODE),
