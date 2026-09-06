@@ -121,11 +121,15 @@ $ANDROID_SDK_ROOT/emulator/emulator -avd LibreBoard_API_36_AOSP_LowRAM \
 adb shell getprop ro.config.low_ram
 python3 tools/capture_android_device.py --serial emulator-5554 \
   --output build/device-evidence/api36-low-ram-emulator.json
+./gradlew connectedDebugNoMinifyAndroidTest --max-workers=1 \
+  -Pandroid.testInstrumentationRunnerArguments.libreboardRequireLowRam=true
 ```
 
 The property command must print exactly `true`; the capture also records `/proc/meminfo` as rounded-up
-MiB. A renamed AVD or a RAM setting alone does not establish `ActivityManager.isLowRamDevice()` and
-must not be submitted as low-RAM evidence.
+MiB. The opt-in instrumentation assertion independently checks `ActivityManager.isLowRamDevice()`
+and proves that the real device policy disables the context model while retaining CTC swipe. A
+renamed AVD or a RAM setting alone does not establish low-RAM mode and must not be submitted as
+low-RAM evidence.
 The suite checks the installed package rather than only source XML: merged permissions, backup and
 cleartext flags, the IME service permission/direct-boot flag, the non-exported clipboard-search
 activity, the Android `EditorInfo` policy matrix, and real credential-encrypted SQLite behavior for

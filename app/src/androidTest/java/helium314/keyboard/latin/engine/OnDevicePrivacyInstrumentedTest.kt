@@ -2,6 +2,7 @@
 package helium314.keyboard.latin.engine
 
 import android.Manifest
+import android.app.ActivityManager
 import android.content.ClipDescription
 import android.content.Context
 import android.content.pm.ApplicationInfo
@@ -10,18 +11,21 @@ import android.os.PersistableBundle
 import android.text.InputType
 import android.view.inputmethod.EditorInfo
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.platform.app.InstrumentationRegistry
 import helium314.keyboard.compat.ClipboardManagerCompat
 import helium314.keyboard.latin.database.ClipboardDao
 import helium314.keyboard.latin.database.ClipboardHistoryPolicy
 import helium314.keyboard.keyboard.clipboard.ClipboardSearchActivity
 import helium314.keyboard.latin.engine.personal.PersonalizationRuntime
 import helium314.keyboard.latin.engine.personal.LearnedDataWiper
+import helium314.keyboard.latin.engine.runtime.NeuralDevicePolicy
 import helium314.keyboard.latin.privacy.CredentialEncryptedStorage
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -230,6 +234,19 @@ class OnDevicePrivacyInstrumentedTest {
         assertTrue(context.getDatabasePath("libreboard_personal.db").exists())
         assertFalse(deviceProtectedContext.getDatabasePath("libreboard_private.db").exists())
         assertFalse(deviceProtectedContext.getDatabasePath("libreboard_personal.db").exists())
+    }
+
+    @Test
+    fun requestedLowRamRunUsesPlatformFlagAndDisablesOnlyContextModel() {
+        assumeTrue(
+            "run with libreboardRequireLowRam=true on the dedicated low-RAM emulator",
+            InstrumentationRegistry.getArguments().getString("libreboardRequireLowRam") == "true",
+        )
+        val activityManager = requireNotNull(context.getSystemService(ActivityManager::class.java))
+
+        assertTrue("ActivityManager must identify the release-evidence target as low RAM", activityManager.isLowRamDevice)
+        assertFalse(NeuralDevicePolicy.allowsModel(ModelKind.CONTEXT_RESCORER, context))
+        assertTrue(NeuralDevicePolicy.allowsModel(ModelKind.SWIPE_CTC, context))
     }
 
     @Test
