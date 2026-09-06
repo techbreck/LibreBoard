@@ -16,6 +16,7 @@ import helium314.keyboard.latin.database.ClipboardHistoryPolicy
 import helium314.keyboard.keyboard.clipboard.ClipboardSearchActivity
 import helium314.keyboard.latin.engine.personal.PersonalizationRuntime
 import helium314.keyboard.latin.engine.personal.LearnedDataWiper
+import helium314.keyboard.latin.privacy.CredentialEncryptedStorage
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -197,6 +198,38 @@ class OnDevicePrivacyInstrumentedTest {
         assertTrue(exported.contains("Breck"))
         assertFalse(exported.contains("NeverPersistIncognito"))
         assertFalse(exported.contains("NeverPersistSensitive"))
+    }
+
+    @Test
+    fun privateStoresStayOutOfDeviceProtectedStorageWhenGivenThatContext() {
+        val deviceProtectedContext = context.createDeviceProtectedStorageContext()
+        assertTrue(deviceProtectedContext.isDeviceProtectedStorage)
+        val privateContext = requireNotNull(
+            CredentialEncryptedStorage.contextOrNull(deviceProtectedContext),
+        )
+        assertFalse(
+            "unlocked private storage must resolve back to credential encryption",
+            privateContext.isDeviceProtectedStorage,
+        )
+
+        requireNotNull(ClipboardDao.getInstance(deviceProtectedContext)).addClip(
+            System.currentTimeMillis(),
+            pinned = false,
+            text = "credential encrypted clipboard",
+        )
+        PersonalizationRuntime.observeCommit(
+            deviceProtectedContext,
+            editor(InputType.TYPE_CLASS_TEXT),
+            incognito = false,
+            committedWord = "CredentialEncryptedPersonalWord",
+            languageTag = "en-US",
+            manualSelection = true,
+        )
+
+        assertTrue(context.getDatabasePath("libreboard_private.db").exists())
+        assertTrue(context.getDatabasePath("libreboard_personal.db").exists())
+        assertFalse(deviceProtectedContext.getDatabasePath("libreboard_private.db").exists())
+        assertFalse(deviceProtectedContext.getDatabasePath("libreboard_personal.db").exists())
     }
 
     @Test

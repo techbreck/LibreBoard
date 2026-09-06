@@ -115,7 +115,10 @@ activity, the Android `EditorInfo` policy matrix, and real credential-encrypted 
 personalization plus clipboard search, storage limits, pruning, and stale-id handling. It also
 verifies that Android's sensitive-clipboard marker reaches the capture-policy veto.
 The device suite also verifies that an explicit wipe clears real credential-encrypted personal rows
-and legacy rejection files while leaving installed-model and clipboard fixtures intact.
+and legacy rejection files while leaving installed-model and clipboard fixtures intact. It passes a
+device-protected context through both private-store entry points after unlock and verifies that the
+clipboard and personal databases are still created only in credential-encrypted storage. A rebooted,
+locked-device run remains required to prove the complete Direct Boot boundary.
 
 The connected suite must expand with editor fixtures for composing reconciliation, cursor movement,
 correction rejection, WebView, terminal single-commit behavior, model failure, clipboard expiry,
