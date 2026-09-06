@@ -12,7 +12,8 @@ Clipboard-policy tests require the platform sensitive-content marker, restricted
 incognito mode to veto history capture independently. Context tests enforce field-policy gates,
 candidate/language score identity, masks, field classes, tokenizer
 bounds, strict BPE schema/merge/special-token validation, Unicode normalization, and malformed/runtime
-fallback. Runtime adapter tests lock exact tensor names/types/shapes, dynamic batch dimensions,
+fallback. They also verify bounded prefix-token reuse, privacy resets, and generation-safe handling
+when a reset races in-flight tokenization. Runtime adapter tests lock exact tensor names/types/shapes, dynamic batch dimensions,
 direct-buffer invocation, output bounds, native-wrapper cleanup, core-only absence, and hard deadline
 fallback. Official-model policy tests lock the independent swipe/context size and parameter ceilings,
 the exact reduced-operator allowlist, bounded RSA key reads, and the 3072-bit/exponent-65537 trust

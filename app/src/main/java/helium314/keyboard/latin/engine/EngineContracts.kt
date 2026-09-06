@@ -18,6 +18,11 @@ fun interface NeuralRescorer {
     fun score(request: TypingRequest, candidates: List<Candidate>, deadline: Deadline): NeuralScoreResult
 }
 
+/** Clears process-local context state without uninstalling or closing the model. */
+fun interface ContextCacheResettable {
+    fun clearContextCache()
+}
+
 data class SwipeDecodeResult(
     val availability: EngineAvailability,
     val candidates: List<Candidate> = emptyList(),

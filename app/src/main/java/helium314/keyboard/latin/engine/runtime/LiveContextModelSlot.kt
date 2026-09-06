@@ -8,6 +8,7 @@ import helium314.keyboard.latin.engine.NeuralRescorer
 import helium314.keyboard.latin.engine.NeuralScoreResult
 import helium314.keyboard.latin.engine.TypingRequest
 import helium314.keyboard.latin.engine.Candidate
+import helium314.keyboard.latin.engine.ContextCacheResettable
 import helium314.keyboard.latin.engine.geometric.SwipeLexicon
 import helium314.keyboard.latin.engine.onnx.LoadedContextModel
 import helium314.keyboard.latin.engine.onnx.LoadedSwipeModel
@@ -31,33 +32,56 @@ class LiveContextModelSlot(
     private val monitor = Any()
     private var installed: Entry? = null
     private var closed = false
+    private var contextGeneration = 0L
 
     fun install(rescorer: NeuralRescorer, owner: AutoCloseable) {
         var closeNow: AutoCloseable? = null
+        var clearCache: ContextCacheResettable? = null
         synchronized(monitor) {
             check(!closed) { "Context model slot is closed" }
             if (installed?.owner === owner) return
             installed?.let { previous ->
+                clearCache = previous.rescorer as? ContextCacheResettable
                 previous.retired = true
                 if (previous.activeCalls == 0) closeNow = previous.owner
             }
             installed = Entry(rescorer, owner)
+            contextGeneration++
             circuitBreaker.reset()
         }
+        clearCache?.clearContextCache()
         closeNow?.closeQuietly()
     }
 
     fun clear() {
         var closeNow: AutoCloseable? = null
+        var clearCache: ContextCacheResettable? = null
         synchronized(monitor) {
             installed?.let { previous ->
+                clearCache = previous.rescorer as? ContextCacheResettable
                 previous.retired = true
                 if (previous.activeCalls == 0) closeNow = previous.owner
             }
             installed = null
+            contextGeneration++
             circuitBreaker.reset()
         }
+        clearCache?.clearContextCache()
         closeNow?.closeQuietly()
+    }
+
+    /** Drops context-derived state while retaining the verified model and native session. */
+    fun resetContextCache() {
+        val entry = synchronized(monitor) {
+            contextGeneration++
+            circuitBreaker.reset()
+            if (closed) null else installed?.also { it.activeCalls++ }
+        } ?: return
+        try {
+            (entry.rescorer as? ContextCacheResettable)?.clearContextCache()
+        } finally {
+            release(entry)
+        }
     }
 
     override fun score(
@@ -66,11 +90,13 @@ class LiveContextModelSlot(
         deadline: Deadline,
     ): NeuralScoreResult {
         if (!request.fieldPolicy.allowsContextRead || !request.fieldPolicy.allowsSuggestions) {
+            resetContextCache()
             return NeuralScoreResult(EngineAvailability.DISABLED)
         }
-        if (circuitBreaker.isOpen()) return NeuralScoreResult(EngineAvailability.CIRCUIT_OPEN)
-        synchronized(monitor) {
+        val generation = synchronized(monitor) {
             if (closed || installed == null) return NeuralScoreResult(EngineAvailability.UNAVAILABLE)
+            if (circuitBreaker.isOpen()) return NeuralScoreResult(EngineAvailability.CIRCUIT_OPEN)
+            contextGeneration
         }
         val remaining = deadline.remainingMillis
         if (remaining <= 0) return NeuralScoreResult(EngineAvailability.TIMEOUT)
@@ -84,11 +110,11 @@ class LiveContextModelSlot(
         }
         return try {
             future.get(remaining, TimeUnit.MILLISECONDS).also { result ->
-                if (result.availability == EngineAvailability.TIMEOUT) circuitBreaker.recordOverrun()
+                if (result.availability == EngineAvailability.TIMEOUT) recordOverrun(generation)
             }
         } catch (_: TimeoutException) {
             future.cancel(true)
-            circuitBreaker.recordOverrun()
+            recordOverrun(generation)
             NeuralScoreResult(EngineAvailability.TIMEOUT)
         } catch (_: ExecutionException) {
             NeuralScoreResult(EngineAvailability.UNAVAILABLE)
@@ -101,16 +127,20 @@ class LiveContextModelSlot(
 
     override fun close() {
         var closeNow: AutoCloseable? = null
+        var clearCache: ContextCacheResettable? = null
         synchronized(monitor) {
             if (closed) return
             closed = true
             installed?.let { previous ->
+                clearCache = previous.rescorer as? ContextCacheResettable
                 previous.retired = true
                 if (previous.activeCalls == 0) closeNow = previous.owner
             }
             installed = null
+            contextGeneration++
         }
         executor.shutdownNow()
+        clearCache?.clearContextCache()
         closeNow?.closeQuietly()
     }
 
@@ -127,6 +157,12 @@ class LiveContextModelSlot(
             if (entry.retired && entry.activeCalls == 0) closeNow = entry.owner
         }
         closeNow?.closeQuietly()
+    }
+
+    private fun recordOverrun(generation: Long) {
+        synchronized(monitor) {
+            if (generation == contextGeneration) circuitBreaker.recordOverrun()
+        }
     }
 
     private fun AutoCloseable.closeQuietly() = runCatching { close() }.getOrDefault(Unit)
@@ -148,6 +184,9 @@ object LiveTypingEngine {
     }
 
     fun clearContext() = contextRescorer.clear()
+
+    @JvmStatic
+    fun resetContextCache() = contextRescorer.resetContextCache()
 
     fun installSwipe(model: LoadedSwipeModel, lexicon: SwipeLexicon) {
         swipeDecoder.install(model, lexicon)

@@ -63,6 +63,7 @@ import helium314.keyboard.latin.utils.InputTypeUtils;
 import helium314.keyboard.latin.utils.IntentUtils;
 import helium314.keyboard.latin.utils.Log;
 import helium314.keyboard.latin.engine.personal.PersonalizationRuntime;
+import helium314.keyboard.latin.engine.runtime.LiveTypingEngine;
 import helium314.keyboard.latin.utils.RecapitalizeMode;
 import helium314.keyboard.latin.utils.RecapitalizeStatus;
 import helium314.keyboard.latin.utils.ScriptUtils;
@@ -156,6 +157,7 @@ public final class InputLogic {
     public void startInput(final String combiningSpec, final SettingsValues settingsValues) {
         mSuggest.ensureInstalledModelsLoaded();
         PersonalizationRuntime.clearSession();
+        LiveTypingEngine.resetContextCache();
         mEnteredText = null;
         mWordBeingCorrectedByCursor = null;
         mConnection.onStartInput(settingsValues.mInputAttributes.mFieldPolicy.getAllowsContextRead()
@@ -222,6 +224,7 @@ public final class InputLogic {
         ++mAutoCommitSequenceNumber;
         mInputLogicHandler.reset();
         PersonalizationRuntime.clearSession();
+        LiveTypingEngine.resetContextCache();
         mSpaceState = SpaceState.NONE;
     }
 
@@ -231,6 +234,7 @@ public final class InputLogic {
         mInputLogicHandler.reset();
         mSuggest.clearNextWordSuggestionsCache();
         PersonalizationRuntime.clearSession();
+        LiveTypingEngine.resetContextCache();
         mConnection.setContextReadsAllowed(!enabled
                 && Settings.getValues().mInputAttributes.mFieldPolicy.getAllowsContextRead());
         if (enabled) {
@@ -411,6 +415,7 @@ public final class InputLogic {
         // A non-reconciled selection change invalidates the confirmed-commit prefix. Never form
         // personal n-grams from editor text that LibreBoard did not itself observe being committed.
         PersonalizationRuntime.clearSession();
+        LiveTypingEngine.resetContextCache();
 
         // TODO: the following is probably better done in resetEntireInputState().
         // it should only happen when the cursor moved, and the very purpose of the

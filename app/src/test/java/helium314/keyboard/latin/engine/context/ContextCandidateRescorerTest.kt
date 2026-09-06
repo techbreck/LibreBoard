@@ -10,10 +10,15 @@ import helium314.keyboard.latin.engine.FieldClass
 import helium314.keyboard.latin.engine.FieldPolicy
 import helium314.keyboard.latin.engine.InputStyle
 import helium314.keyboard.latin.engine.KeyGeometry
+import helium314.keyboard.latin.engine.NeuralScoreResult
 import helium314.keyboard.latin.engine.TypingRequest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 class ContextCandidateRescorerTest {
     private val tokenizer = FixtureTokenizer()
@@ -142,6 +147,82 @@ class ContextCandidateRescorerTest {
         assertEquals(-3.0, result.scoresByCandidate[CandidateKey("libreboard", "en-US")]!!, 0.0001)
         assertEquals(-1.0, result.scoresByCandidate[CandidateKey("libreboard", "de")]!!, 0.0001)
         assertEquals(2, calls)
+    }
+
+    @Test
+    fun cachesBoundedContextTokensAndClearsThemForPrivacyTransitions() {
+        var contextTokenizations = 0
+        val countingTokenizer = object : ContextTokenizer by tokenizer {
+            override fun encode(
+                text: String,
+                maximumTokens: Int,
+                truncation: TokenTruncation,
+            ): ContextTokenization {
+                if (text == "parked over") contextTokenizations++
+                return tokenizer.encode(text, maximumTokens, truncation)
+            }
+        }
+        val rescorer = ContextCandidateRescorer(countingTokenizer) { batch, _ ->
+            ContextInferenceResult(EngineAvailability.AVAILABLE, FloatArray(batch.batchSize))
+        }
+        val normal = request("parked over", FieldPolicy.NORMAL, FieldClass.PLAIN)
+        val candidates = listOf(candidate("there", "en-US"))
+
+        repeat(2) { rescorer.score(normal, candidates, Deadline.afterMillis(100)) }
+        assertEquals(1, contextTokenizations)
+
+        rescorer.clearContextCache()
+        rescorer.score(normal, candidates, Deadline.afterMillis(100))
+        assertEquals(2, contextTokenizations)
+
+        rescorer.score(
+            request("private", FieldPolicy.SENSITIVE, FieldClass.RESTRICTED),
+            candidates,
+            Deadline.afterMillis(100),
+        )
+        rescorer.score(normal, candidates, Deadline.afterMillis(100))
+        assertEquals(3, contextTokenizations)
+    }
+
+    @Test
+    fun resetDuringTokenizationCannotRepopulateTheClearedCache() {
+        val entered = CountDownLatch(1)
+        val proceed = CountDownLatch(1)
+        val contextTokenizations = AtomicInteger()
+        val blockingTokenizer = object : ContextTokenizer by tokenizer {
+            override fun encode(
+                text: String,
+                maximumTokens: Int,
+                truncation: TokenTruncation,
+            ): ContextTokenization {
+                if (text == "parked over" && contextTokenizations.incrementAndGet() == 1) {
+                    entered.countDown()
+                    check(proceed.await(1, TimeUnit.SECONDS))
+                }
+                return tokenizer.encode(text, maximumTokens, truncation)
+            }
+        }
+        val rescorer = ContextCandidateRescorer(blockingTokenizer) { batch, _ ->
+            ContextInferenceResult(EngineAvailability.AVAILABLE, FloatArray(batch.batchSize))
+        }
+        val normal = request("parked over", FieldPolicy.NORMAL, FieldClass.PLAIN)
+        val candidates = listOf(candidate("there", "en-US"))
+        val executor = Executors.newSingleThreadExecutor()
+        try {
+            val inFlight = executor.submit<NeuralScoreResult> {
+                rescorer.score(normal, candidates, Deadline.afterMillis(1_000))
+            }
+            assertTrue(entered.await(1, TimeUnit.SECONDS))
+            rescorer.clearContextCache()
+            proceed.countDown()
+            assertEquals(EngineAvailability.AVAILABLE, inFlight.get(1, TimeUnit.SECONDS).availability)
+
+            rescorer.score(normal, candidates, Deadline.afterMillis(100))
+            assertEquals(2, contextTokenizations.get())
+        } finally {
+            proceed.countDown()
+            executor.shutdownNow()
+        }
     }
 
     @Test

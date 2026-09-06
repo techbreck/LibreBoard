@@ -53,7 +53,8 @@ tests count every underlying surrounding-text call and require zero reads for ea
   under a 15 ms deadline, but do not replace the retained dictionary's calibrated winner; an exact
   personal match vetoes autocorrection.
 
-Incognito clears process-local rejection/model context, suppresses suggestions and clipboard capture,
+Incognito clears process-local rejection/model context, including the bounded prefix-token cache,
+suppresses suggestions and clipboard capture,
 and prevents all personal writes. Existing learned data is not silently erased. The explicit,
 searchable learned-data action clears personal tables in one database transaction, removes legacy
 history, rejection files, dedicated learning caches/adapters, and learned files inside interrupted

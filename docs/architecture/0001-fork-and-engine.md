@@ -26,7 +26,11 @@ optional context scores. It snapshots current geometry, coarse field class, enab
 bounded context, and sequence ID before dispatch. Context inference runs through one process-scoped
 session behind a hard deadline and three-overrun circuit breaker. Only an available result receives
 nonzero neural weight; every other result preserves the classic ranking. Production activation and
-release calibration remain gated on accepted signed artifacts and Phase 0 measurements.
+release calibration remain gated on accepted signed artifacts and Phase 0 measurements. Repeated
+suggestions over the same bounded prefix reuse only its token IDs. Editor changes, unreconciled
+cursor movement, finish-input, and incognito transitions atomically invalidate that cache without
+uninstalling the verified model; an in-flight request from an earlier generation cannot repopulate
+the cache or trip the new session's circuit breaker.
 
 ## Gesture decision
 

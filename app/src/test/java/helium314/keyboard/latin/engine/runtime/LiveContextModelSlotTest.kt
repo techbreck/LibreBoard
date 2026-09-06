@@ -3,6 +3,7 @@ package helium314.keyboard.latin.engine.runtime
 
 import helium314.keyboard.latin.engine.Candidate
 import helium314.keyboard.latin.engine.CandidateSource
+import helium314.keyboard.latin.engine.ContextCacheResettable
 import helium314.keyboard.latin.engine.Deadline
 import helium314.keyboard.latin.engine.DeadlineCircuitBreaker
 import helium314.keyboard.latin.engine.EngineAvailability
@@ -18,6 +19,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -122,6 +124,74 @@ class LiveContextModelSlotTest {
                 EngineAvailability.CIRCUIT_OPEN,
                 slot.score(request(), candidates(), Deadline.afterMillis(100)).availability,
             )
+        }
+    }
+
+    @Test
+    fun contextResetKeepsInstalledModelAndClearsItsCache() {
+        val resets = AtomicInteger()
+        val closes = AtomicInteger()
+        val rescorer = object : NeuralRescorer, ContextCacheResettable {
+            override fun score(
+                request: TypingRequest,
+                candidates: List<Candidate>,
+                deadline: Deadline,
+            ) = NeuralScoreResult(EngineAvailability.AVAILABLE)
+
+            override fun clearContextCache() {
+                resets.incrementAndGet()
+            }
+        }
+        LiveContextModelSlot().use { slot ->
+            slot.install(rescorer, AutoCloseable { closes.incrementAndGet() })
+            slot.resetContextCache()
+            assertEquals(1, resets.get())
+            assertEquals(0, closes.get())
+            assertEquals(
+                EngineAvailability.DISABLED,
+                slot.score(request(FieldPolicy.SENSITIVE), candidates(), Deadline.afterMillis(100)).availability,
+            )
+            assertEquals(2, resets.get())
+            assertEquals(
+                EngineAvailability.AVAILABLE,
+                slot.score(request(), candidates(), Deadline.afterMillis(100)).availability,
+            )
+        }
+        assertEquals(1, closes.get())
+    }
+
+    @Test
+    fun timeoutFromAnEarlierContextCannotOpenTheResetSessionCircuit() {
+        val entered = CountDownLatch(1)
+        val proceed = CountDownLatch(1)
+        val calls = AtomicInteger()
+        val slot = LiveContextModelSlot(DeadlineCircuitBreaker(maximumOverruns = 1))
+        slot.install(NeuralRescorer { _, _, _ ->
+            if (calls.incrementAndGet() == 1) {
+                entered.countDown()
+                check(proceed.await(1, TimeUnit.SECONDS))
+                NeuralScoreResult(EngineAvailability.TIMEOUT)
+            } else {
+                NeuralScoreResult(EngineAvailability.AVAILABLE)
+            }
+        }, AutoCloseable {})
+        val caller = Executors.newSingleThreadExecutor()
+        try {
+            val stale = caller.submit<NeuralScoreResult> {
+                slot.score(request(), candidates(), Deadline.afterMillis(1_000))
+            }
+            assertTrue(entered.await(1, TimeUnit.SECONDS))
+            slot.resetContextCache()
+            proceed.countDown()
+            assertEquals(EngineAvailability.TIMEOUT, stale.get(1, TimeUnit.SECONDS).availability)
+            assertEquals(
+                EngineAvailability.AVAILABLE,
+                slot.score(request(), candidates(), Deadline.afterMillis(100)).availability,
+            )
+        } finally {
+            proceed.countDown()
+            caller.shutdownNow()
+            slot.close()
         }
     }
 

@@ -3,6 +3,7 @@ package helium314.keyboard.latin.engine.context
 
 import helium314.keyboard.latin.engine.Candidate
 import helium314.keyboard.latin.engine.CandidateKey
+import helium314.keyboard.latin.engine.ContextCacheResettable
 import helium314.keyboard.latin.engine.Deadline
 import helium314.keyboard.latin.engine.EngineAvailability
 import helium314.keyboard.latin.engine.FieldClass
@@ -10,6 +11,7 @@ import helium314.keyboard.latin.engine.MAX_CANDIDATES
 import helium314.keyboard.latin.engine.NeuralRescorer
 import helium314.keyboard.latin.engine.NeuralScoreResult
 import helium314.keyboard.latin.engine.TypingRequest
+import java.security.MessageDigest
 
 /** Fixed context-en-de-v1 tensor ABI. All arrays are row-major. */
 data class ContextModelBatch(
@@ -55,13 +57,18 @@ enum class TokenTruncation { KEEP_START, KEEP_END }
 class ContextCandidateRescorer(
     private val tokenizer: ContextTokenizer,
     private val inferenceSession: ContextInferenceSession,
-) : NeuralRescorer {
+) : NeuralRescorer, ContextCacheResettable {
+    private val contextCacheMonitor = Any()
+    private var contextCache: CachedContextTokens? = null
+    private var contextCacheGeneration = 0L
+
     override fun score(
         request: TypingRequest,
         candidates: List<Candidate>,
         deadline: Deadline,
     ): NeuralScoreResult {
         if (!request.fieldPolicy.allowsContextRead || !request.fieldPolicy.allowsSuggestions) {
+            clearContextCache()
             return NeuralScoreResult(EngineAvailability.DISABLED)
         }
         if (candidates.isEmpty()) return NeuralScoreResult(EngineAvailability.AVAILABLE)
@@ -110,11 +117,7 @@ class ContextCandidateRescorer(
             TokenizedCandidate(candidate, languageToken, tokenization.tokenIds)
         }
         if (tokenizedCandidates.isEmpty()) return emptyList()
-        val contextTokens = tokenizer.encode(
-            request.precedingContext,
-            MAX_CONTEXT_TOKENS,
-            TokenTruncation.KEEP_END,
-        ).tokenIds
+        val contextTokens = contextTokens(request.precedingContext)
         require(contextTokens.size <= MAX_CONTEXT_TOKENS) { "context tokenization is unbounded" }
         contextTokens.forEach { it.requireTokenId() }
         return tokenizedCandidates.groupBy(TokenizedCandidate::languageToken).map { (languageToken, group) ->
@@ -161,6 +164,48 @@ class ContextCandidateRescorer(
         val candidates: List<Candidate>,
         val batch: ContextModelBatch,
     )
+
+    private data class CachedContextTokens(
+        val fingerprint: ByteArray,
+        val tokenIds: IntArray,
+    )
+
+    private fun contextTokens(context: String): IntArray {
+        val fingerprint = MessageDigest.getInstance("SHA-256").digest(context.toByteArray(Charsets.UTF_8))
+        val (cachedTokens, generation) = synchronized(contextCacheMonitor) {
+            contextCache
+                ?.takeIf { it.fingerprint.contentEquals(fingerprint) }
+                ?.tokenIds
+                ?.copyOf() to contextCacheGeneration
+        }
+        if (cachedTokens != null) {
+            fingerprint.fill(0)
+            return cachedTokens
+        }
+        val tokenIds = tokenizer.encode(
+            context,
+            MAX_CONTEXT_TOKENS,
+            TokenTruncation.KEEP_END,
+        ).tokenIds
+        synchronized(contextCacheMonitor) {
+            if (generation == contextCacheGeneration) {
+                contextCache?.tokenIds?.fill(0)
+                contextCache?.fingerprint?.fill(0)
+                contextCache = CachedContextTokens(fingerprint.copyOf(), tokenIds.copyOf())
+            }
+        }
+        fingerprint.fill(0)
+        return tokenIds
+    }
+
+    override fun clearContextCache() {
+        synchronized(contextCacheMonitor) {
+            contextCacheGeneration++
+            contextCache?.tokenIds?.fill(0)
+            contextCache?.fingerprint?.fill(0)
+            contextCache = null
+        }
+    }
 
     private fun Int.requireTokenId(): Int {
         require(this >= 0) { "token IDs must be non-negative" }
