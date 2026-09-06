@@ -94,8 +94,10 @@ class SwipeLexiconIndex private constructor(
         private fun canonicalLanguageTag(tag: String): String =
             Locale.forLanguageTag(tag).takeUnless { it == Locale.ROOT }?.toLanguageTag().orEmpty()
 
-        private const val LENGTH_TOLERANCE_BELOW = 2
-        private const val LENGTH_TOLERANCE_ABOVE = 3
+        // The live-geometry path estimate is deliberately approximate. This bounded window covers
+        // 99%+ of the pinned validation corpus while still excluding most unrelated word lengths.
+        private const val LENGTH_TOLERANCE_BELOW = 3
+        private const val LENGTH_TOLERANCE_ABOVE = 4
         private const val MAX_EMISSION_LENGTH = 64
     }
 }

@@ -14,6 +14,7 @@ TOOLS = pathlib.Path(__file__).resolve().parents[1]
 ROOT = TOOLS.parent
 sys.path[:0] = [str(TOOLS), str(pathlib.Path(__file__).resolve().parent), str(ROOT)]
 import export_swipe_model  # noqa: E402
+import evaluate_swipe_ctc  # noqa: E402
 import prepare_swipe_dataset as swipe_data  # noqa: E402
 import train_swipe_model  # noqa: E402
 from test_prepare_swipe_dataset import PreparedFixture, find_session, policy_document, row  # noqa: E402
@@ -75,6 +76,29 @@ class SwipeModelToolchainTest(unittest.TestCase):
             manifest = json.loads((export_root / "manifest-development.json").read_text())
             self.assertEqual(exported["model"]["sha256"], manifest["modelSha256"])
             self.assertIn("MatMul", manifest["requiredOnnxOperators"])
+
+            loaded, model_path, _report_hash = evaluate_swipe_ctc.load_export(
+                export_root / "export-report-development.json",
+                development=True,
+            )
+            numpy, onnxruntime, _versions = evaluate_swipe_ctc._dependencies()
+            options = onnxruntime.SessionOptions()
+            options.intra_op_num_threads = 1
+            options.inter_op_num_threads = 1
+            session = onnxruntime.InferenceSession(
+                str(model_path),
+                sess_options=options,
+                providers=["CPUExecutionProvider"],
+            )
+            prepared_layout = json.loads((fixture.output_root / "layout.json").read_text())
+            output = session.run(["logits"], {
+                "path_coordinates": numpy.zeros((1, 64, 2), dtype=numpy.float32),
+                "key_centers": numpy.asarray(prepared_layout["keyCenters"], dtype=numpy.float32).reshape(1, 64, 2),
+                "key_mask": numpy.asarray(prepared_layout["keyMask"], dtype=numpy.float32).reshape(1, 64),
+            })[0]
+            self.assertEqual(exported["model"]["sha256"], loaded["model"]["sha256"])
+            self.assertEqual((1, 32, 65), output.shape)
+            self.assertTrue(numpy.isfinite(output).all())
 
 
 if __name__ == "__main__":

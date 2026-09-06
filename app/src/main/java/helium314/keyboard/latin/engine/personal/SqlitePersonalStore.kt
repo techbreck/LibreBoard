@@ -491,8 +491,8 @@ class SqlitePersonalStore private constructor(context: Context) :
         private const val MAX_PHRASE_TOKENS = 4
         private const val MAX_PERSONAL_SWIPE_QUERY_ROWS = 512
         private const val MAX_PERSONAL_WORD_LENGTH = 64
-        private const val SWIPE_LENGTH_TOLERANCE_BELOW = 2
-        private const val SWIPE_LENGTH_TOLERANCE_ABOVE = 3
+        private const val SWIPE_LENGTH_TOLERANCE_BELOW = 3
+        private const val SWIPE_LENGTH_TOLERANCE_ABOVE = 4
         private const val REQUIRED_MANUAL_ACCEPTS = 2
         private const val REJECTION_RETENTION_MILLIS = 30L * 24 * 60 * 60 * 1000
         private const val DECAY_TIME_CONSTANT_MILLIS = 90.0 * 24 * 60 * 60 * 1000

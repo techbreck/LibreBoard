@@ -15,7 +15,7 @@ import helium314.keyboard.latin.engine.TypingRequest
 import helium314.keyboard.latin.engine.WordLock
 import helium314.keyboard.latin.engine.geometric.LexiconWord
 import helium314.keyboard.latin.engine.geometric.SwipeLexicon
-import helium314.keyboard.latin.engine.geometric.TraceKeySequence
+import helium314.keyboard.latin.engine.geometric.SwipeLengthEstimate
 import helium314.keyboard.latin.engine.normalizeCandidate
 import java.util.Locale
 import kotlin.math.exp
@@ -86,8 +86,8 @@ class CtcSwipeDecoder(
             else -> request.enabledLanguages
         }
         if (languageTags.isEmpty()) return SwipeDecodeResult(EngineAvailability.INCOMPATIBLE)
-        val trace = TraceKeySequence.decode(request.path, request.geometry)
-        val approximateLength = trace.codePointCount(0, trace.length)
+        val approximateLength = greedyEmissionLength(inference).takeIf { it > 0 }
+            ?: SwipeLengthEstimate.fromPath(request.path, request.geometry)
         val trie = buildTrie(
             lexicon.words(languageTags, approximateLength),
             features.keyLabels,
@@ -330,6 +330,30 @@ class CtcSwipeDecoder(
             for (index in offset until offset + count) sum += exp(values[index] - maximum)
             val denominator = maximum + ln(sum)
             return DoubleArray(count) { values[offset + it] - denominator }
+        }
+
+        internal fun greedyEmissionLength(result: CtcInferenceResult): Int {
+            val logits = result.logits ?: return 0
+            if (result.frameCount <= 0 || result.classCount <= 1 ||
+                logits.size != result.frameCount * result.classCount
+            ) return 0
+            var previous = -1
+            var emissions = 0
+            for (frame in 0 until result.frameCount) {
+                val offset = frame * result.classCount
+                var bestClass = 0
+                var bestLogit = logits[offset]
+                for (outputClass in 1 until result.classCount) {
+                    val value = logits[offset + outputClass]
+                    if (value > bestLogit) {
+                        bestLogit = value
+                        bestClass = outputClass
+                    }
+                }
+                if (bestClass != BLANK_CLASS && bestClass != previous) emissions++
+                previous = bestClass
+            }
+            return emissions
         }
 
         private fun logAdd(first: Double, second: Double): Double {

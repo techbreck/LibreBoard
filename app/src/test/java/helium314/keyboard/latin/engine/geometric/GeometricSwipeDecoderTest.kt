@@ -52,4 +52,43 @@ class GeometricSwipeDecoderTest {
         assertEquals("cat", result.candidates.first().surface)
         assertTrue(result.candidates.isNotEmpty())
     }
+
+    @Test
+    fun continuousCrossedKeysDoNotMasqueradeAsWordLength() {
+        val rows = listOf(
+            "qwertyuiop" to 50f,
+            "asdfghjkl" to 150f,
+            "zxcvbnm" to 250f,
+        )
+        val keys = mutableListOf<KeySlot>()
+        rows.forEachIndexed { rowIndex, (labels, y) ->
+            val offset = when (rowIndex) {
+                0 -> 50f
+                1 -> 100f
+                else -> 200f
+            }
+            labels.forEachIndexed { index, character ->
+                keys += KeySlot(keys.size + 1, character.toString(), offset + index * 100f, y, 90f, 90f)
+            }
+        }
+        val qwerty = KeyGeometry(1_000f, 300f, keys)
+        val centers = "both".map { character ->
+            qwerty.keys.single { it.label == character.toString() }.let { TouchPoint(it.centerX, it.centerY) }
+        }
+        val densePath = centers.zipWithNext().flatMapIndexed { segment, (start, end) ->
+            (0..16).map { step ->
+                val fraction = step / 16f
+                TouchPoint(
+                    start.x + (end.x - start.x) * fraction,
+                    start.y + (end.y - start.y) * fraction,
+                )
+            }.drop(if (segment == 0) 0 else 1)
+        }
+
+        val crossedKeyCount = TraceKeySequence.decode(densePath, qwerty).length
+        val estimatedLength = SwipeLengthEstimate.fromPath(densePath, qwerty)
+
+        assertTrue(crossedKeyCount > "both".length)
+        assertEquals("both".length, estimatedLength)
+    }
 }

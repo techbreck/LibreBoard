@@ -82,6 +82,24 @@ class CtcSwipeDecoderTest {
     }
 
     @Test
+    fun lexiconLengthComesFromUnconstrainedCtcEmissionsInsteadOfCrossedKeys() {
+        var requestedLength = -1
+        val decoder = CtcSwipeDecoder(
+            fixedSession("cat".map(::classFor)),
+            SwipeLexicon { languageTags, approximateLength ->
+                requestedLength = approximateLength
+                sequenceOf(LexiconWord("cat", languageTags.first(), 100))
+            },
+        )
+
+        val result = decoder.decode(request(), Deadline.afterMillis(500))
+
+        assertEquals(EngineAvailability.AVAILABLE, result.availability)
+        assertEquals(3, requestedLength)
+        assertEquals("cat", result.candidates.first().surface)
+    }
+
+    @Test
     fun contractionSurfaceCanUseAnApostropheFreeGestureSequence() {
         val decoder = decoder("dont".map(::classFor), listOf("don't"))
 

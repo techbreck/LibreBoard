@@ -69,6 +69,7 @@ workflow is documented in [the model policy](docs/models/README.md).
 - [Phase 0 evaluation gate](docs/phase-0.md)
 - [Phase 0 measurement schema](docs/phase-0-dataset-schema.md)
 - [Phase 0 tap-corpus preparation](docs/phase-0-tap-corpus.md)
+- [Swipe CTC offline evaluation](docs/swipe-ctc-evaluation.md)
 
 ## License and ancestry
 

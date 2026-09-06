@@ -55,6 +55,22 @@ class SwipeLexiconIndexTest {
     }
 
     @Test
+    fun calibratedLengthWindowKeepsBoundedUnderAndOverEstimates() {
+        val index = SwipeLexiconIndex.from(
+            listOf(
+                LexiconWord("cat", "en-US", 100),
+                LexiconWord("keyboarder", "en-US", 90),
+                LexiconWord("at", "en-US", 80),
+                LexiconWord("keyboarding", "en-US", 70),
+            ),
+        )
+
+        val words = index.words(listOf("en-US"), 6, 20, false).map(LexiconWord::word)
+
+        assertEquals(listOf("cat", "keyboarder"), words)
+    }
+
+    @Test
     fun removalDropsEveryCaseVariantWithoutMutatingOriginalIndex() {
         val index = SwipeLexiconIndex.from(
             listOf(

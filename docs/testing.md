@@ -48,8 +48,16 @@ verifier. It also locks the ONNX Runtime source-build schema, ABI set, SDK level
 strict reduced-operator configuration parser, immutable model-source manifest/fetch behavior,
 session-separated swipe and tap-evaluation preparation, split/hash reproducibility, bounded and
 licensed tap-source provenance, rejection of synthetic spatial evidence, model architecture/parameter count,
-CTC utilities, and ONNX operator-file ordering. These dependency-free tests run for every pull
+CTC utilities, production-parity prefix-beam semantics, deterministic held-out swipe sampling,
+path-based length estimation, and ONNX operator-file ordering. These dependency-free tests run for every pull
 request.
+
+After a full swipe export, `build/model-venv/bin/python tools/evaluate_swipe_ctc.py` measures the
+real ONNX graph with the production CTC prefix-beam rules on 5,000 deterministically selected
+held-out gestures, including at least 500 from each required stratum. Its corpus-derived lexicon is
+built only from train and validation targets. The resulting host report is a model diagnostic, not
+Phase 0 evidence; device runtime, production dictionaries, geometric/scorer fusion, memory, and
+latency remain part of the bound Android measurements.
 
 The Phase 0 evaluator binds each test row to a unique metadata-declared device run. Release-sized
 evidence requires at least 100 tap and 100 swipe latency samples from each stock Android,

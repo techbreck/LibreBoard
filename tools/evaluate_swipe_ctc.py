@@ -1,0 +1,772 @@
+#!/usr/bin/env python3
+"""Evaluate an exported LibreBoard swipe CTC model with the production beam semantics.
+
+This is an offline model diagnostic. It deliberately uses only train/validation vocabulary and the
+held-out test paths, but it does not replace Phase 0 device evidence: the production dictionary,
+geometric union, shared scorer, Android runtime, latency, and memory still have to be measured there.
+"""
+
+from __future__ import annotations
+
+import argparse
+import collections
+import dataclasses
+import hashlib
+import json
+import math
+import os
+import pathlib
+import sys
+import tempfile
+import time
+import unicodedata
+from typing import Any, Iterable, Sequence
+
+import model_sources
+import swipe_model_contract
+
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+DEFAULT_DATA_ROOT = ROOT / "build" / "model-data" / "swipe-latin-v1"
+DEFAULT_EXPORT_ROOT = ROOT / "build" / "model-export" / "swipe-latin-v1"
+DEFAULT_REPORT = DEFAULT_EXPORT_ROOT / "export-report.json"
+DEFAULT_OUTPUT = DEFAULT_EXPORT_ROOT / "ctc-evaluation-report.json"
+REQUIRED_STRATA = (
+    "short",
+    "medium",
+    "long",
+    "clean",
+    "sloppy",
+    "very_sloppy",
+    "double_letter",
+    "return_trip",
+)
+TEST_ROW_KEYS = {
+    "schemaVersion",
+    "sessionId",
+    "id",
+    "split",
+    "language",
+    "target",
+    "ctcLabels",
+    "pathCoordinates",
+    "layoutId",
+    "orientation",
+    "geometricDeviation",
+    "strata",
+}
+LAYOUT_KEYS = {
+    "schemaVersion",
+    "id",
+    "keyLabels",
+    "keyCenters",
+    "keyMask",
+    "pathShape",
+    "keyCentersShape",
+    "keyMaskShape",
+}
+EXPORT_REPORT_KEYS = {
+    "schemaVersion",
+    "modelId",
+    "releaseEligible",
+    "appCommit",
+    "modelSpecSha256",
+    "dataManifestSha256",
+    "trainingReportSha256",
+    "weightsSha256",
+    "model",
+    "manifest",
+    "requiredOperators",
+    "modelSpec",
+    "splitManifest",
+    "trainingReport",
+    "fp16StoredInitializerCount",
+    "toolchain",
+}
+LOG_ZERO = float("-inf")
+MAXIMUM_JSONL_LINE_BYTES = 64 * 1024
+MAXIMUM_LEXICON_WORDS = 100_000
+LENGTH_TOLERANCE_BELOW = 3
+LENGTH_TOLERANCE_ABOVE = 4
+
+
+class SwipeEvaluationError(ValueError):
+    pass
+
+
+@dataclasses.dataclass(frozen=True)
+class EvaluationRow:
+    identifier: str
+    session_id: str
+    language: str
+    target: str
+    labels: tuple[int, ...]
+    path: tuple[float, ...]
+    strata: frozenset[str]
+
+
+@dataclasses.dataclass(frozen=True)
+class LexiconEntry:
+    word: str
+    language: str
+    emissions: tuple[int, ...]
+    frequency: int
+
+
+class TrieNode:
+    __slots__ = ("children", "words")
+
+    def __init__(self) -> None:
+        self.children: dict[int, TrieNode] = {}
+        self.words: list[LexiconEntry] = []
+
+
+def _normalize(value: str) -> str:
+    return unicodedata.normalize("NFKC", value).lower()
+
+
+def _read_json(path: pathlib.Path, maximum_bytes: int, label: str) -> tuple[dict[str, Any], bytes]:
+    try:
+        if not path.is_file() or path.is_symlink() or path.stat().st_size > maximum_bytes:
+            raise SwipeEvaluationError(f"{label} is missing, linked, or too large")
+        payload = path.read_bytes()
+        value = json.loads(payload)
+    except SwipeEvaluationError:
+        raise
+    except (OSError, json.JSONDecodeError) as failure:
+        raise SwipeEvaluationError(f"cannot read {label}: {failure}") from failure
+    if not isinstance(value, dict):
+        raise SwipeEvaluationError(f"{label} must be an object")
+    return value, payload
+
+
+def _safe_child(root: pathlib.Path, filename: Any, label: str) -> pathlib.Path:
+    if not isinstance(filename, str) or not filename or pathlib.PurePath(filename).name != filename:
+        raise SwipeEvaluationError(f"{label} has an invalid artifact name")
+    path = root / filename
+    if not path.is_file() or path.is_symlink():
+        raise SwipeEvaluationError(f"{label} artifact is missing or linked")
+    return path
+
+
+def load_export(report_path: pathlib.Path, *, development: bool) -> tuple[dict[str, Any], pathlib.Path, str]:
+    report_path = report_path.resolve()
+    report, report_payload = _read_json(report_path, 4 * 1024 * 1024, "swipe export report")
+    if set(report) != EXPORT_REPORT_KEYS or report.get("schemaVersion") != 1 or report.get("modelId") != "swipe-latin-v1":
+        raise SwipeEvaluationError("swipe export report has an unsupported schema or model")
+    if not isinstance(report.get("appCommit"), str) or not model_sources.REVISION.fullmatch(report["appCommit"]):
+        raise SwipeEvaluationError("swipe export report has an invalid app commit")
+    if report.get("releaseEligible") is not True and not development:
+        raise SwipeEvaluationError("a development export requires --development")
+    model = report.get("model")
+    if not isinstance(model, dict) or set(model) != {"file", "bytes", "sha256"}:
+        raise SwipeEvaluationError("swipe export report has invalid model metadata")
+    model_path = _safe_child(report_path.parent, model["file"], "swipe model")
+    if (
+        isinstance(model["bytes"], bool)
+        or not isinstance(model["bytes"], int)
+        or model_path.stat().st_size != model["bytes"]
+        or not isinstance(model["sha256"], str)
+        or not model_sources.SHA256.fullmatch(model["sha256"])
+        or model_sources.file_sha256(model_path) != model["sha256"]
+    ):
+        raise SwipeEvaluationError("swipe model does not match its export report")
+    manifest_path = _safe_child(report_path.parent, report.get("manifest"), "model manifest")
+    manifest, _ = _read_json(manifest_path, 1024 * 1024, "model manifest")
+    if manifest.get("modelKind") != "swipe-ctc" or manifest.get("modelSha256") != model["sha256"]:
+        raise SwipeEvaluationError("model manifest does not bind the exported swipe model")
+
+    for field in ("modelSpecSha256", "dataManifestSha256", "trainingReportSha256", "weightsSha256"):
+        if not isinstance(report.get(field), str) or not model_sources.SHA256.fullmatch(report[field]):
+            raise SwipeEvaluationError(f"swipe export report has an invalid {field}")
+    model_spec_path = _safe_child(report_path.parent, report["modelSpec"], "copied model spec")
+    split_manifest_path = _safe_child(report_path.parent, report["splitManifest"], "copied split manifest")
+    training_report_path = _safe_child(report_path.parent, report["trainingReport"], "copied training report")
+    operators_path = _safe_child(report_path.parent, report["requiredOperators"], "operator config")
+    if model_sources.file_sha256(model_spec_path) != report["modelSpecSha256"]:
+        raise SwipeEvaluationError("copied model spec does not match the export report")
+    if model_sources.file_sha256(split_manifest_path) != report["dataManifestSha256"]:
+        raise SwipeEvaluationError("copied split manifest does not match the export report")
+    if model_sources.file_sha256(training_report_path) != report["trainingReportSha256"]:
+        raise SwipeEvaluationError("copied training report does not match the export report")
+    training_report, _ = _read_json(training_report_path, 4 * 1024 * 1024, "copied training report")
+    training_weights = training_report.get("weights")
+    if (
+        training_report.get("modelId") != "swipe-latin-v1"
+        or not isinstance(training_weights, dict)
+        or training_weights.get("sha256") != report["weightsSha256"]
+    ):
+        raise SwipeEvaluationError("copied training report does not bind the exported weights")
+    if operators_path.stat().st_size <= 0 or operators_path.stat().st_size > 1024 * 1024:
+        raise SwipeEvaluationError("operator config is empty or too large")
+    if (
+        isinstance(report.get("fp16StoredInitializerCount"), bool)
+        or not isinstance(report.get("fp16StoredInitializerCount"), int)
+        or report["fp16StoredInitializerCount"] <= 0
+    ):
+        raise SwipeEvaluationError("swipe export report has an invalid FP16 initializer count")
+    if report.get("toolchain") != {
+        "torch": "2.8.0",
+        "numpy": "2.2.6",
+        "onnx": "1.19.0",
+        "safetensors": "0.6.2",
+    }:
+        raise SwipeEvaluationError("swipe export report toolchain does not match the pinned exporter")
+    return report, model_path, hashlib.sha256(report_payload).hexdigest()
+
+
+def load_layout(path: pathlib.Path) -> dict[str, Any]:
+    layout, _ = _read_json(path.resolve(), 1024 * 1024, "prepared swipe layout")
+    if set(layout) != LAYOUT_KEYS or layout.get("schemaVersion") != 1:
+        raise SwipeEvaluationError("prepared swipe layout has an unexpected schema")
+    if layout.get("pathShape") != [1, 64, 2] or layout.get("keyCentersShape") != [1, 64, 2]:
+        raise SwipeEvaluationError("prepared swipe layout violates the fixed coordinate ABI")
+    if layout.get("keyMaskShape") != [1, 64]:
+        raise SwipeEvaluationError("prepared swipe layout violates the fixed mask ABI")
+    labels = layout.get("keyLabels")
+    centers = layout.get("keyCenters")
+    mask = layout.get("keyMask")
+    if not isinstance(labels, list) or len(labels) != 64:
+        raise SwipeEvaluationError("prepared swipe layout has invalid key labels")
+    if (
+        not isinstance(centers, list)
+        or len(centers) != 128
+        or any(isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) for value in centers)
+    ):
+        raise SwipeEvaluationError("prepared swipe layout has invalid key centers")
+    if not isinstance(mask, list) or len(mask) != 64 or any(value not in {0, 1} for value in mask):
+        raise SwipeEvaluationError("prepared swipe layout has invalid key mask")
+    enabled = [label for label, value in zip(labels, mask, strict=True) if value]
+    if not enabled or any(not isinstance(label, str) or len(label) != 1 for label in enabled):
+        raise SwipeEvaluationError("prepared swipe layout has invalid enabled labels")
+    if len({_normalize(label) for label in enabled}) != len(enabled):
+        raise SwipeEvaluationError("prepared swipe layout labels are not unique")
+    return layout
+
+
+def _class_by_label(layout: dict[str, Any]) -> dict[str, int]:
+    return {
+        _normalize(label): index + 1
+        for index, (label, enabled) in enumerate(zip(layout["keyLabels"], layout["keyMask"], strict=True))
+        if enabled and label is not None
+    }
+
+
+def emission_classes(word: str, class_by_label: dict[str, int]) -> tuple[int, ...] | None:
+    result = []
+    for character in _normalize(word):
+        output_class = class_by_label.get(character)
+        if output_class is not None:
+            result.append(output_class)
+        elif character not in {"'", "\N{RIGHT SINGLE QUOTATION MARK}", "-"}:
+            return None
+    return tuple(result) or None
+
+
+def _parse_test_row(line: bytes, layout: dict[str, Any]) -> EvaluationRow:
+    if len(line) > MAXIMUM_JSONL_LINE_BYTES:
+        raise SwipeEvaluationError("held-out swipe row is too large")
+    try:
+        value = json.loads(line)
+    except (UnicodeDecodeError, json.JSONDecodeError) as failure:
+        raise SwipeEvaluationError(f"held-out swipe data contains invalid JSON: {failure}") from failure
+    if not isinstance(value, dict) or set(value) != TEST_ROW_KEYS:
+        raise SwipeEvaluationError("held-out swipe row has an unexpected schema")
+    if value.get("schemaVersion") != 1 or value.get("split") != "test" or value.get("layoutId") != layout["id"]:
+        raise SwipeEvaluationError("held-out swipe row has an incompatible identity")
+    identifier = value.get("id")
+    session_id = value.get("sessionId")
+    if not isinstance(identifier, str) or not model_sources.SHA256.fullmatch(identifier):
+        raise SwipeEvaluationError("held-out swipe row has an invalid id")
+    if not isinstance(session_id, str) or not model_sources.SHA256.fullmatch(session_id):
+        raise SwipeEvaluationError("held-out swipe row has an invalid session id")
+    language = value.get("language")
+    target = value.get("target")
+    labels = value.get("ctcLabels")
+    path = value.get("pathCoordinates")
+    strata = value.get("strata")
+    if not isinstance(language, str) or not language or not isinstance(target, str) or not target:
+        raise SwipeEvaluationError("held-out swipe row has an invalid target identity")
+    if (
+        not isinstance(labels, list)
+        or not labels
+        or any(isinstance(item, bool) or not isinstance(item, int) or not 1 <= item <= 64 for item in labels)
+    ):
+        raise SwipeEvaluationError("held-out swipe row has invalid CTC labels")
+    if (
+        not isinstance(path, list)
+        or len(path) != 128
+        or any(isinstance(item, bool) or not isinstance(item, (int, float)) or not math.isfinite(item) for item in path)
+    ):
+        raise SwipeEvaluationError("held-out swipe row has an invalid path")
+    if (
+        not isinstance(strata, list)
+        or not strata
+        or any(not isinstance(item, str) or item not in REQUIRED_STRATA for item in strata)
+        or len(strata) != len(set(strata))
+    ):
+        raise SwipeEvaluationError("held-out swipe row has invalid strata")
+    expected_labels = emission_classes(target, _class_by_label(layout))
+    if expected_labels != tuple(labels):
+        raise SwipeEvaluationError("held-out target and CTC labels disagree")
+    return EvaluationRow(
+        identifier=identifier,
+        session_id=session_id,
+        language=language,
+        target=_normalize(target),
+        labels=tuple(labels),
+        path=tuple(float(item) for item in path),
+        strata=frozenset(strata),
+    )
+
+
+def load_test_rows(path: pathlib.Path, layout: dict[str, Any]) -> list[EvaluationRow]:
+    rows = []
+    identifiers = set()
+    with path.open("rb") as stream:
+        for line in stream:
+            row = _parse_test_row(line, layout)
+            if row.identifier in identifiers:
+                raise SwipeEvaluationError("held-out swipe row ids are not unique")
+            identifiers.add(row.identifier)
+            rows.append(row)
+    if not rows:
+        raise SwipeEvaluationError("held-out swipe data is empty")
+    return rows
+
+
+def select_rows(
+    rows: Sequence[EvaluationRow],
+    *,
+    sample_count: int,
+    minimum_per_stratum: int,
+) -> list[EvaluationRow]:
+    if sample_count <= 0 or minimum_per_stratum <= 0 or sample_count > len(rows):
+        raise SwipeEvaluationError("evaluation sample bounds are invalid")
+    ordered = sorted(rows, key=lambda row: row.identifier)
+    selected: dict[str, EvaluationRow] = {}
+    for stratum in REQUIRED_STRATA:
+        candidates = [row for row in ordered if stratum in row.strata]
+        if len(candidates) < minimum_per_stratum:
+            raise SwipeEvaluationError(f"held-out swipe data lacks {minimum_per_stratum} {stratum} rows")
+        for row in candidates[:minimum_per_stratum]:
+            selected[row.identifier] = row
+    if len(selected) > sample_count:
+        raise SwipeEvaluationError("requested sample is too small for the stratum guarantees")
+    for row in ordered:
+        if len(selected) >= sample_count:
+            break
+        selected.setdefault(row.identifier, row)
+    result = sorted(selected.values(), key=lambda row: row.identifier)
+    counts = collections.Counter(stratum for row in result for stratum in row.strata)
+    if len(result) != sample_count or any(counts[stratum] < minimum_per_stratum for stratum in REQUIRED_STRATA):
+        raise SwipeEvaluationError("deterministic selection failed its stratum guarantees")
+    return result
+
+
+def build_lexicon(data_root: pathlib.Path, layout: dict[str, Any]) -> dict[str, list[LexiconEntry]]:
+    frequencies: collections.Counter[tuple[str, str]] = collections.Counter()
+    for filename in ("train.jsonl", "validation.jsonl"):
+        with (data_root / filename).open("rb") as stream:
+            for line in stream:
+                if len(line) > MAXIMUM_JSONL_LINE_BYTES:
+                    raise SwipeEvaluationError(f"{filename} contains an oversized row")
+                try:
+                    value = json.loads(line)
+                except (UnicodeDecodeError, json.JSONDecodeError) as failure:
+                    raise SwipeEvaluationError(f"{filename} contains invalid JSON: {failure}") from failure
+                if not isinstance(value, dict) or value.get("split") != filename.removesuffix(".jsonl"):
+                    raise SwipeEvaluationError(f"{filename} contains an incompatible row")
+                language = value.get("language")
+                target = value.get("target")
+                if not isinstance(language, str) or not language or not isinstance(target, str) or not target:
+                    raise SwipeEvaluationError(f"{filename} contains an invalid target")
+                frequencies[(_normalize(target), language)] += 1
+    class_by_label = _class_by_label(layout)
+    entries = []
+    for (word, language), frequency in frequencies.items():
+        emissions = emission_classes(word, class_by_label)
+        if emissions is not None and len(emissions) <= 64:
+            entries.append(LexiconEntry(word, language, emissions, frequency))
+    entries.sort(key=lambda entry: (-entry.frequency, entry.word, entry.language))
+    entries = entries[:MAXIMUM_LEXICON_WORDS]
+    by_language: dict[str, list[LexiconEntry]] = collections.defaultdict(list)
+    for entry in entries:
+        by_language[entry.language].append(entry)
+    if not by_language:
+        raise SwipeEvaluationError("training vocabulary produced no decodable lexicon entries")
+    return dict(by_language)
+
+
+def build_trie(entries: Iterable[LexiconEntry], approximate_length: int) -> TrieNode:
+    root = TrieNode()
+    minimum = max(1, approximate_length - LENGTH_TOLERANCE_BELOW)
+    maximum = min(64, approximate_length + LENGTH_TOLERANCE_ABOVE)
+    for entry in entries:
+        if not minimum <= len(entry.emissions) <= maximum:
+            continue
+        node = root
+        for output_class in entry.emissions:
+            node = node.children.setdefault(output_class, TrieNode())
+        node.words.append(entry)
+    return root
+
+
+def _log_add(first: float, second: float) -> float:
+    if first == LOG_ZERO:
+        return second
+    if second == LOG_ZERO:
+        return first
+    maximum = max(first, second)
+    return maximum + math.log(math.exp(first - maximum) + math.exp(second - maximum))
+
+
+def _log_softmax(values: Sequence[float]) -> list[float]:
+    maximum = max(values)
+    denominator = maximum + math.log(sum(math.exp(value - maximum) for value in values))
+    return [value - denominator for value in values]
+
+
+def collapse_greedy(logits: Sequence[Sequence[float]]) -> tuple[int, ...]:
+    result = []
+    previous = -1
+    for frame in logits:
+        output_class = max(range(len(frame)), key=frame.__getitem__)
+        if output_class != 0 and output_class != previous:
+            result.append(output_class)
+        previous = output_class
+    return tuple(result)
+
+
+def path_length_estimate(path: Sequence[float], layout: dict[str, Any]) -> int:
+    """Mirror the Android live-key-unit estimate without consulting the target label."""
+    enabled_centers = [
+        (float(layout["keyCenters"][index * 2]), float(layout["keyCenters"][index * 2 + 1]))
+        for index, enabled in enumerate(layout["keyMask"])
+        if enabled
+    ]
+    if len(path) != 128 or not enabled_centers:
+        return 0
+    x_steps = []
+    rows: dict[float, list[float]] = collections.defaultdict(list)
+    for x, y in enabled_centers:
+        rows[round(y, 6)].append(x)
+    for xs in rows.values():
+        ordered = sorted(set(xs))
+        x_steps.extend(right - left for left, right in zip(ordered, ordered[1:]) if right > left)
+    ys = sorted({round(y, 6) for _x, y in enabled_centers})
+    y_steps = [right - left for left, right in zip(ys, ys[1:]) if right > left]
+    if not x_steps or not y_steps:
+        return 0
+    key_width = sorted(x_steps)[len(x_steps) // 2]
+    key_height = sorted(y_steps)[len(y_steps) // 2]
+    points = list(zip(path[::2], path[1::2], strict=True))
+    path_length_in_keys = sum(
+        math.hypot((right[0] - left[0]) / key_width, (right[1] - left[1]) / key_height)
+        for left, right in zip(points, points[1:])
+    )
+    return max(1, min(64, round(path_length_in_keys / 3.9) + 1))
+
+
+def prefix_beam_decode(
+    logits: Sequence[Sequence[float]],
+    trie: TrieNode,
+    *,
+    beam_width: int = 64,
+    maximum_results: int = 32,
+) -> list[LexiconEntry]:
+    if not logits or beam_width <= 0 or maximum_results <= 0:
+        return []
+    beam: dict[tuple[int, ...], tuple[float, float, TrieNode]] = {(): (0.0, LOG_ZERO, trie)}
+    for frame in logits:
+        probabilities = _log_softmax(frame)
+        next_beam: dict[tuple[int, ...], tuple[float, float, TrieNode]] = {}
+
+        def merge(prefix: tuple[int, ...], blank: float, non_blank: float, node: TrieNode) -> None:
+            old_blank, old_non_blank, _ = next_beam.get(prefix, (LOG_ZERO, LOG_ZERO, node))
+            next_beam[prefix] = (_log_add(old_blank, blank), _log_add(old_non_blank, non_blank), node)
+
+        for prefix, (blank, non_blank, node) in beam.items():
+            total = _log_add(blank, non_blank)
+            merge(prefix, total + probabilities[0], LOG_ZERO, node)
+            repeated_class = prefix[-1] if prefix else None
+            if repeated_class is not None:
+                merge(prefix, LOG_ZERO, non_blank + probabilities[repeated_class], node)
+            for output_class, child in node.children.items():
+                extension_probability = blank if output_class == repeated_class else total
+                if extension_probability != LOG_ZERO:
+                    merge(prefix + (output_class,), LOG_ZERO, extension_probability + probabilities[output_class], child)
+        ranked = sorted(
+            next_beam.items(),
+            key=lambda item: (-_log_add(item[1][0], item[1][1]), item[0]),
+        )[:beam_width]
+        beam = dict(ranked)
+
+    candidates: list[tuple[float, LexiconEntry]] = []
+    for _prefix, (blank, non_blank, node) in beam.items():
+        score = _log_add(blank, non_blank) / len(logits)
+        candidates.extend((score, entry) for entry in node.words)
+    candidates.sort(key=lambda item: (-item[0], -item[1].frequency, item[1].word, item[1].language))
+    result = []
+    seen = set()
+    for _score, entry in candidates:
+        key = (_normalize(entry.word), entry.language)
+        if key not in seen:
+            seen.add(key)
+            result.append(entry)
+            if len(result) >= maximum_results:
+                break
+    return result
+
+
+def _dependencies():
+    try:
+        import numpy
+        import onnxruntime
+    except ImportError as failure:
+        raise SwipeEvaluationError(
+            "install the pinned model dependencies from models/training/requirements-linux-x86_64.lock "
+            "and models/training/requirements-onnxruntime-build-linux-x86_64.lock"
+        ) from failure
+    versions = {"numpy": numpy.__version__, "onnxruntime": onnxruntime.__version__}
+    if versions != {"numpy": "2.2.6", "onnxruntime": "1.26.0"}:
+        raise SwipeEvaluationError(f"evaluation dependency versions do not match the locks: {versions}")
+    return numpy, onnxruntime, versions
+
+
+def _percentiles(values: Sequence[float]) -> dict[str, float]:
+    if not values:
+        raise SwipeEvaluationError("cannot compute latency percentiles without samples")
+    ordered = sorted(values)
+
+    def nearest(percentile: float) -> float:
+        return ordered[max(0, math.ceil(percentile * len(ordered)) - 1)]
+
+    return {
+        "p50": nearest(0.50),
+        "p95": nearest(0.95),
+        "p99": nearest(0.99),
+    }
+
+
+def evaluate(args: argparse.Namespace) -> dict[str, Any]:
+    if not args.development and (args.sample_count < 5_000 or args.minimum_per_stratum < 500):
+        raise SwipeEvaluationError("release diagnostics require 5,000 rows and 500 rows per stratum")
+    spec = swipe_model_contract.load_spec(args.spec)
+    data_root = args.data_root.resolve()
+    prepared = swipe_model_contract.load_prepared_manifest(data_root, require_pinned=not args.development)
+    export_report, model_path, export_report_hash = load_export(args.export_report, development=args.development)
+    if export_report.get("modelSpecSha256") != spec.sha256:
+        raise SwipeEvaluationError("exported model and current model spec do not match")
+    split_manifest_path = data_root / "split-manifest.json"
+    split_manifest_hash = model_sources.file_sha256(split_manifest_path)
+    if export_report.get("dataManifestSha256") != split_manifest_hash:
+        raise SwipeEvaluationError("export and evaluation data manifests do not match")
+    layout = load_layout(data_root / "layout.json")
+    rows = select_rows(
+        load_test_rows(data_root / "test.jsonl", layout),
+        sample_count=args.sample_count,
+        minimum_per_stratum=args.minimum_per_stratum,
+    )
+    lexicon = build_lexicon(data_root, layout)
+    lexicon_words = {
+        language: {entry.word for entry in entries}
+        for language, entries in lexicon.items()
+    }
+    numpy, onnxruntime, versions = _dependencies()
+
+    options = onnxruntime.SessionOptions()
+    options.intra_op_num_threads = args.threads
+    options.inter_op_num_threads = 1
+    session = onnxruntime.InferenceSession(
+        str(model_path),
+        sess_options=options,
+        providers=["CPUExecutionProvider"],
+    )
+    expected_inputs = {
+        "path_coordinates": ("tensor(float)", [1, 64, 2]),
+        "key_centers": ("tensor(float)", [1, 64, 2]),
+        "key_mask": ("tensor(float)", [1, 64]),
+    }
+    actual_inputs = {value.name: (value.type, value.shape) for value in session.get_inputs()}
+    actual_outputs = {value.name: (value.type, value.shape) for value in session.get_outputs()}
+    if actual_inputs != expected_inputs or actual_outputs != {"logits": ("tensor(float)", [1, 32, 65])}:
+        raise SwipeEvaluationError("ONNX Runtime exposes a tensor ABI that differs from the model spec")
+
+    key_centers = numpy.asarray(layout["keyCenters"], dtype=numpy.float32).reshape(1, 64, 2)
+    key_mask = numpy.asarray(layout["keyMask"], dtype=numpy.float32).reshape(1, 64)
+    trie_cache: dict[tuple[str, int], TrieNode] = {}
+    metric_names = ("overall",) + REQUIRED_STRATA
+    metrics = {
+        name: {"rows": 0, "top1": 0, "top3": 0, "inVocabulary": 0, "lengthWindowEligible": 0}
+        for name in metric_names
+    }
+    inference_ms = []
+    decode_ms = []
+    total_ms = []
+    greedy_exact = 0
+    greedy_blank_fallbacks = 0
+
+    for index, row in enumerate(rows, 1):
+        started = time.perf_counter_ns()
+        path = numpy.asarray(row.path, dtype=numpy.float32).reshape(1, 64, 2)
+        inference_started = time.perf_counter_ns()
+        output = session.run(["logits"], {
+            "path_coordinates": path,
+            "key_centers": key_centers,
+            "key_mask": key_mask,
+        })[0]
+        inference_finished = time.perf_counter_ns()
+        if output.shape != (1, 32, 65) or not numpy.isfinite(output).all():
+            raise SwipeEvaluationError(f"model returned invalid logits for held-out row {row.identifier}")
+        logits = output[0].tolist()
+        greedy = collapse_greedy(logits)
+        greedy_exact += greedy == row.labels
+        approximate_length = len(greedy)
+        if approximate_length <= 0:
+            greedy_blank_fallbacks += 1
+            approximate_length = path_length_estimate(row.path, layout)
+        cache_key = (row.language, approximate_length)
+        trie = trie_cache.get(cache_key)
+        if trie is None:
+            trie = build_trie(lexicon.get(row.language, ()), approximate_length)
+            trie_cache[cache_key] = trie
+        decoded = prefix_beam_decode(logits, trie, beam_width=args.beam_width)
+        finished = time.perf_counter_ns()
+        predictions = [entry.word for entry in decoded]
+        in_vocabulary = row.target in lexicon_words.get(row.language, set())
+        length_window_eligible = (
+            approximate_length - LENGTH_TOLERANCE_BELOW
+            <= len(row.labels)
+            <= approximate_length + LENGTH_TOLERANCE_ABOVE
+        )
+        names = ["overall", *sorted(row.strata)]
+        for name in names:
+            metric = metrics[name]
+            metric["rows"] += 1
+            metric["top1"] += bool(predictions and predictions[0] == row.target)
+            metric["top3"] += row.target in predictions[:3]
+            metric["inVocabulary"] += in_vocabulary
+            metric["lengthWindowEligible"] += length_window_eligible
+        inference_ms.append((inference_finished - inference_started) / 1_000_000)
+        decode_ms.append((finished - inference_finished) / 1_000_000)
+        total_ms.append((finished - started) / 1_000_000)
+        if index % 250 == 0:
+            print(f"evaluated {index}/{len(rows)} held-out swipes", file=sys.stderr, flush=True)
+
+    metric_report = {}
+    for name, counts in metrics.items():
+        row_count = counts["rows"]
+        metric_report[name] = {
+            **counts,
+            "top1Accuracy": counts["top1"] / row_count,
+            "top3Accuracy": counts["top3"] / row_count,
+            "vocabularyCoverage": counts["inVocabulary"] / row_count,
+            "lengthWindowCoverage": counts["lengthWindowEligible"] / row_count,
+        }
+    isolated_thresholds = (
+        metric_report["overall"]["top1Accuracy"] >= 0.90
+        and metric_report["overall"]["top3Accuracy"] >= 0.95
+        and metric_report["short"]["top3Accuracy"] >= 0.90
+        and metric_report["return_trip"]["top3Accuracy"] >= 0.90
+    )
+    return {
+        "schemaVersion": 1,
+        "modelId": "swipe-latin-v1",
+        "diagnosticOnly": True,
+        "phase0ReleaseEvidence": False,
+        "releaseEligibleInputs": bool(
+            export_report.get("releaseEligible") is True and prepared.get("schemaVersion") == 1 and not args.development
+        ),
+        "sample": {
+            "rows": len(rows),
+            "sessions": len({row.session_id for row in rows}),
+            "minimumRowsPerStratum": args.minimum_per_stratum,
+            "selection": "sha256-row-id-stratified-v1",
+        },
+        "lexicon": {
+            "sourceSplits": ["train", "validation"],
+            "testTargetsExcludedFromConstruction": True,
+            "maximumWords": MAXIMUM_LEXICON_WORDS,
+            "words": sum(len(entries) for entries in lexicon.values()),
+            "languages": sorted(lexicon),
+            "lengthToleranceBelow": LENGTH_TOLERANCE_BELOW,
+            "lengthToleranceAbove": LENGTH_TOLERANCE_ABOVE,
+        },
+        "decoder": {
+            "algorithm": "lexicon-constrained-ctc-prefix-beam-v1",
+            "beamWidth": args.beam_width,
+            "greedyExactAccuracy": greedy_exact / len(rows),
+            "greedyBlankFallbacks": greedy_blank_fallbacks,
+        },
+        "metrics": metric_report,
+        "latencyMs": {
+            "hostDiagnosticOnly": True,
+            "inference": _percentiles(inference_ms),
+            "prefixBeam": _percentiles(decode_ms),
+            "total": _percentiles(total_ms),
+        },
+        "qualitySnapshot": {
+            "meetsPhase0SwipeThresholdsInCtcIsolation": isolated_thresholds,
+            "doesNotSatisfyPhase0": True,
+        },
+        "artifacts": {
+            "model": {"path": model_path.name, "sha256": model_sources.file_sha256(model_path)},
+            "exportReportSha256": export_report_hash,
+            "splitManifestSha256": split_manifest_hash,
+            "testDataSha256": prepared["outputs"]["test.jsonl"]["sha256"],
+            "modelSpecSha256": spec.sha256,
+        },
+        "toolchain": versions,
+        "limitations": [
+            "Host CPU timing is not Android device latency or memory evidence.",
+            "The diagnostic lexicon is corpus-derived rather than the production AOSP dictionary.",
+            "Geometric, personal, context, language-lock, and final scorer fusion are not measured.",
+        ],
+    }
+
+
+def _write_report(path: pathlib.Path, report: dict[str, Any]) -> None:
+    path = path.resolve()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = (json.dumps(report, indent=2, sort_keys=True) + "\n").encode()
+    descriptor, temporary_name = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary_name, path)
+    finally:
+        if os.path.exists(temporary_name):
+            os.unlink(temporary_name)
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--spec", type=pathlib.Path, default=swipe_model_contract.DEFAULT_SPEC)
+    parser.add_argument("--data-root", type=pathlib.Path, default=DEFAULT_DATA_ROOT)
+    parser.add_argument("--export-report", type=pathlib.Path, default=DEFAULT_REPORT)
+    parser.add_argument("--output", type=pathlib.Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--sample-count", type=int, default=5_000)
+    parser.add_argument("--minimum-per-stratum", type=int, default=500)
+    parser.add_argument("--beam-width", type=int, choices=range(1, 257), default=64)
+    parser.add_argument("--threads", type=int, choices=range(1, 65), default=1)
+    parser.add_argument("--development", action="store_true")
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    try:
+        args = parse_args(argv)
+        report = evaluate(args)
+        _write_report(args.output, report)
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0
+    except (SwipeEvaluationError, swipe_model_contract.SwipeModelContractError) as failure:
+        print(f"swipe CTC evaluation failed: {failure}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

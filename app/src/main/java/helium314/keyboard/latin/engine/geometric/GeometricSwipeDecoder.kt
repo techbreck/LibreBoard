@@ -15,6 +15,7 @@ import helium314.keyboard.latin.engine.TypingRequest
 import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.ln1p
+import kotlin.math.roundToInt
 
 data class LexiconWord(
     val word: String,
@@ -40,7 +41,7 @@ class GeometricSwipeDecoder(private val lexicon: SwipeLexicon) : SwipeDecoder {
             Point(it.x / request.geometry.width, it.y / request.geometry.height)
         }
         val traced = TraceKeySequence.decode(request.path, request.geometry)
-        val approximateLength = traced.codePointCount(0, traced.length)
+        val approximateLength = SwipeLengthEstimate.fromPath(request.path, request.geometry)
         val scored = mutableListOf<Candidate>()
 
         for (entry in lexicon.words(request.enabledLanguages, approximateLength)) {
@@ -197,4 +198,51 @@ object TraceKeySequence {
         }
         return out.toString()
     }
+}
+
+/**
+ * Estimates the intended word length without counting every key crossed by a continuous gesture.
+ *
+ * A nearest-key trace is useful as a shape feature, but it is not a word-length estimate: a swipe
+ * from one distant key to another naturally crosses several unrelated keys. The scale below is
+ * calibrated on the session-separated validation partition of the pinned open swipe corpus. It is
+ * expressed in live-key units, so resizing, one-handed mode, and split layouts do not change it.
+ */
+internal object SwipeLengthEstimate {
+    fun fromPath(path: List<TouchPoint>, geometry: KeyGeometry): Int {
+        if (path.size < 2) return 0
+        val letterKeys = geometry.keys.filter {
+            it.enabled && it.width.isFinite() && it.height.isFinite() && it.width > 0f && it.height > 0f &&
+                it.label.codePointCount(0, it.label.length) == 1
+        }
+        if (letterKeys.isEmpty()) return 0
+        val keyWidth = median(letterKeys.map { it.width })
+        val keyHeight = median(letterKeys.map { it.height })
+        if (!keyWidth.isFinite() || !keyHeight.isFinite() || keyWidth <= 0f || keyHeight <= 0f) return 0
+
+        var pathLengthInKeys = 0.0
+        for (index in 1 until path.size) {
+            val previous = path[index - 1]
+            val current = path[index]
+            if (!previous.x.isFinite() || !previous.y.isFinite() || !current.x.isFinite() || !current.y.isFinite()) {
+                return 0
+            }
+            pathLengthInKeys += hypot(
+                ((current.x - previous.x) / keyWidth).toDouble(),
+                ((current.y - previous.y) / keyHeight).toDouble(),
+            )
+        }
+        return (pathLengthInKeys / KEY_UNITS_PER_EMISSION).roundToInt()
+            .plus(1)
+            .coerceIn(1, MAX_EMISSION_LENGTH)
+    }
+
+    private fun median(values: List<Float>): Float {
+        val sorted = values.sorted()
+        val middle = sorted.size / 2
+        return if (sorted.size % 2 == 1) sorted[middle] else (sorted[middle - 1] + sorted[middle]) / 2f
+    }
+
+    private const val KEY_UNITS_PER_EMISSION = 3.9
+    private const val MAX_EMISSION_LENGTH = 64
 }
