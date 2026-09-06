@@ -915,7 +915,10 @@ def source_checks(errors: list[str]) -> None:
             "git", "-C", str(ROOT), "ls-files", "--stage", "--", "third_party/onnxruntime",
         ])
         expected = f"160000 {ONNXRUNTIME_COMMIT} 0\tthird_party/onnxruntime"
-        if submodule_entry.returncode != 0 or submodule_entry.stdout.strip() != expected:
+        if submodule_entry.returncode != 0:
+            detail = submodule_entry.stderr.strip()[:512] or f"exit {submodule_entry.returncode}"
+            fail(errors, f"cannot inspect ONNX Runtime gitlink: {detail}")
+        elif submodule_entry.stdout.strip() != expected:
             fail(errors, "ONNX Runtime gitlink does not pin the approved commit")
 
     committed_runtime_binaries = [
