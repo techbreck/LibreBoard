@@ -26,6 +26,7 @@ MAXIMUM_COMMAND_OUTPUT_BYTES = 1024 * 1024
 SERIAL = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 PACKAGE_NAME = re.compile(r"^[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*$")
 SECURITY_PATCH = re.compile(r"^20[0-9]{2}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])$")
+MEM_TOTAL = re.compile(r"^MemTotal:\s+([1-9][0-9]*)\s+kB$", re.MULTILINE)
 PLAY_PACKAGES = frozenset({
     "com.android.vending",
     "com.google.android.gms",
@@ -149,6 +150,7 @@ def inspect_device(
         "osBuildIncremental": "ro.build.version.incremental",
         "kernelQemu": "ro.kernel.qemu",
         "bootQemu": "ro.boot.qemu",
+        "lowRamFlag": "ro.config.low_ram",
     }
     values = {name: shell("getprop", prop) for name, prop in properties.items()}
     if any(not values[name] for name in (
@@ -160,6 +162,13 @@ def inspect_device(
         api_level = int(values["apiLevel"])
     except ValueError as failure:
         raise DeviceCaptureError("device API level is invalid") from failure
+    if values["lowRamFlag"] not in {"", "false", "true"}:
+        raise DeviceCaptureError("device low-RAM property is invalid")
+
+    memory_match = MEM_TOTAL.search(shell("cat", "/proc/meminfo"))
+    if memory_match is None:
+        raise DeviceCaptureError("device memory total is unavailable")
+    memory_mib = (int(memory_match.group(1)) + 1023) // 1024
 
     current_user = shell("am", "get-current-user")
     if not current_user.isdigit() or int(current_user) > 9999:
@@ -194,6 +203,8 @@ def inspect_device(
         "buildFingerprint": values["buildFingerprint"],
         "osBuildIncremental": values["osBuildIncremental"],
         "physicalDevice": physical,
+        "isLowRamDevice": values["lowRamFlag"] == "true",
+        "memoryMiB": memory_mib,
         "libreBoardInstalled": LIBREBOARD_PACKAGE in packages,
         "sandboxedGooglePlayInstalled": bool(installed_play),
         "installedGooglePlayPackages": installed_play,

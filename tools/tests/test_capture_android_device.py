@@ -25,7 +25,9 @@ class FakeAdb:
             "ro.build.version.incremental": "2026090500",
             "ro.kernel.qemu": "0",
             "ro.boot.qemu": "0",
+            "ro.config.low_ram": "false",
         }
+        self.meminfo = "MemTotal:        8074032 kB\nMemFree:         1000000 kB\n"
         self.packages = {capture.LIBREBOARD_PACKAGE}
 
     def __call__(self, command, **_kwargs):
@@ -39,6 +41,8 @@ class FakeAdb:
                 output = self.properties[operation[2]] + "\n"
             elif operation == ["shell", "am", "get-current-user"]:
                 output = "0\n"
+            elif operation == ["shell", "cat", "/proc/meminfo"]:
+                output = self.meminfo
             elif operation == ["shell", "pm", "list", "packages", "--user", "0"]:
                 output = "".join(f"package:{value}\n" for value in sorted(self.packages))
             else:
@@ -70,6 +74,8 @@ class CaptureAndroidDeviceTest(unittest.TestCase):
         self.assertEqual("Pixel 8a", report["deviceModel"])
         self.assertEqual(36, report["apiLevel"])
         self.assertTrue(report["physicalDevice"])
+        self.assertFalse(report["isLowRamDevice"])
+        self.assertEqual(7885, report["memoryMiB"])
         self.assertTrue(report["libreBoardInstalled"])
         self.assertFalse(report["sandboxedGooglePlayInstalled"])
         self.assertFalse(report["isReleaseEvidence"])
@@ -88,12 +94,16 @@ class CaptureAndroidDeviceTest(unittest.TestCase):
     def test_emulator_play_or_missing_keyboard_remains_blocked(self):
         fake = FakeAdb()
         fake.properties["ro.kernel.qemu"] = "1"
+        fake.properties["ro.config.low_ram"] = "true"
+        fake.meminfo = "MemTotal:        1536000 kB\n"
         fake.packages = set(capture.PLAY_PACKAGES)
 
         report = self.inspect(fake)
 
         self.assertEqual("BLOCKED", report["status"])
         self.assertFalse(report["physicalDevice"])
+        self.assertTrue(report["isLowRamDevice"])
+        self.assertEqual(1500, report["memoryMiB"])
         self.assertFalse(report["libreBoardInstalled"])
         self.assertTrue(report["sandboxedGooglePlayInstalled"])
         self.assertEqual(sorted(capture.PLAY_PACKAGES), report["installedGooglePlayPackages"])
@@ -121,6 +131,16 @@ class CaptureAndroidDeviceTest(unittest.TestCase):
         fake = FakeAdb()
         fake.properties["ro.build.version.sdk"] = "latest"
         with self.assertRaisesRegex(capture.DeviceCaptureError, "API level is invalid"):
+            self.inspect(fake)
+
+        fake = FakeAdb()
+        fake.properties["ro.config.low_ram"] = "1"
+        with self.assertRaisesRegex(capture.DeviceCaptureError, "low-RAM property is invalid"):
+            self.inspect(fake)
+
+        fake = FakeAdb()
+        fake.meminfo = "MemFree: 1024 kB\n"
+        with self.assertRaisesRegex(capture.DeviceCaptureError, "memory total is unavailable"):
             self.inspect(fake)
 
         fake = FakeAdb()

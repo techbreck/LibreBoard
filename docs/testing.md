@@ -111,6 +111,21 @@ built ONNX Runtime native pair.
 `./gradlew connectedDebugNoMinifyAndroidTest --max-workers=1` runs it on an attached unlocked
 Android device or emulator. Serial Gradle workers avoid races in the inherited multi-ABI `ndk-build`
 archive tasks.
+
+The Phase 0 low-RAM emulator must be cold-booted with the emulator's supported low-RAM mode rather
+than an injected read-only property. For the checked-in API 36 AOSP AVD, use:
+
+```sh
+$ANDROID_SDK_ROOT/emulator/emulator -avd LibreBoard_API_36_AOSP_LowRAM \
+  -lowram -no-snapshot -no-window -no-audio -no-boot-anim
+adb shell getprop ro.config.low_ram
+python3 tools/capture_android_device.py --serial emulator-5554 \
+  --output build/device-evidence/api36-low-ram-emulator.json
+```
+
+The property command must print exactly `true`; the capture also records `/proc/meminfo` as rounded-up
+MiB. A renamed AVD or a RAM setting alone does not establish `ActivityManager.isLowRamDevice()` and
+must not be submitted as low-RAM evidence.
 The suite checks the installed package rather than only source XML: merged permissions, backup and
 cleartext flags, the IME service permission/direct-boot flag, the non-exported clipboard-search
 activity, the Android `EditorInfo` policy matrix, and real credential-encrypted SQLite behavior for
