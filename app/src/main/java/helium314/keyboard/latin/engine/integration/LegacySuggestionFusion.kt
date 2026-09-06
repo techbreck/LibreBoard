@@ -60,6 +60,21 @@ internal class LegacySuggestionFusion(
         languageLock.endWord()
     }
 
+    /** A user-selected subtype is a hard language choice, not merely a new prior. */
+    fun selectLanguageManually(languageTag: String) {
+        require(languageTag.isNotBlank())
+        wordActive = false
+        previousRaw = ""
+        languageLock.selectManually(languageTag)
+    }
+
+    /** Restore boundary-only automatic language detection after an explicit user action. */
+    fun releaseManualLanguageSelection() {
+        wordActive = false
+        previousRaw = ""
+        languageLock.releaseManualSelection()
+    }
+
     fun fuse(
         rawText: String,
         classicSuggestions: List<SuggestedWordInfo>,

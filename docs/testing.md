@@ -16,7 +16,9 @@ fallback. Runtime adapter tests lock exact tensor names/types/shapes, dynamic ba
 direct-buffer invocation, output bounds, native-wrapper cleanup, core-only absence, and hard deadline
 fallback. Official-model policy tests lock the independent swipe/context size and parameter ceilings,
 the exact reduced-operator allowlist, bounded RSA key reads, and the 3072-bit/exponent-65537 trust
-contract. Live-path tests prove bounded immutable request and language-lock propagation,
+contract. Live-path tests prove bounded immutable request and language-lock propagation, including
+hard spacebar/language-key selections that survive word boundaries while automatic editor-locale
+switches do not create hard locks,
 0–100 neural weighting, calibrated commit selection, classic ranking on timeout, cooperative and
 non-cooperative timeout circuit breaking, delayed native-owner cleanup, invalid preference fallback,
 restricted-field bypass, and safety-veto precedence. Swipe live-path tests additionally prove
@@ -88,7 +90,8 @@ archive tasks.
 The suite checks the installed package rather than only source XML: merged permissions, backup and
 cleartext flags, the IME service permission/direct-boot flag, the non-exported clipboard-search
 activity, the Android `EditorInfo` policy matrix, and real credential-encrypted SQLite behavior for
-personalization plus clipboard search, storage limits, pruning, and stale-id handling.
+personalization plus clipboard search, storage limits, pruning, and stale-id handling. It also
+verifies that Android's sensitive-clipboard marker reaches the capture-policy veto.
 The device suite also verifies that an explicit wipe clears real credential-encrypted personal rows
 and legacy rejection files while leaving installed-model and clipboard fixtures intact.
 

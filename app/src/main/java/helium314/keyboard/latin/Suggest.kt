@@ -74,6 +74,15 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
         liveCandidateFusion.resetWord()
     }
 
+    /** Keep all candidates in the subtype the user selected from the keyboard language control. */
+    fun selectLanguageManually(languageTag: String) {
+        liveCandidateFusion.selectLanguageManually(languageTag)
+    }
+
+    fun releaseManualLanguageSelection() {
+        liveCandidateFusion.releaseManualLanguageSelection()
+    }
+
     /**
      * Set the normalized-score threshold for a suggestion to be considered strong enough that we
      * will auto-correct to this.

@@ -297,7 +297,9 @@ public class LatinIME extends InputMethodService implements
                     latinIme.deallocateMemory();
                     break;
                 case MSG_SWITCH_LANGUAGE_AUTOMATICALLY:
-                    latinIme.switchToSubtype((InputMethodSubtype) msg.obj);
+                    // Editor locale hints are not a user language choice and therefore must not
+                    // create a hard LibreBoard word-language lock.
+                    latinIme.onCurrentInputMethodSubtypeChanged((InputMethodSubtype) msg.obj);
                     break;
             }
         }
@@ -846,6 +848,11 @@ public class LatinIME extends InputMethodService implements
 
     /** alias to onCurrentInputMethodSubtypeChanged with a better name, as it's also used for internal switching */
     public void switchToSubtype(final InputMethodSubtype subtype) {
+        // This entry point is used by the keyboard language key and spacebar language slide. Keep
+        // that explicit choice as a hard lock across word boundaries. Automatic editor-hint
+        // switches bypass this method in UIHandler above.
+        mInputLogic.mSuggest.selectLanguageManually(
+                RichInputMethodSubtype.Companion.get(subtype).getLocale().toLanguageTag());
         onCurrentInputMethodSubtypeChanged(subtype);
     }
 

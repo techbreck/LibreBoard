@@ -70,9 +70,8 @@ class ClipboardHistoryManager(
         }
     }
 
-    // todo for later
-    //  setting whether to store sensitive clip data?
-    //  care about other clip items than first?
+    // Clipboard history intentionally stores only the first item. Android does not expose a stable
+    // multi-item UX contract here, and bounding capture to one item keeps persistence predictable.
     private fun fetchPrimaryClip() {
         if (tempPrimaryClip) return // avoid updating history
         val fieldPolicy = FieldPolicyResolver.resolve(latinIME.currentInputEditorInfo)

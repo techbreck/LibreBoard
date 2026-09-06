@@ -108,6 +108,33 @@ class LegacySuggestionFusionTest {
     }
 
     @Test
+    fun manualLanguageSelectionSurvivesWordBoundariesUntilExplicitlyReleased() {
+        val fusion = LegacySuggestionFusion()
+        val enabled = listOf("en-US", "de")
+        fun fuse(raw: String) = fusion.fuse(
+            rawText = raw,
+            classicSuggestions = listOf(
+                suggestion("gift", 2_000, english),
+                suggestion("Gift", 100, german),
+            ),
+            supplementalCandidates = emptyList(),
+            enabledLanguageTags = enabled,
+            defaultLocale = english,
+            inputStyle = InputStyle.TAP,
+        )
+
+        fusion.selectLanguageManually("de")
+        assertEquals(WordLock.Manual("de"), fuse("g").wordLock)
+        assertEquals(listOf("Gift"), fuse("g").suggestions.map { it.mWord })
+        fusion.resetWord()
+        assertEquals(WordLock.Manual("de"), fuse("g").wordLock)
+
+        fusion.releaseManualLanguageSelection()
+        assertEquals(WordLock.Automatic("en-US"), fuse("g").wordLock)
+        assertEquals(listOf("gift"), fuse("g").suggestions.map { it.mWord })
+    }
+
+    @Test
     fun generatedCorrectionUsesDistinctNonPersonalProvenance() {
         val fusion = LegacySuggestionFusion()
         val contraction = Candidate(

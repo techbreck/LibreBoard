@@ -2,12 +2,15 @@
 package helium314.keyboard.latin.engine
 
 import android.Manifest
+import android.content.ClipDescription
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.os.PersistableBundle
 import android.text.InputType
 import android.view.inputmethod.EditorInfo
 import androidx.test.core.app.ApplicationProvider
+import helium314.keyboard.compat.ClipboardManagerCompat
 import helium314.keyboard.latin.database.ClipboardDao
 import helium314.keyboard.latin.database.ClipboardHistoryPolicy
 import helium314.keyboard.keyboard.clipboard.ClipboardSearchActivity
@@ -121,6 +124,19 @@ class OnDevicePrivacyInstrumentedTest {
         }
         assertEquals(FieldPolicy.NO_LEARNING, FieldPolicyResolver.resolve(clipboardSearch))
         assertFullyRestricted(clipboardSearch)
+    }
+
+    @Test
+    fun platformSensitiveClipboardMarkerVetoesHistoryCapture() {
+        val description = ClipDescription("private", arrayOf("text/plain")).apply {
+            extras = PersistableBundle().apply {
+                putBoolean("android.content.extra.IS_SENSITIVE", true)
+            }
+        }
+        val markedSensitive = ClipboardManagerCompat.getClipSensitivity(description) == true
+
+        assertTrue(markedSensitive)
+        assertFalse(ClipboardHistoryPolicy.allowsCapture(FieldPolicy.NORMAL, false, markedSensitive))
     }
 
     @Test
