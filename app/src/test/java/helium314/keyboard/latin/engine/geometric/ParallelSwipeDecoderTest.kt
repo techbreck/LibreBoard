@@ -47,7 +47,29 @@ class ParallelSwipeDecoderTest {
 
         assertTrue(CandidateSource.CTC_SWIPE in candidate.sources)
         assertTrue(CandidateSource.GEOMETRIC_SWIPE in candidate.sources)
-        assertEquals(-0.1, candidate.components.spatial!!, 0.0)
+        assertEquals(1.0, candidate.components.spatial!!, 0.0)
+    }
+
+    @Test
+    fun unrelatedRawScoreScalesCannotSuppressOneDecoderSlate() {
+        val ctc = (0 until 32).map { index ->
+            candidate("ctc$index", CandidateSource.CTC_SWIPE, -index / 100.0)
+        }
+        val geometric = listOf(
+            candidate("geometric", CandidateSource.GEOMETRIC_SWIPE, -100.0),
+        )
+        val decoder = ParallelSwipeDecoder(
+            ctcDecoder = SwipeDecoder { _, _ -> SwipeDecodeResult(EngineAvailability.AVAILABLE, ctc) },
+            geometricDecoder = SwipeDecoder { _, _ ->
+                SwipeDecodeResult(EngineAvailability.AVAILABLE, geometric)
+            },
+        )
+
+        val result = decoder.decode(request(), Deadline.afterMillis(100))
+
+        assertEquals(32, result.candidates.size)
+        assertTrue(result.candidates.any { it.surface == "geometric" })
+        assertTrue(result.candidates.any { CandidateSource.CTC_SWIPE in it.sources })
     }
 
     @Test

@@ -16,6 +16,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import kotlin.math.max
+import kotlin.math.sqrt
 
 /** Runs the pure-Kotlin fallback beside optional CTC inference and preserves either partial slate. */
 class ParallelSwipeDecoder(
@@ -42,7 +43,7 @@ class ParallelSwipeDecoder(
         } catch (_: Throwable) {
             SwipeDecodeResult(EngineAvailability.UNAVAILABLE)
         }
-        val candidates = merge(ctc.candidates + geometric.candidates)
+        val candidates = merge(ctc.candidates, geometric.candidates)
         val availability = when {
             ctc.availability == EngineAvailability.AVAILABLE ||
                 geometric.availability == EngineAvailability.AVAILABLE -> EngineAvailability.AVAILABLE
@@ -57,7 +58,12 @@ class ParallelSwipeDecoder(
         return SwipeDecodeResult(availability, candidates)
     }
 
-    private fun merge(candidates: List<Candidate>): List<Candidate> {
+    private fun merge(ctcCandidates: List<Candidate>, geometricCandidates: List<Candidate>): List<Candidate> {
+        // CTC log probabilities and geometric template costs do not share a numerical scale.
+        // Normalize each completed slate before the bounded union so either decoder can contribute
+        // candidates; the shared scorer normalizes the resulting spatial component again alongside
+        // static, personal, language, and context evidence.
+        val candidates = normalizeSpatial(ctcCandidates) + normalizeSpatial(geometricCandidates)
         val merged = linkedMapOf<CandidateKey, Candidate>()
         candidates.forEach { candidate ->
             val previous = merged[candidate.key]
@@ -81,6 +87,31 @@ class ParallelSwipeDecoder(
                 .thenByDescending { it.components.staticFrequency ?: Double.NEGATIVE_INFINITY }
                 .thenBy { it.surface },
         ).take(MAX_CANDIDATES)
+    }
+
+    private fun normalizeSpatial(candidates: List<Candidate>): List<Candidate> {
+        val values = candidates.mapNotNull { it.components.spatial }
+        if (values.isEmpty()) return candidates
+        val normalized = when {
+            values.size == 1 -> mapOf(values.single() to 1.0)
+            else -> {
+                val mean = values.average()
+                val variance = values.sumOf { value ->
+                    val difference = value - mean
+                    difference * difference
+                } / values.size
+                val deviation = sqrt(variance)
+                if (deviation < 1e-9) values.distinct().associateWith { 0.0 }
+                else values.distinct().associateWith { (it - mean) / deviation }
+            }
+        }
+        return candidates.map { candidate ->
+            val spatial = candidate.components.spatial?.let(normalized::getValue)
+            candidate.copy(
+                components = candidate.components.copy(spatial = spatial),
+                totalScore = spatial ?: candidate.totalScore,
+            )
+        }
     }
 
     private fun maximum(first: Double?, second: Double?): Double? = when {
