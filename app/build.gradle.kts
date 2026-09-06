@@ -5,6 +5,22 @@ import java.security.MessageDigest
 
 val pinnedOnnxRuntimeCommit = "8c546c37b43caaca1fa25db430dab94b901cf277"
 val pinnedNdkRevision = "28.0.13004108"
+val releaseBaseVersionCode = 1
+val supportedApplicationAbis = listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+val applicationAbiVersionOffsets = mapOf(
+    "armeabi-v7a" to 1,
+    "arm64-v8a" to 2,
+    "x86" to 3,
+    "x86_64" to 4,
+)
+val targetApplicationAbi = providers.gradleProperty("libreboardTargetAbi").orNull?.also { abi ->
+    require(abi in supportedApplicationAbis) {
+        "libreboardTargetAbi must be one of: ${supportedApplicationAbis.joinToString()}"
+    }
+}
+val packagedVersionCode = releaseBaseVersionCode * 100 + (
+    targetApplicationAbi?.let(applicationAbiVersionOffsets::getValue) ?: 99
+)
 
 private fun sha256(file: File): String {
     val digest = MessageDigest.getInstance("SHA-256")
@@ -155,14 +171,16 @@ android {
         applicationId = "org.libreboard.keyboard"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
+        // Keep this unencoded base visible to F-Droid's update checker. Variant outputs use
+        // 100 * base + 1..4 for one-ABI builds and +99 for the universal GitHub artifact.
+        versionCode = releaseBaseVersionCode
         versionName = "0.1.0-alpha01"
         buildConfigField("boolean", "LIBREBOARD_ONNX_RUNTIME_PACKAGED", (verifiedOnnxRuntimeAar != null).toString())
         buildConfigField("boolean", "LIBREBOARD_SIGNED_MODELS_PACKAGED", (verifiedSwipeModelArchive != null).toString())
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             abiFilters.clear()
-            abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64"))
+            abiFilters.addAll(targetApplicationAbi?.let(::listOf) ?: supportedApplicationAbis)
         }
         proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
     }
@@ -203,8 +221,11 @@ android {
                 variant.proguardFiles.add(project.layout.buildDirectory.file(project.buildFile.parent + "/proguard-rules.pro"))
             }
             variant.outputs.forEach { output ->
+                output.versionCode.set(packagedVersionCode)
                 if (output is com.android.build.api.variant.impl.VariantOutputImpl) {
-                    output.outputFileName = "LibreBoard_${defaultConfig.versionName}-${variant.buildType}.apk"
+                    val abiSuffix = targetApplicationAbi?.let { "-$it" }.orEmpty()
+                    output.outputFileName =
+                        "LibreBoard_${defaultConfig.versionName}-${variant.buildType}$abiSuffix.apk"
                 }
             }
         }

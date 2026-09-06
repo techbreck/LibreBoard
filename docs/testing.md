@@ -162,6 +162,10 @@ hashes, and both byte-identical APK builds. Missing or mismatched evidence block
 
 ## Release commands
 
+Universal GitHub and one-ABI F-Droid artifacts use different, fail-closed version-code and native
+packaging rules. The build commands, mapping, and matching `--expected-abi` verifier invocation are
+documented in [ABI packaging](release/abi-packaging.md).
+
 ```sh
 ./gradlew testRunTestsUnitTest assembleDebugNoMinifyAndroidTest --max-workers=1
 python3 -m unittest discover -s tools/tests

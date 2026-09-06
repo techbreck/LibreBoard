@@ -240,6 +240,36 @@ class VerifyOnnxRuntimeApkEntriesTest(unittest.TestCase):
             errors,
         )
 
+    def test_accepts_complete_pair_for_selected_fdroid_abi(self):
+        entries = [
+            f"lib/arm64-v8a/{library}"
+            for library in ("libonnxruntime.so", "libonnxruntime4j_jni.so")
+        ]
+        errors = []
+        onnx_runtime_apk_entry_checks(
+            errors,
+            entries,
+            signed_model_packaged=True,
+            expected_abis=frozenset({"arm64-v8a"}),
+        )
+        self.assertEqual([], errors)
+
+        errors = []
+        onnx_runtime_apk_entry_checks(
+            errors,
+            entries,
+            signed_model_packaged=True,
+            expected_abis=frozenset({"x86_64"}),
+        )
+        self.assertIn(
+            "ONNX Runtime native libraries must cover exactly the selected application ABI (x86_64)",
+            errors,
+        )
+        self.assertIn(
+            "core APK contains a signed swipe model without the complete ONNX Runtime",
+            errors,
+        )
+
     def test_signed_model_rejects_absent_or_partial_runtime(self):
         errors = []
         onnx_runtime_apk_entry_checks(errors, [], signed_model_packaged=True)
@@ -259,6 +289,91 @@ class VerifyOnnxRuntimeApkEntriesTest(unittest.TestCase):
             "ONNX Runtime native libraries must cover exactly the four application ABIs",
             errors,
         )
+
+
+class VerifyApkAbiPolicyTest(unittest.TestCase):
+    def test_version_codes_are_stable_and_upgrade_safe(self):
+        universal = verify_release.expected_apk_version_code(verify_release.EXPECTED_NATIVE_ABIS)
+        per_abi = {
+            abi: verify_release.expected_apk_version_code(frozenset({abi}))
+            for abi in verify_release.EXPECTED_NATIVE_ABIS
+        }
+        self.assertEqual(199, universal)
+        self.assertEqual(101, verify_release.EXPECTED_APP_VERSION_CODE)
+        self.assertEqual(
+            {
+                "armeabi-v7a": 101,
+                "arm64-v8a": 102,
+                "x86": 103,
+                "x86_64": 104,
+            },
+            per_abi,
+        )
+        self.assertLess(max(per_abi.values()), universal)
+        self.assertLess(universal, 201)
+
+    def test_native_entries_must_match_selected_abi_exactly(self):
+        errors = []
+        verify_release.native_apk_abi_checks(
+            errors,
+            ["lib/arm64-v8a/libjni_latinime.so"],
+            frozenset({"arm64-v8a"}),
+        )
+        self.assertEqual([], errors)
+
+        errors = []
+        verify_release.native_apk_abi_checks(
+            errors,
+            [
+                "lib/arm64-v8a/libjni_latinime.so",
+                "lib/x86_64/libjni_latinime.so",
+            ],
+            frozenset({"arm64-v8a"}),
+        )
+        self.assertEqual(
+            ["APK native ABI set is arm64-v8a, x86_64; expected exactly arm64-v8a"],
+            errors,
+        )
+
+    def test_native_entries_reject_unknown_or_malformed_paths(self):
+        errors = []
+        verify_release.native_apk_abi_checks(
+            errors,
+            ["assets/arm64-v8a/libjni_latinime.so"],
+            frozenset({"arm64-v8a"}),
+        )
+        self.assertEqual(
+            [
+                "native library has an invalid APK ABI path: assets/arm64-v8a/libjni_latinime.so",
+                "APK native ABI set is none; expected exactly arm64-v8a",
+            ],
+            errors,
+        )
+
+
+class VerifyDexDependencyMarkersTest(unittest.TestCase):
+    def test_allows_only_exact_androidx_photo_picker_intent_records(self):
+        errors = []
+        dex = b"dex\n" + b"".join(
+            verify_release.dex_ascii_string_record(value.upper())
+            for value in verify_release.ALLOWED_GMS_INTENT_STRINGS
+        )
+        verify_release.dex_dependency_marker_checks(errors, dex, "fixture DEX")
+        self.assertEqual([], errors)
+
+    def test_rejects_extended_dotted_marker_and_class_path(self):
+        for value in (
+            "com.google.android.gms.provider.action.PICK_IMAGES.evil",
+            "com/google/android/gms/FakeClient",
+        ):
+            with self.subTest(value=value):
+                errors = []
+                dex = b"dex\n" + verify_release.dex_ascii_string_record(value)
+                verify_release.dex_dependency_marker_checks(errors, dex, "fixture DEX")
+                self.assertEqual(
+                    ["fixture DEX contains forbidden dependency marker com.google.android.gms"],
+                    errors,
+                )
 
 
 class VerifyStoreMetadataTest(unittest.TestCase):

@@ -38,8 +38,20 @@ EXPECTED_APPLICATION_IDS = {
 }
 EXPECTED_MIN_SDK = "26"
 EXPECTED_TARGET_SDK = "36"
-EXPECTED_APP_VERSION_CODE = 1
-EXPECTED_NATIVE_ABIS = {"armeabi-v7a", "arm64-v8a", "x86", "x86_64"}
+BASE_APP_VERSION_CODE = 1
+APPLICATION_ABI_VERSION_OFFSETS = {
+    "armeabi-v7a": 1,
+    "arm64-v8a": 2,
+    "x86": 3,
+    "x86_64": 4,
+}
+EXPECTED_NATIVE_ABIS = frozenset(APPLICATION_ABI_VERSION_OFFSETS)
+UNIVERSAL_VERSION_CODE_OFFSET = 99
+# Official models must be installable by every APK for this source release, including the artifact
+# with the lowest encoded version code.
+EXPECTED_APP_VERSION_CODE = (
+    BASE_APP_VERSION_CODE * 100 + min(APPLICATION_ABI_VERSION_OFFSETS.values())
+)
 LATIN_IME_CLASS = "helium314.keyboard.latin.LatinIME"
 CLIPBOARD_PROVIDER_CLASS = "helium314.keyboard.latin.database.ClipboardContentProvider"
 FORBIDDEN_PERMISSIONS = {
@@ -53,6 +65,10 @@ FORBIDDEN_DEPENDENCY_MARKERS = (
     "io.sentry",
     "com.amplitude",
     "com.appsflyer",
+)
+ALLOWED_GMS_INTENT_STRINGS = (
+    "com.google.android.gms.provider.action.pick_images",
+    "com.google.android.gms.provider.extra.pick_images_max",
 )
 SENSITIVE_LOG_IDENTIFIERS = (
     "appLabel",
@@ -277,6 +293,33 @@ CONTEXT_DISTILLATION_METRIC_FIELDS = {
 
 def fail(errors: list[str], message: str) -> None:
     errors.append(message)
+
+
+def dex_ascii_string_record(value: str) -> bytes:
+    encoded = value.encode("ascii")
+    length = len(value)
+    prefix = bytearray()
+    while True:
+        byte = length & 0x7f
+        length >>= 7
+        prefix.append(byte | (0x80 if length else 0))
+        if not length:
+            break
+    return bytes(prefix) + encoded + b"\x00"
+
+
+def dex_dependency_marker_checks(errors: list[str], dex: bytes, label: str) -> None:
+    inspected = dex.lower()
+    # AndroidX Activity contains these exact Play-services photo-picker intent constants so it can
+    # ask whether an optional system picker resolves. They are data strings, not class references.
+    # Remove only complete DEX string_data_item records; a prefix, suffix, or class path still fails.
+    for allowed in ALLOWED_GMS_INTENT_STRINGS:
+        inspected = inspected.replace(dex_ascii_string_record(allowed), b"")
+    for marker in FORBIDDEN_DEPENDENCY_MARKERS:
+        dotted = marker.encode("ascii")
+        slashed = marker.replace(".", "/").encode("ascii")
+        if dotted in inspected or slashed in inspected:
+            fail(errors, f"{label} contains forbidden dependency marker {marker}")
 
 
 def _log_calls(source: str):
@@ -693,6 +736,30 @@ def validate_backup_exclusions(errors: list[str]) -> None:
                 fail(errors, f"{section_name} rules must exclude every app-data domain")
 
 
+def validate_application_packaging_source(errors: list[str]) -> None:
+    build_path = ROOT / "app/build.gradle.kts"
+    try:
+        build_text = build_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        fail(errors, f"cannot read application build configuration: {exc}")
+        return
+    required_markers = (
+        'providers.gradleProperty("libreboardTargetAbi")',
+        "val releaseBaseVersionCode = 1",
+        '"armeabi-v7a" to 1',
+        '"arm64-v8a" to 2',
+        '"x86" to 3',
+        '"x86_64" to 4',
+        "?: 99",
+        "targetApplicationAbi?.let(::listOf) ?: supportedApplicationAbis",
+        "output.versionCode.set(packagedVersionCode)",
+        'targetApplicationAbi?.let { "-$it" }.orEmpty()',
+    )
+    missing = [marker for marker in required_markers if marker not in build_text]
+    if missing:
+        fail(errors, "application build must retain fail-closed universal/one-ABI packaging")
+
+
 def validate_model_pack_source(errors: list[str]) -> None:
     manifest_path = ROOT / "modelpack-en-de/src/main/AndroidManifest.xml"
     build_path = ROOT / "modelpack-en-de/build.gradle.kts"
@@ -852,6 +919,7 @@ def source_checks(errors: list[str]) -> None:
         fail(errors, "core manifest must query exactly the official model-pack provider")
 
     validate_backup_exclusions(errors)
+    validate_application_packaging_source(errors)
     validate_model_pack_source(errors)
     validate_store_metadata(errors)
     validate_gradle_dependency_verification(errors)
@@ -1809,11 +1877,11 @@ def model_pack_apk_checks(errors: list[str], apk: pathlib.Path, public_key: path
             if native_entries:
                 fail(errors, "model-pack APK must not contain native code")
             for dex_entry in dex_entries:
-                dex = archive.read(dex_entry).lower()
-                for marker in FORBIDDEN_DEPENDENCY_MARKERS:
-                    if (marker.encode("ascii") in dex
-                            or marker.replace(".", "/").encode("ascii") in dex):
-                        fail(errors, f"model-pack DEX contains forbidden dependency marker {marker}")
+                dex_dependency_marker_checks(
+                    errors,
+                    archive.read(dex_entry),
+                    "model-pack DEX",
+                )
     except (OSError, zipfile.BadZipFile, zipfile.LargeZipFile) as exc:
         fail(errors, f"cannot inspect model-pack APK: {exc}")
 
@@ -1822,6 +1890,7 @@ def onnx_runtime_apk_entry_checks(
     errors: list[str],
     native_entries: list[str],
     signed_model_packaged: bool,
+    expected_abis: frozenset[str] = EXPECTED_NATIVE_ABIS,
 ) -> None:
     ort_names = {"libonnxruntime.so", "libonnxruntime4j_jni.so"}
     ort_by_abi: dict[str, set[str]] = {}
@@ -1836,16 +1905,51 @@ def onnx_runtime_apk_entry_checks(
     for abi, libraries in ort_by_abi.items():
         if libraries != ort_names:
             fail(errors, f"ONNX Runtime native pair is incomplete for {abi}")
-    if ort_by_abi and set(ort_by_abi) != EXPECTED_NATIVE_ABIS:
-        fail(errors, "ONNX Runtime native libraries must cover exactly the four application ABIs")
+    if ort_by_abi and set(ort_by_abi) != expected_abis:
+        if expected_abis == EXPECTED_NATIVE_ABIS:
+            expectation = "exactly the four application ABIs"
+        else:
+            expectation = f"exactly the selected application ABI ({next(iter(expected_abis))})"
+        fail(errors, f"ONNX Runtime native libraries must cover {expectation}")
     if signed_model_packaged and (
-        set(ort_by_abi) != EXPECTED_NATIVE_ABIS
+        set(ort_by_abi) != expected_abis
         or any(libraries != ort_names for libraries in ort_by_abi.values())
     ):
         fail(errors, "core APK contains a signed swipe model without the complete ONNX Runtime")
 
 
-def apk_checks(errors: list[str], apk: pathlib.Path) -> None:
+def expected_apk_version_code(expected_abis: frozenset[str]) -> int:
+    if expected_abis == EXPECTED_NATIVE_ABIS:
+        return BASE_APP_VERSION_CODE * 100 + UNIVERSAL_VERSION_CODE_OFFSET
+    if len(expected_abis) != 1 or not expected_abis.issubset(EXPECTED_NATIVE_ABIS):
+        raise ValueError("expected APK ABIs must be the universal set or one supported ABI")
+    abi = next(iter(expected_abis))
+    return BASE_APP_VERSION_CODE * 100 + APPLICATION_ABI_VERSION_OFFSETS[abi]
+
+
+def native_apk_abi_checks(
+    errors: list[str],
+    native_entries: list[str],
+    expected_abis: frozenset[str],
+) -> None:
+    actual_abis: set[str] = set()
+    for entry in native_entries:
+        path = pathlib.PurePosixPath(entry)
+        if len(path.parts) != 3 or path.parts[0] != "lib" or path.parts[1] not in EXPECTED_NATIVE_ABIS:
+            fail(errors, f"native library has an invalid APK ABI path: {entry}")
+            continue
+        actual_abis.add(path.parts[1])
+    if actual_abis != expected_abis:
+        expected = ", ".join(sorted(expected_abis))
+        actual = ", ".join(sorted(actual_abis)) or "none"
+        fail(errors, f"APK native ABI set is {actual}; expected exactly {expected}")
+
+
+def apk_checks(
+    errors: list[str],
+    apk: pathlib.Path,
+    expected_abis: frozenset[str] = EXPECTED_NATIVE_ABIS,
+) -> None:
     if not apk.is_file():
         fail(errors, f"APK does not exist: {apk}")
         return
@@ -1866,6 +1970,9 @@ def apk_checks(errors: list[str], apk: pathlib.Path) -> None:
                 package_name = manifest.attrib.get("package")
                 if package_name not in EXPECTED_APPLICATION_IDS:
                     fail(errors, f"unexpected APK application ID: {package_name}")
+                expected_version_code = expected_apk_version_code(expected_abis)
+                if android_attribute(manifest, "versionCode") != str(expected_version_code):
+                    fail(errors, f"APK versionCode must be {expected_version_code}")
 
                 uses_sdk = manifest.find("uses-sdk")
                 if uses_sdk is None:
@@ -1965,15 +2072,20 @@ def apk_checks(errors: list[str], apk: pathlib.Path) -> None:
                     "swipe-latin-v1",
                 )
         for dex_entry in (name for name in archive.namelist() if name.endswith(".dex")):
-            dex = archive.read(dex_entry).lower()
-            for marker in FORBIDDEN_DEPENDENCY_MARKERS:
-                dotted = marker.encode("ascii")
-                slashed = marker.replace(".", "/").encode("ascii")
-                if dotted in dex or slashed in dex:
-                    fail(errors, f"APK DEX contains forbidden dependency marker {marker}: {dex_entry}")
+            dex_dependency_marker_checks(
+                errors,
+                archive.read(dex_entry),
+                f"APK DEX {dex_entry}",
+            )
 
         native_entries = [name for name in archive.namelist() if name.endswith(".so")]
-        onnx_runtime_apk_entry_checks(errors, native_entries, bool(signed_model_assets))
+        native_apk_abi_checks(errors, native_entries, expected_abis)
+        onnx_runtime_apk_entry_checks(
+            errors,
+            native_entries,
+            bool(signed_model_assets),
+            expected_abis,
+        )
         for entry in native_entries:
             name = pathlib.PurePosixPath(entry).name
             if name not in ALLOWED_NATIVE_LIBRARIES:
@@ -1999,6 +2111,11 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", action="store_true", help="verify source privacy and dependency rules")
     parser.add_argument("--apk", action="append", type=pathlib.Path, default=[], help="verify a built APK")
+    parser.add_argument(
+        "--expected-abi",
+        choices=sorted(EXPECTED_NATIVE_ABIS),
+        help="verify each --apk as a one-ABI F-Droid artifact instead of a universal APK",
+    )
     parser.add_argument(
         "--model-pack-apk",
         action="append",
@@ -2043,12 +2160,18 @@ def main() -> int:
         )
     if args.model_pack_apk and args.model_public_key is None:
         parser.error("--model-pack-apk requires --model-public-key")
+    if args.expected_abi is not None and not args.apk:
+        parser.error("--expected-abi requires --apk")
 
     errors: list[str] = []
     if args.source:
         source_checks(errors)
+    expected_abis = (
+        frozenset({args.expected_abi})
+        if args.expected_abi is not None else EXPECTED_NATIVE_ABIS
+    )
     for apk in args.apk:
-        apk_checks(errors, apk.resolve())
+        apk_checks(errors, apk.resolve(), expected_abis)
     for model_pack_apk in args.model_pack_apk:
         model_pack_apk_checks(errors, model_pack_apk.resolve(), args.model_public_key.resolve())
     if has_evidence:

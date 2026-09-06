@@ -68,6 +68,7 @@ workflow is documented in [the model policy](docs/models/README.md).
 - [GrapheneOS physical-device record](docs/release/grapheneos-device-record.md)
 - [GrapheneOS machine-verifiable evidence](docs/release/grapheneos-evidence-schema.md)
 - [Testing and release evidence](docs/testing.md)
+- [Universal and F-Droid ABI packaging](docs/release/abi-packaging.md)
 - [Model and runtime policy](docs/models/README.md)
 - [Phase 0 evaluation gate](docs/phase-0.md)
 - [Phase 0 measurement schema](docs/phase-0-dataset-schema.md)
