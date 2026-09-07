@@ -132,3 +132,11 @@ host prefix-decoding p95 increased from about 21 ms to 91 ms. Both runs remained
 quality gates. These host diagnostics do not justify changing the production beam or asserting an
 Android performance result. The origin APK used for the native vocabulary is retained locally as
 `build/device-evidence/static-vocabulary-origin.apk` so later APK builds cannot erase that provenance.
+
+A second matched 1,000-path development experiment added an unconstrained greedy CTC spelling only
+when it was absent from the native vocabulary. It scored that spelling with the exact CTC forward
+probability and zero dictionary frequency, without consulting evaluation targets. It added candidates
+on 315 paths, but reduced union top-1/top-3 from 86.6%/92.7% to 84.2%/91.5%. Static CTC also declined
+from 88.2%/92.2% to 87.7%/91.8%. The experiment was rejected; production still uses the existing
+dictionary-constrained decoder. The local report is
+`build/reports/swipe-native-validation-greedy-oov-1000.json` and includes the experimental script hash.

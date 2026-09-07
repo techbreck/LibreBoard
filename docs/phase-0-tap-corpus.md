@@ -96,6 +96,13 @@ participant-disjoint test split. It is therefore useful evidence but explicitly 
 alone. Additional independently licensed human tap sources are required; duplicate or synthetic
 variants must not be used to inflate the 3,000 held-out-example gate.
 
+Additional source screening on 2026-09-08 excluded the University of Strathclyde's
+[OATS highlighting study](https://pureportal.strath.ac.uk/en/datasets/oats201411-highlighting-keyboard-study-2/)
+because its files are restricted for data protection and require an access discussion. The
+[MobileStress publisher](https://psi.engr.tamu.edu/mobilestress/) specifies CC BY-NC 4.0 and an
+access-request procedure, so it cannot supply this project's openly licensed corpus component.
+Neither source was imported or counted.
+
 ## Pinned noisy phone typing component
 
 `models/evaluation/noisy-typing-v1.json` pins version 1 of Keith Vertanen and Per Ola Kristensson's
