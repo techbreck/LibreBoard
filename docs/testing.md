@@ -263,3 +263,38 @@ The three live scenarios pass for ordinary typing/selection replacement, termina
 composition, and switching the same editor to terminal mode through `restartInput`. The full host
 suite passes 356 tests. These are actual IME-window checks against a debug fixture; they still do
 not establish compatibility with a separate terminal application or cold-boot/Direct-Boot behavior.
+
+## Source-built Android context runtime smoke
+
+`tools/prepare_context_runtime_smoke.py` checks the provenance of a context export and generates
+hash-bound synthetic kernel-parity cases for batches of 1, 8 and 32 candidates. Build the debug
+APK with the verified runtime AAR, manifest and operator configuration described in
+`runtime/onnxruntime/README.md`; no signing key or installed model pack is needed for this isolated
+instrumentation fixture. Copy `context.onnx` and `fixture.json` into the debug app's private
+`files/context-runtime-smoke` directory, then run:
+
+```sh
+build/model-venv/bin/python tools/prepare_context_runtime_smoke.py \
+  --export-report build/model-export/context-en-de-v1/export-report.json \
+  --output-root build/device-evidence/context-runtime-smoke
+# Set CONTEXT_FIXTURE_SHA256 to the printed hash and copy the two generated files before instrumentation.
+adb shell am instrument -w -r \
+  -e class helium314.keyboard.latin.engine.ContextRuntimeInstrumentedTest \
+  -e libreboardRequireContextRuntime true \
+  -e contextFixtureSha256 "$CONTEXT_FIXTURE_SHA256" \
+  org.libreboard.keyboard.debug.test/androidx.test.runner.AndroidJUnitRunner
+adb exec-out run-as org.libreboard.keyboard.debug \
+  cat files/context-runtime-smoke/android-report.json
+```
+
+The test requires the exact host-generated fixture hash, checks the model hash, loads the actual
+packaged Java/native runtime through LibreBoard's production adapter, and compares every finite
+score within an absolute tolerance of 0.001. It records the installed APK hash and Android build
+fingerprint. It does not register or activate the fixture as a typing model. Remove the private
+fixture directory after collecting the report.
+
+The 2026-09-08 arm64 API 36 AOSP emulator run passed all three shapes for the development INT4 model
+`6789ab54a0607c9731387d7ac09d818a4f04f509167b94b7a6a28e77d1f14e08`. Single-run adapter times were
+65.1, 94.4 and 242.2 ms respectively under concurrent host work. These are neither p95 measurements
+nor physical-device evidence, and do not establish the 35 ms context dispatch budget. The retained
+local report and originating APK are under `build/device-evidence/context-runtime-smoke/`.
