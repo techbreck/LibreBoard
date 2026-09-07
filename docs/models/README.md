@@ -69,6 +69,11 @@ release artifact:
   safetensors; proves the trainer and model sources match the report's app commit; converts the source
   graph to blockwise INT4; verifies the exact custom operator counts; and runs CPU inference at batch
   sizes 1 and 32.
+- `tools/evaluate_context_model.py` measures the actual exported INT4 model on provenance-bound
+  validation or test slates, reporting observed top-1/top-3 and teacher agreement separately for
+  English and German. Ties are counted against the observed label so its fixed position cannot
+  reward a constant model. This remains a host distillation diagnostic, not human tap-quality or
+  Android performance evidence.
 - `models/training/requirements-context-linux-x86_64.lock` hashes the complete build-only distillation
   and export environment, including Transformers and ONNX Runtime 1.26 tooling.
 - `tools/assemble_runtime_operator_config.py` independently checks both exported model hashes and

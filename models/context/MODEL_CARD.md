@@ -100,6 +100,23 @@ The completed teacher-scoring report is committed as an immutable manifest. The 
 incomplete release evidence until the full student report, two byte-identical Linux exports and held-out
 quality measurements are accepted.
 
+After export, measure the quantized graph itself:
+
+```sh
+build/context-model-venv/bin/python tools/evaluate_context_model.py \
+  --split validation --output build/reports/context-int4-validation.json
+```
+
+Use `--split test` for the final held-out diagnostic after selecting the model with validation data.
+The evaluator binds the exported model, tokenizer, training report and complete scored-data manifest
+before CPU inference; it rechecks the tensor ABI, ONNX graph and custom operator inventory. Reports
+include per-language rankings, tie counts, artifact hashes and host-only inference times. Score ties
+are counted against the observed label rather than benefiting from its fixed first-candidate position.
+The report always sets `diagnosticOnly: true` and `satisfiesPhase0: false`: teacher-scored candidate
+slates cannot establish real human tap-error reduction or device performance. A truncated diagnostic
+requires `--development --maximum-examples N`; use `--distillation-manifest` to explicitly select a
+full corpus manifest for a development diagnostic. Partial models also require `--development`.
+
 ## Required acceptance evidence
 
 The candidate must improve context-sensitive error by at least 15% relative to dictionary/spatial
