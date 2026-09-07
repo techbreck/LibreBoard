@@ -17,6 +17,22 @@ import org.robolectric.annotation.Config
 @Config(sdk = [35])
 class FieldPolicyTest {
     @Test
+    fun restartMustReloadAttributesWhenOnlyPrivacyOrTerminalOptionsChange() {
+        val editor = EditorInfo().apply { inputType = InputType.TYPE_CLASS_TEXT }
+        val normal = InputAttributes(editor, false, "org.libreboard.keyboard")
+        assertTrue(normal.isSameInputType(editor))
+        editor.imeOptions = EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING
+        assertFalse("same inputType must not retain normal learning policy", normal.isSameInputType(editor))
+        editor.imeOptions = 0
+        editor.privateImeOptions = "org.libreboard.terminal"
+        assertFalse("same inputType must not retain normal composition policy", normal.isSameInputType(editor))
+        val terminal = InputAttributes(editor, false, "org.libreboard.keyboard")
+        assertTrue(terminal.isSameInputType(editor))
+        editor.privateImeOptions = null
+        assertFalse("leaving terminal mode also requires fresh attributes", terminal.isSameInputType(editor))
+    }
+
+    @Test
     fun passwordDisablesEveryDataBearingCapability() {
         val editor = EditorInfo().apply {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD

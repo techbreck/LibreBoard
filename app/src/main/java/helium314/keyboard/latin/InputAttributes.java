@@ -147,7 +147,10 @@ public final class InputAttributes {
 
     public boolean isSameInputType(final EditorInfo editorInfo) {
         return editorInfo.inputType == mInputType && mEditorInfo != null
-                && (mEditorInfo.imeOptions & EditorInfo.IME_FLAG_FORCE_ASCII) == (editorInfo.imeOptions & EditorInfo.IME_FLAG_FORCE_ASCII);
+                // restartInput may change learning/composition policy without changing inputType.
+                // Compare captured values, not the mutable EditorInfo retained by the caller.
+                && editorInfo.imeOptions == mImeOptions
+                && FieldPolicyResolver.INSTANCE.resolve(editorInfo, false) == mFieldPolicy;
     }
 
     private boolean hasNoMicrophoneKeyOption() {
