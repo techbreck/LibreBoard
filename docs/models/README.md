@@ -209,3 +209,7 @@ deterministic bilingual corpus/tokenizer and completed teacher-scoring result ar
 context-student run and both accepted trained candidates still remain outstanding. A bounded real-
 teacher-to-student smoke run already reaches the verified INT4 exporter; it is development evidence
 only.
+
+The fixed swipe checkpoint now has [two identical clean Linux exports](linux-export.md). This
+closes the model-export reproducibility slice only; APK reproduction and all quality/device gates
+remain separate.

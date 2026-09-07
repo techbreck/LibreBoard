@@ -75,9 +75,20 @@ jobs:
           version: '0.11.4'
           enable-cache: true
 
-      - name: Install hash-locked swipe and context model toolchain
+      - name: Install minimal hash-locked swipe model toolchain
         run: |
           uv venv --python 3.11 build/model-venv
+          uv pip install --python build/model-venv/bin/python \
+            --require-hashes --torch-backend cpu \
+            -r models/training/requirements-linux-x86_64.lock
+
+      - name: Exercise swipe training and export without context extras
+        run: |
+          build/model-venv/bin/python -m unittest discover -s tools/tests -p test_train_swipe_model.py
+          build/model-venv/bin/python -m unittest discover -s tools/tests -p test_export_swipe_model.py
+
+      - name: Install hash-locked context model toolchain
+        run: |
           uv pip install --python build/model-venv/bin/python \
             --require-hashes --torch-backend cpu \
             -r models/training/requirements-context-linux-x86_64.lock
