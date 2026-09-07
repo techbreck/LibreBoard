@@ -4,6 +4,6 @@
     <application>
         <activity android:name="helium314.keyboard.latin.testing.EditorFixtureActivity"
             android:exported="false" android:theme="@android:style/Theme.Material.Light.NoActionBar"
-            android:windowSoftInputMode="stateAlwaysVisible|adjustResize" />
+            android:windowSoftInputMode="adjustResize" />
     </application>
 </manifest>

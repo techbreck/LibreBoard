@@ -35,7 +35,12 @@ class EditorFixtureActivity : Activity() {
     }
 
     fun showKeyboard() {
-        getSystemService(InputMethodManager::class.java).showSoftInput(editor, InputMethodManager.SHOW_IMPLICIT)
+        val manager = getSystemService(InputMethodManager::class.java)
+        // Focus can arrive before the restarted IME has a served input connection. An early
+        // API 36 show request can latch requested-visible state without displaying a window.
+        if (editor.hasWindowFocus() && manager.isActive(editor)) {
+            manager.showSoftInput(editor, InputMethodManager.SHOW_IMPLICIT)
+        }
     }
 
     class TrackingEditText(context: Context) : EditText(context) {

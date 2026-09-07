@@ -264,6 +264,15 @@ composition, and switching the same editor to terminal mode through `restartInpu
 suite passes 356 tests. These are actual IME-window checks against a debug fixture; they still do
 not establish compatibility with a separate terminal application or cold-boot/Direct-Boot behavior.
 
+The API 36 fixture also exposed a binding race after instrumentation restarted the selected
+IME. A captured platform dump showed a served editor connection but a null current IME method
+and `mBoundToMethod=false`; repeated show requests alone could not reconnect it. The fixture
+uses one explicit show path after the editor is active, and the test restarts the editor connection
+while waiting for the selected service to create its keyboard view. This setup is specific to
+instrumentation killing the same process that hosts the selected IME. Force-stopping the package
+also makes Android select its system keyboard; reselect LibreBoard before running this test.
+These checks do not establish production cold-start or latency qualification.
+
 ## Source-built Android context runtime smoke
 
 `tools/prepare_context_runtime_smoke.py` checks the provenance of a context export and generates

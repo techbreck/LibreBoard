@@ -85,6 +85,11 @@ class LiveImeInstrumentedTest {
                 // Instrumentation restarts its target process, including the selected IME. Retry
                 // the platform show request after window focus while that service reconnects.
                 if (activity.editor.hasWindowFocus() && SystemClock.uptimeMillis() >= nextShowRequest) {
+                    if (KeyboardSwitcher.getInstance().mainKeyboardView == null) {
+                        // Instrumentation can kill the selected service while Android still holds
+                        // its old binding. Restart the editor connection to request a fresh bind.
+                        activity.getSystemService(InputMethodManager::class.java).restartInput(activity.editor)
+                    }
                     activity.showKeyboard()
                     nextShowRequest = SystemClock.uptimeMillis() + 1_000
                 }

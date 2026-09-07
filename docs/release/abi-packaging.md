@@ -59,11 +59,11 @@ swipe model, and the exact output for each entry rather than referring to local 
 
 ## Local core reproducibility check, 2026-09-08
 
-Two fresh source-archive directories built the universal core-only APK from commit `b8283126`
+Two fresh source-archive directories built the universal core-only APK from commit `f52b22e3`
 with independent compilation outputs, Gradle build/configuration caches disabled, JDK 17.0.19,
-NDK 28.0.13004108 and strict dependency verification. Both 21,623,288-byte unsigned APKs have SHA-256
-`2ab4104531b9e503006c32cbe5f348e6b8343f5549a4687d937447faeec4167b`. The local evidence file is
-`build/apk-reproducibility/core-reproducibility-b8283126.json`. The source archives do not carry Git
+NDK 28.0.13004108 and strict dependency verification. Both 21,623,244-byte unsigned APKs have SHA-256
+`a9aef0a3bce4ee552744a7c4cecb21e6970c18fbecf65a3e7665182ea408b0c7`. The local evidence file is
+`build/apk-reproducibility/core-reproducibility-f52b22e3.json`. The source archives do not carry Git
 metadata; the report binds the source commit separately.
 
 The first release attempt exposed 26 missing release-lint dependency hashes. Every added JAR/POM
