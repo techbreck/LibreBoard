@@ -39,6 +39,8 @@ temporarily to keep upstream review practical; the Android application ID is `or
   corpus requirement stays visibly gated rather than being filled with synthetic duplicates.
 - A version-pinned CC-BY-4.0 noisy phone typing archive adds 14,995 distinct human tap errors,
   including 1,877 fixed held-out rows, with explicit alignment and participant-scope limitations.
+- A pinned CC-BY-4.0 Aalto ITE adapter adds 54,519 real-word cases with reference-aligned context,
+  including 6,132 held-out corrections and 4,635 keeps; its autocorrection-event selection bias is explicit.
 - Model-qualified builds package the source-built reduced ONNX Runtime, signed swipe archive, and
   fixed project key as one fail-closed set. After first unlock, a background bootstrap activates CTC
   and discovers the optional signed en/de context-model provider without blocking classic input.

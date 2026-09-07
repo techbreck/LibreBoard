@@ -24,6 +24,7 @@ import evaluate_engine
 import model_sources
 import prepare_context_dataset
 import prepare_noisy_typing_dataset
+import prepare_ite_valid_words
 import prepare_swipe_dataset
 import prepare_tap_evaluation
 import prepare_tsi_tap_dataset
@@ -866,6 +867,10 @@ def newest_tool(name: str, pattern: str) -> pathlib.Path | None:
 
 
 def source_checks(errors: list[str]) -> None:
+    try:
+        prepare_ite_valid_words.load_source(ROOT / "models/evaluation/ite-valid-words-v1.json")
+    except (OSError, ValueError) as exc:
+        fail(errors, f"ITE valid-word evaluation source is invalid: {exc}")
     try:
         prepare_noisy_typing_dataset.load_source(ROOT / "models/evaluation/noisy-typing-v1.json")
     except (OSError, ValueError) as exc:

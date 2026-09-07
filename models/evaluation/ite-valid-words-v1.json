@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "datasetId": "aalto-ite-valid-words-en-v1",
+  "sourceUrl": "https://zenodo.org/records/12528163",
+  "license": "CC-BY-4.0",
+  "licenseEvidenceUrl": "https://zenodo.org/api/records/12528163",
+  "authors": ["Katri Leino", "Markku Laine", "Mikko Kurimo", "Antti Oulasvirta"],
+  "archiveUrl": "https://zenodo.org/records/12528163/files/ite_typing_dataset.zip?download=1",
+  "archiveBytes": 7309673578,
+  "publisherArchiveMd5": "6bc033900d25a39801a22952c74f8027",
+  "dictionaryAssetSha256": "bd950ef4b57655120eee65cee62a5d216a63f721d9a8bb759ce2022437840443",
+  "nativeVocabularySha256": "a094e892e4c4e159d92d01ee6c811901431f112e87588ec3fc0cdbbc5f3d8248",
+  "files": [
+    {
+      "member": "ITE_words/ac_words_en.csv",
+      "file": "ac_words_en.csv",
+      "bytes": 27072686,
+      "sha256": "bbfff38259647e652f350c0c6821029c958adafbe245ece60e888953bcb01cc2"
+    },
+    {
+      "member": "processed2020/english/sentences.csv",
+      "file": "sentences.csv",
+      "bytes": 82494,
+      "sha256": "506741069ee7f2b0238f8e9f4035677d762b6aa119641396af3d1db2dc059d2a"
+    },
+    {
+      "member": "processed2020/english/test_sections_labeled.csv",
+      "file": "test_sections_labeled.csv",
+      "bytes": 99249380,
+      "sha256": "d56f4ad9e083e5d49051de861f4a63270018d693e04c7dfbe2b045bf695b7e12"
+    }
+  ]
+}

@@ -132,3 +132,42 @@ stay together. The publication does not provide a global cross-experiment partic
 must not be described as globally participant-disjoint. The preparation report explicitly records
 that limitation and `releaseEligible: false`. This tap-only source remains short of the complete
 Phase 0 corpus requirements; it is not a passing quality report.
+
+## Pinned English valid-word component
+
+`models/evaluation/ite-valid-words-v1.json` pins selected files from the CC-BY-4.0
+[ITE Typing dataset, version 1](https://zenodo.org/records/12528163) by Katri Leino, Markku Laine,
+Mikko Kurimo and Antti Oulasvirta (2024). Its license is recorded by the
+[Zenodo metadata API](https://zenodo.org/api/records/12528163). The adapter downloads only three
+English ZIP members using bounded HTTP ranges and checks each extracted file's SHA-256 and byte
+count. The archive MD5 is publisher metadata; partial fetching does not claim to verify the entire
+7.3 GB archive. Later conversion is fully offline.
+
+First export the native static vocabulary using the Android procedure in
+[swipe evaluation](swipe-ctc-evaluation.md#native-dictionary-validation-diagnostic). The dictionary
+asset hash and canonical native vocabulary hash are pinned independently of the APK build hash.
+Then run:
+
+```sh
+python3 tools/prepare_ite_valid_words.py --fetch
+python3 tools/prepare_tap_evaluation.py \
+  build/evaluation-sources/ite-valid-words-v1/valid-words.jsonl \
+  --source-manifest build/evaluation-sources/ite-valid-words-v1/source-manifest.json \
+  --output-root build/evaluation-data/ite-valid-words-v1 --allow-small
+```
+
+The adapter uses the publisher's pre-autocorrection `TYPED_WORD`, public reference word and actual
+preceding input. It never uses the `AC_WORD` output as a label. Both words must be in the pinned
+non-offensive static English vocabulary. The input must end in the typed word, its preceding prefix
+must match the reference prompt, and the intended word must match the exact following reference
+position. It retains only bounded reference-verified context and discards submitted sentence text,
+autocorrection outputs, demographic metadata and device metadata. Participants, including all their
+sessions, stay in one salted split; repeated participant/prefix/raw/target cases are deduplicated.
+
+The conversion produces 54,519 real-word examples. The unchanged held-out split contains 6,132
+corrections and 4,635 keep cases, exceeding both 500-case valid-word minima. These are text-only
+examples, not touch-coordinate evidence. They are also selected from publisher-detected
+autocorrection events, so they must not be described as an unbiased sample of ordinary typing.
+Publisher event labels were inferred automatically; strict alignment filters reduce ambiguity but do
+not turn this into a manually reviewed corpus. The component remains `releaseEligible: false`:
+it does not supply the missing spatial, spacing, personal/compound, device or quality evidence.
