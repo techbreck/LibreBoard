@@ -307,3 +307,9 @@ The 2026-09-08 arm64 API 36 AOSP emulator run passed all three shapes for the de
 65.1, 94.4 and 242.2 ms respectively under concurrent host work. These are neither p95 measurements
 nor physical-device evidence, and do not establish the 35 ms context dispatch budget. The retained
 local report and originating APK are under `build/device-evidence/context-runtime-smoke/`.
+
+The full trained context graph also passes the same Android kernel-parity test. The test now records
+whole-process PSS, allocated native heap and used Java heap before model open, after open, after each
+inference and after close. These bounded snapshots expose loading/inference growth without claiming
+to capture isolated peak model memory. Full-candidate results and limitations are recorded in
+[`models/context/MODEL_CARD.md`](../models/context/MODEL_CARD.md).

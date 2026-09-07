@@ -57,8 +57,8 @@ the app commit, tool, policy, corpus, tokenizer, teacher and toolchain. The acce
 scored all 68,748 prepared records with no rejection: 61,620 train, 3,364 validation and 3,764 untouched
 test records. `distillation-manifest.json` pins every output byte count and SHA-256 plus the exact
 toolchain and provenance. The teacher ranked the observed candidate first on 70.43% of the test slates;
-this is a distillation diagnostic, not student quality evidence. Full student training remains
-outstanding. Development/random weights and synthetic reports must remain under `build/`, carry
+this is a distillation diagnostic, not student quality evidence. Full student training completed
+on 2026-09-08; acceptance still requires the independent quality and device gates. Development/random weights and synthetic reports must remain under `build/`, carry
 development filenames and cannot produce a release export.
 
 Student training uses 128 candidate rows per optimizer step, implemented as 16 vectorized but
@@ -80,7 +80,7 @@ fixed quantized graph contains 56 `com.microsoft::MatMulNBits` nodes and four
 `com.microsoft::GatherBlockQuantized` nodes. It must pass the full ONNX checker, exact dynamic tensor
 ABI, no-external-data rule, 24 MiB ceiling and CPU runtime smoke at batch sizes 1 and 32.
 
-A production export will use:
+The full candidate uses the following export recipe:
 
 ```sh
 uv venv --python 3.11 build/context-model-venv
@@ -125,3 +125,26 @@ percentage points of false correction. Tap p95 remains below 80 ms end to end an
 memory remains at most 64 MiB. The model pack, core-only fallback and timeout/circuit-breaker behavior
 must pass on supported physical GrapheneOS Pixel hardware without sandboxed Google Play. Two clean
 Linux exports and model-pack builds must be byte-identical before signing.
+
+## Full candidate diagnostic, 2026-09-08
+
+The completed four-epoch run processed 61,620 training slates per epoch. Float32 observed top-1
+accuracy was 67.60% on 3,364 validation slates and 70.16% on 3,764 test slates. These are distillation
+rankings, not real tap-error or fused-keyboard acceptance results.
+
+The full weights SHA-256 is
+`95384df3d674f2022c84f0b56528e735db9505295732f6421d90618adefaff14`.
+The checked INT4 ONNX graph is 19,809,100 bytes with SHA-256
+`b6dde70259d75790d8685884a50b9939f88befd55405fa3e78f6d8edebc033df`.
+The local training report is `build/model-training/context-en-de-v1/training-report.json`, SHA-256
+`0b2bf05e1f8b0916580eff9e032138fb7765ffa693c6073f822a7dec779663e8`.
+The training/export reports' `releaseEligible` flag means the full pinned provenance contract was
+satisfied; it does not mean these weights are accepted, signed, packaged or release-qualified.
+
+The source-built arm64 Android runtime matched host scores within 0.001 for synthetic batch sizes
+1, 8 and 32 using this full graph. Single-run inference took 34.8, 47.7 and 143.2 ms respectively
+on the API 36 debug emulator. Whole-process PSS rose from 95,989 KiB before model open to a largest
+sample of 155,094 KiB (57.7 MiB higher); snapshots are not a measurement of isolated added peak memory,
+and do not include a combined swipe/context live workload. Neither the 35 ms context budget nor the
+64 MiB combined memory gate is established by this diagnostic. The retained device report is
+`build/device-evidence/context-full-runtime/android-report.json` and binds the model, fixture and APK.

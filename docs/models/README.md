@@ -205,10 +205,10 @@ The current swipe model card and exact reproduction commands are in
 `models/swipe/MODEL_CARD.md`; the context architecture and export contract are in
 `models/context/MODEL_CARD.md`. The pinned gesture inputs total roughly 5.7 GB, so fetching them remains
 an explicit operator action rather than a side effect of Gradle or tests. The context source,
-deterministic bilingual corpus/tokenizer and completed teacher-scoring result are pinned, but the full
-context-student run and both accepted trained candidates still remain outstanding. A bounded real-
-teacher-to-student smoke run already reaches the verified INT4 exporter; it is development evidence
-only.
+deterministic bilingual corpus/tokenizer and completed teacher-scoring result are pinned. The full
+context student has completed all four epochs and checked INT4 export, with Android synthetic kernel
+parity for batch sizes 1, 8 and 32. Both models still await acceptance against the independent quality,
+performance and physical-device gates; see the context model card for the full candidate hashes.
 
 The fixed swipe checkpoint now has [two identical clean Linux exports](linux-export.md). This
 closes the model-export reproducibility slice only; APK reproduction and all quality/device gates

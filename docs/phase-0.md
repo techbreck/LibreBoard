@@ -27,8 +27,9 @@ rejection, and the committed distillation manifest binds the exact data, teacher
 toolchain, output hashes and reconciled metrics. Its vectorized student trainer has deterministic
 mid-epoch model/optimizer/RNG checkpoints, but no full trained student has been accepted. The real
 teacher-to-student development smoke reaches the checked INT4 ONNX Runtime path; it does not count as
-quality evidence. No complete trained candidate or held-out device measurement exists yet. Synthetic
-smoke results never count as Phase 0 evidence.
+quality evidence. A full context candidate has now completed training and INT4 export, and its
+synthetic kernel-parity check passes on the arm64 Android emulator. No accepted full-quality or
+physical-device measurement exists yet. Synthetic smoke results never count as Phase 0 evidence.
 
 Phase 1 remains blocked until all original gates pass: tap relative error reduction, context-sensitive
 and valid-word gains, false-correction ceiling, swipe top-1/top-3 strata, 80/200 ms p95 budgets, 64 MiB

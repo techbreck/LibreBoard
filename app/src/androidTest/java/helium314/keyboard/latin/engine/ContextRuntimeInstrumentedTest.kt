@@ -2,6 +2,7 @@
 package helium314.keyboard.latin.engine
 
 import android.os.Build
+import android.os.Debug
 import android.os.SystemClock
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.AndroidJUnit4
@@ -52,8 +53,17 @@ class ContextRuntimeInstrumentedTest {
         assertFalse(fixture.getBoolean("releaseEligible"))
         assertEquals(fixture.getString("modelSha256"), sha256(model))
         assertEquals(0.001, fixture.getDouble("absoluteTolerance"), 0.0)
+        fun memorySnapshot(): JSONObject {
+            val memory = Debug.MemoryInfo().also(Debug::getMemoryInfo)
+            val runtime = Runtime.getRuntime()
+            return JSONObject().put("processPssKiB", memory.totalPss)
+                .put("nativeHeapAllocatedBytes", Debug.getNativeHeapAllocatedSize())
+                .put("javaHeapUsedBytes", runtime.totalMemory() - runtime.freeMemory())
+        }
+        val memoryBeforeOpen = memorySnapshot()
         val opened = OnnxRuntimeSessionFactory.open(model, LibreBoardOnnxContracts.contextEnDe)
         assertEquals("the packaged kernels must load the context graph", EngineAvailability.AVAILABLE, opened.availability)
+        val memoryAfterOpen = memorySnapshot()
         val results = JSONArray()
         OnnxContextInferenceSession(requireNotNull(opened.session)).use { session ->
             val cases = fixture.getJSONArray("cases")
@@ -91,7 +101,8 @@ class ContextRuntimeInstrumentedTest {
                     assertTrue(reference.isFinite())
                     assertEquals("Android/host score parity for batch $rows row $row", reference, score.toDouble(), 0.001)
                 }
-                results.put(JSONObject().put("rows", rows).put("singleRunMs", elapsed))
+                results.put(JSONObject().put("rows", rows).put("singleRunMs", elapsed)
+                    .put("memoryAfterInference", memorySnapshot()))
             }
         }
         File(directory, "android-report.json").writeText(JSONObject()
@@ -99,6 +110,9 @@ class ContextRuntimeInstrumentedTest {
             .put("fixtureSha256", fixtureHash).put("modelSha256", sha256(model))
             .put("apkSha256", sha256(File(context.applicationInfo.sourceDir)))
             .put("buildFingerprint", Build.FINGERPRINT).put("supportedAbis", JSONArray(Build.SUPPORTED_ABIS.toList()))
+            .put("memoryBeforeOpen", memoryBeforeOpen).put("memoryAfterOpen", memoryAfterOpen)
+            .put("memoryAfterClose", memorySnapshot())
+            .put("memoryScope", "Whole-process snapshots, not isolated added peak memory or a release gate")
             .put("cases", results).toString() + "\n")
     }
 }
