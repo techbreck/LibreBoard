@@ -251,3 +251,15 @@ The corresponding 354 host tests and APK source/privacy/native checks passed. Th
 accounts for instrumentation restarting the selected IME and for its opening animation; elapsed
 fixture startup time is not a keyboard latency measurement. This same-package editor test does not
 replace cross-app WebView/terminal, Direct Boot, or physical GrapheneOS acceptance.
+
+The live fixture also exposes a terminal-marked `EditText` whose real input connection counts
+composition calls. On 2026-09-08, this caught a cursor-update path that resumed locally typed
+terminal text as a composing word. `restartSuggestionsOnWordTouchedByCursor` now respects the
+composition policy. A separate restart check caught cached field attributes surviving changes to
+IME privacy/terminal options with an unchanged input type; the cache check now compares the captured
+IME options and resolved policy. Both focused host regressions failed before their fixes.
+
+The three live scenarios pass for ordinary typing/selection replacement, terminal typing without
+composition, and switching the same editor to terminal mode through `restartInput`. The full host
+suite passes 356 tests. These are actual IME-window checks against a debug fixture; they still do
+not establish compatibility with a separate terminal application or cold-boot/Direct-Boot behavior.

@@ -1832,6 +1832,9 @@ public final class InputLogic {
         // recorrection. This is a temporary, stopgap measure that will be removed later.
         // TODO: remove this.
         if (!settingsValues.mSpacingAndPunctuations.mCurrentLanguageHasSpaces
+                // Terminal suggestions may use locally typed text, but cursor callbacks must
+                // never turn that cached word into an editor-side composing region.
+                || !settingsValues.mInputAttributes.mFieldPolicy.getAllowsComposing()
                 // If no suggestions are requested, don't try restarting suggestions.
                 || !settingsValues.needsToLookupSuggestions()
                 // If we are currently in a batch input, we must not resume suggestions, or the result

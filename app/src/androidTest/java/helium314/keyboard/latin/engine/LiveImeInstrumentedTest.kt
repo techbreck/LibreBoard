@@ -6,10 +6,12 @@ import android.os.SystemClock
 import android.provider.Settings
 import android.view.InputDevice
 import android.view.MotionEvent
+import android.view.inputmethod.InputMethodManager
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.AndroidJUnit4
 import helium314.keyboard.keyboard.KeyboardSwitcher
 import helium314.keyboard.latin.testing.EditorFixtureActivity
+import helium314.keyboard.latin.settings.Settings as KeyboardSettings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -20,12 +22,25 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class LiveImeInstrumentedTest {
     @Test fun onscreenTypingCommitsOnceAndReplacesTheSelectedWord() {
+        typeAndReplace(terminal = false)
+    }
+
+    @Test fun terminalTypingReachesTheLiveEditorWithoutComposition() {
+        typeAndReplace(terminal = true)
+    }
+
+    @Test fun terminalPolicyTakesEffectOnRestartWithUnchangedInputType() {
+        typeAndReplace(terminal = true, restartToTerminal = true)
+    }
+
+    private fun typeAndReplace(terminal: Boolean, restartToTerminal: Boolean = false) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         assumeTrue(InstrumentationRegistry.getArguments().getString("libreboardRequireLiveIme") == "true")
         val context = instrumentation.targetContext
         val selectedIme = Settings.Secure.getString(context.contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)
         assertTrue("select this debug package as the emulator IME before running", selectedIme?.startsWith(context.packageName + "/") == true)
         val intent = Intent(context, EditorFixtureActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            .putExtra("terminal", terminal && !restartToTerminal)
         val activity = instrumentation.startActivitySync(intent) as EditorFixtureActivity
         fun onMain(block: () -> Boolean): Boolean {
             var value = false
@@ -92,7 +107,21 @@ class LiveImeInstrumentedTest {
                 }
                 SystemClock.uptimeMillis() - stableSince >= 400
             }
+            if (restartToTerminal) {
+                instrumentation.runOnMainSync {
+                    assertEquals(FieldPolicy.NORMAL, KeyboardSettings.getValues().mInputAttributes.mFieldPolicy)
+                    activity.editor.privateImeOptions = "org.libreboard.terminal"
+                    activity.getSystemService(InputMethodManager::class.java).restartInput(activity.editor)
+                }
+                await("restartInput must apply terminal policy without an inputType change") {
+                    KeyboardSettings.getValues().mInputAttributes.mFieldPolicy == FieldPolicy.TERMINAL
+                }
+            }
             "cat ".forEachIndexed { index, character ->
+                if (terminal) instrumentation.runOnMainSync {
+                    assertEquals("the live editor must activate terminal field policy", FieldPolicy.TERMINAL,
+                        KeyboardSettings.getValues().mInputAttributes.mFieldPolicy)
+                }
                 tap(character.code)
                 await("each live key must reach the real editor") {
                     activity.editor.text.toString() == "cat ".take(index + 1)
@@ -104,6 +133,9 @@ class LiveImeInstrumentedTest {
             "dog".forEach { tap(it.code) }
             await("typing must replace the selected word and preserve the trailing space") { activity.editor.text.toString() == "dog " }
             instrumentation.runOnMainSync { assertEquals("dog ", activity.editor.text.toString()) }
+            if (terminal) instrumentation.runOnMainSync {
+                assertEquals("terminal input must not update composing text or regions", 0, activity.editor.composingUpdates)
+            }
         } finally {
             instrumentation.runOnMainSync { activity.finish() }
         }

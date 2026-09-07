@@ -754,6 +754,22 @@ class InputLogicTest {
         assertEquals("", composingText)
     }
 
+    @Test fun terminalCursorUpdatesCannotResumeCompositionFromLocallyTypedText() {
+        startInput(EditorInfo().apply {
+            inputType = InputType.TYPE_CLASS_TEXT
+            privateImeOptions = "org.libreboard.test:terminal"
+        }, "")
+        chainInput("cat")
+        assertEquals("", composingText)
+        inputLogic.restartSuggestionsOnWordTouchedByCursor(settingsValues, ScriptUtils.SCRIPT_LATIN)
+        assertEquals("cat", text)
+        assertEquals("", composingText)
+        assertEquals(false, composer.isComposingWord)
+        chainInput("s")
+        assertEquals("cats", text)
+        assertEquals("", composingText)
+    }
+
     @Test fun timestamp() {
         chainInput("hello")
         functionalKeyPress(KeyCode.TIMESTAMP)
