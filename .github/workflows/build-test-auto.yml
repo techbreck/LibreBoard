@@ -44,6 +44,12 @@ jobs:
       - name: Build with Gradle
         run: ./gradlew testRunTestsUnitTest assembleDebugNoMinifyAndroidTest --max-workers=1
 
+      - name: Build core release with strict dependency verification
+        run: ./gradlew :app:assembleRelease --max-workers=1 --dependency-verification strict
+
+      - name: Verify core release APK
+        run: python3 tools/verify_release.py --apk app/build/outputs/apk/release/LibreBoard_0.1.0-alpha01-release.apk
+
       - name: Test Phase 0 evaluation gate
         run: python3 -m unittest discover -s tools/tests
 
