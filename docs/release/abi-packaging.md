@@ -56,3 +56,19 @@ An F-Droid metadata submission should use four build entries with matching `grad
 documented operations `100 * %c + 1` through `100 * %c + 4`. The final fdroiddata recipe remains a
 release artifact: it must bind the accepted commit, source-built ONNX Runtime recipe, accepted signed
 swipe model, and the exact output for each entry rather than referring to local development paths.
+
+## Local core reproducibility check, 2026-09-08
+
+Two fresh source-archive directories built the universal core-only APK from commit `b8283126`
+with independent compilation outputs, Gradle build/configuration caches disabled, JDK 17.0.19,
+NDK 28.0.13004108 and strict dependency verification. Both 21,623,288-byte unsigned APKs have SHA-256
+`2ab4104531b9e503006c32cbe5f348e6b8343f5549a4687d937447faeec4167b`. The local evidence file is
+`build/apk-reproducibility/core-reproducibility-b8283126.json`. The source archives do not carry Git
+metadata; the report binds the source commit separately.
+
+The first release attempt exposed 26 missing release-lint dependency hashes. Every added JAR/POM
+was independently downloaded from Google Maven or Maven Central and matched before the verification
+metadata was committed. CI now builds and verifies the core release APK as well as the debug tests.
+
+This comparison uses one macOS host/toolchain. It does not replace an independent Linux rebuild,
+signing-key acceptance, a model-qualified APK comparison, or the Phase 0/device release gates.
