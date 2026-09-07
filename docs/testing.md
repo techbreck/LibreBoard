@@ -113,8 +113,10 @@ built ONNX Runtime native pair.
 Android device or emulator. Serial Gradle workers avoid races in the inherited multi-ABI `ndk-build`
 archive tasks.
 
-The Phase 0 low-RAM emulator must be cold-booted with the emulator's supported low-RAM mode rather
-than an injected read-only property. For the checked-in API 36 AOSP AVD, use:
+The Phase 0 low-RAM emulator must use a system image that actually reports Android low-RAM mode.
+The emulator's `-lowram` option permits a smaller RAM allocation; it does not by itself prove
+`ActivityManager.isLowRamDevice()`. Cold-boot the configured AVD, then check the platform property
+before running or labeling low-RAM evidence:
 
 ```sh
 $ANDROID_SDK_ROOT/emulator/emulator -avd LibreBoard_API_36_AOSP_LowRAM \
@@ -126,11 +128,20 @@ python3 tools/capture_android_device.py --serial emulator-5554 \
   -Pandroid.testInstrumentationRunnerArguments.libreboardRequireLowRam=true
 ```
 
-The property command must print exactly `true`; the capture also records `/proc/meminfo` as rounded-up
+The property command must print exactly `true`; if it is empty or `false`, this boot is an ordinary
+emulator run and must not be labeled low-RAM evidence. Do not override the read-only property to
+make an evidence check pass. Use an appropriately configured system image and repeat the cold boot.
+The capture also records `/proc/meminfo` as rounded-up
 MiB. The opt-in instrumentation assertion independently checks `ActivityManager.isLowRamDevice()`
 and proves that the real device policy disables the context model while retaining CTC swipe. A
 renamed AVD or a RAM setting alone does not establish low-RAM mode and must not be submitted as
 low-RAM evidence.
+The emulator's RAM-floor behavior is implemented in AOSP's
+[`main-common.c`](https://android.googlesource.com/platform/external/qemu/+/emu-master-dev/android/android-emu/android/main-common.c).
+During the 2026-09-08 recheck, the available API 36 AVD booted with `-lowram -memory 1536` but
+reported no low-RAM property; the required instrumentation assertion failed as intended. The normal
+suite passed on that boot, including the three real editor-connection tests. A qualifying low-RAM
+rerun remains outstanding.
 The suite checks the installed package rather than only source XML: merged permissions, backup and
 cleartext flags, the IME service permission/direct-boot flag, the non-exported clipboard-search
 activity, the Android `EditorInfo` policy matrix, and real credential-encrypted SQLite behavior for
@@ -142,7 +153,14 @@ device-protected context through both private-store entry points after unlock an
 clipboard and personal databases are still created only in credential-encrypted storage. A rebooted,
 locked-device run remains required to prove the complete Direct Boot boundary.
 
-The connected suite must expand with editor fixtures for composing reconciliation, cursor movement,
+`EditorConnectionInstrumentedTest` exercises the production `RichInputConnection` against Android's
+real `EditText` connection on the main thread. It checks repeated composing updates and a single
+commit, selection replacement and cursor-cache reconciliation, and a context-access transition that
+must permit typing while issuing zero surrounding-text reads. These framework tests do not drive
+the installed IME through another application's window and do not establish WebView or Termux
+compatibility.
+
+The connected suite must expand with external-app editor fixtures for composing reconciliation, cursor movement,
 correction rejection, WebView, terminal single-commit behavior, model failure, clipboard expiry,
 the complete SAF backup/restore UI flow, the clipboard-search interaction flow, language lock, and latency collection as those
 paths land.
