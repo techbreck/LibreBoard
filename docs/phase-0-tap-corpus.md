@@ -95,3 +95,40 @@ The pinned corpus currently yields 1,268 honest word-level spatial errors, inclu
 participant-disjoint test split. It is therefore useful evidence but explicitly not release-eligible
 alone. Additional independently licensed human tap sources are required; duplicate or synthetic
 variants must not be used to inflate the 3,000 held-out-example gate.
+
+## Pinned noisy phone typing component
+
+`models/evaluation/noisy-typing-v1.json` pins version 1 of Keith Vertanen and Per Ola Kristensson's
+[Noisy Typing on QWERTY Keyboards](https://osf.io/5xwng/) archive: 18,052,094 bytes, SHA-256
+`76d9cc798b5694686333da8baec46ce025174068bbfef909a31fe01e67dcdf5d`. The authors' OSF project
+declares CC BY 4.0; the manifest records its license identifier and metadata endpoint. Attribution:
+Vertanen and Kristensson, *A Dataset of Noisy Typing on QWERTY Keyboards*, IUI 2023,
+[author publication page](https://www.keithv.com/pub/noisytyping/).
+
+```sh
+python3 tools/prepare_noisy_typing_dataset.py --fetch
+python3 tools/prepare_tap_evaluation.py \
+  build/evaluation-sources/noisy-phone-v1/tap-errors.jsonl \
+  --source-manifest build/evaluation-sources/noisy-phone-v1/source-manifest.json \
+  --output-root build/evaluation-data/noisy-phone-v1 --allow-small
+```
+
+Omit `--fetch` for completely offline replay. The download is versioned, byte-bounded, hash-checked
+and atomically installed; preparation reads bounded ZIP entries without extracting the archive.
+The adapter retains only phone `test_word` recordings from `eyesfree_exp1`, `vt_exp1`, `vt_exp2`,
+`vt_exp3` and `vt_pilot2`. Pilot 1 is excluded because the publisher identifies reused participants
+in Pilot 2. Development/author recordings, watches, desktop and mid-air input are excluded.
+
+The publisher supplied force-aligned word boundaries. LibreBoard chooses exactly the first
+touch-down coordinate per physical tap, replays the nearest key in the recorded keyboard geometry,
+and normalizes against that layout's letter-key bounds. It does not resample motion samples into
+extra taps or perturb coordinates. Ambiguous nearest keys, control-key input, out-of-bounds points,
+non-monotonic timestamps, orphan input, alignment mismatches and duplicate replays are rejected and
+counted. The original `LEFT`, `RIGHT`, and `ORIG` prose is discarded; emitted preceding context is empty.
+
+The pinned conversion produces 14,995 errors: 12,090 training, 1,028 validation and 1,877 test rows
+under the unchanged split policy. Conditions and sessions for each experiment-scoped participant
+stay together. The publication does not provide a global cross-experiment participant map, so this
+must not be described as globally participant-disjoint. The preparation report explicitly records
+that limitation and `releaseEligible: false`. This tap-only source remains short of the complete
+Phase 0 corpus requirements; it is not a passing quality report.

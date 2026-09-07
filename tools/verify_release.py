@@ -23,6 +23,7 @@ import context_model_contract
 import evaluate_engine
 import model_sources
 import prepare_context_dataset
+import prepare_noisy_typing_dataset
 import prepare_swipe_dataset
 import prepare_tap_evaluation
 import prepare_tsi_tap_dataset
@@ -865,6 +866,10 @@ def newest_tool(name: str, pattern: str) -> pathlib.Path | None:
 
 
 def source_checks(errors: list[str]) -> None:
+    try:
+        prepare_noisy_typing_dataset.load_source(ROOT / "models/evaluation/noisy-typing-v1.json")
+    except (OSError, ValueError) as exc:
+        fail(errors, f"noisy-typing evaluation source is invalid: {exc}")
     manifest_path = ROOT / "app/src/main/AndroidManifest.xml"
     manifest = ET.parse(manifest_path).getroot()
     permissions = {node.attrib.get(ANDROID_NS + "name") for node in manifest.findall("uses-permission")}

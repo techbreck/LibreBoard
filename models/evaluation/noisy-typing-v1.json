@@ -1,0 +1,25 @@
+{
+  "archiveBytes": 18052094,
+  "archiveFile": "vertanen_noisy_typing_iui2023.zip",
+  "archiveSha256": "76d9cc798b5694686333da8baec46ce025174068bbfef909a31fe01e67dcdf5d",
+  "archiveVersion": 1,
+  "authors": [
+    "Keith Vertanen",
+    "Per Ola Kristensson"
+  ],
+  "datasetId": "vertanen-noisy-phone-v1",
+  "downloadUrl": "https://osf.io/download/7ev5z/?revision=1",
+  "includedExperiments": [
+    "eyesfree_exp1",
+    "vt_exp1",
+    "vt_exp2",
+    "vt_exp3",
+    "vt_pilot2"
+  ],
+  "license": "CC-BY-4.0",
+  "licenseEvidenceUrl": "https://api.osf.io/v2/nodes/5xwng/",
+  "licenseId": "563c1cf88c5e4a3877f9e96a",
+  "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+  "schemaVersion": 1,
+  "sourceUrl": "https://osf.io/5xwng/"
+}
