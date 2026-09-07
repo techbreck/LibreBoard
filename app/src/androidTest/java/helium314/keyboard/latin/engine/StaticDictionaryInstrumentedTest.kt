@@ -2,6 +2,8 @@
 package helium314.keyboard.latin.engine
 
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.platform.app.InstrumentationRegistry
+import java.security.MessageDigest
 import androidx.test.runner.AndroidJUnit4
 import helium314.keyboard.latin.dictionary.Dictionary
 import helium314.keyboard.latin.dictionary.ReadOnlyBinaryDictionary
@@ -48,6 +50,32 @@ class StaticDictionaryInstrumentedTest {
                 assertTrue("fixture must exercise the original traversal cutoff", visited > 100_000)
                 val selected = collector.words()
                 assertEquals(100_000, selected.size)
+                if (InstrumentationRegistry.getArguments().getString("exportStaticLexicon") == "true") {
+                    val output = File(context.filesDir, "static-swipe-lexicon.json")
+                    val words = org.json.JSONArray()
+                    selected.forEach { word -> words.put(JSONObject()
+                        .put("word", word.word).put("languageTag", word.languageTag)
+                        .put("frequency", word.frequency).put("possiblyOffensive", word.possiblyOffensive)) }
+                    fun sha256(source: File): String {
+                        val digest = MessageDigest.getInstance("SHA-256")
+                        source.inputStream().use { input ->
+                            val buffer = ByteArray(65536)
+                            while (true) {
+                                val count = input.read(buffer)
+                                if (count < 0) break
+                                digest.update(buffer, 0, count)
+                            }
+                        }
+                        return digest.digest().joinToString("") { "%02x".format(it) }
+                    }
+                    output.writeText(JSONObject().put("schemaVersion", 1)
+                        .put("source", "bundled-static-dictionary")
+                        .put("dictionaryAsset", "dicts/main_en-US.dict")
+                        .put("dictionarySha256", sha256(file))
+                        .put("apkSha256", sha256(File(context.applicationInfo.sourceDir)))
+                        .put("visited", visited).put("maximumWords", 100_000)
+                        .put("words", words).toString() + "\n")
+                }
                 val indexed = SwipeLexiconIndex.from(selected).words(listOf("en-US"), 0, 100_000, false)
                     .map { normalizeCandidate(it.word) }.toSet()
                 for (word in listOf("the", "to", "of", "with")) {

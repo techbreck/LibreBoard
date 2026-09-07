@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Evaluate an exported LibreBoard swipe CTC model with the production beam semantics.
 
-This is an offline model diagnostic. It deliberately uses only train/validation vocabulary and the
-held-out test paths. It mirrors the CTC beam, geometric template cost, normalized decoder union, and
+This is an offline model diagnostic. Vocabulary comes from earlier corpus splits or an
+APK-bound native dictionary export; validation and final test paths are explicitly separated. It mirrors the CTC beam, geometric template cost, normalized decoder union, and
 static scorer, but it does not replace Phase 0 device evidence: the production dictionary, complete
 shared scorer, Android runtime, latency, and memory still have to be measured there.
 """
@@ -21,6 +21,7 @@ import sys
 import tempfile
 import time
 import unicodedata
+import zipfile
 from typing import Any, Iterable, Sequence
 
 import model_sources
@@ -314,7 +315,9 @@ def emission_variants(
     return results
 
 
-def _parse_test_row(line: bytes, layout: dict[str, Any]) -> EvaluationRow:
+def _parse_test_row(line: bytes, layout: dict[str, Any], split: str = "test") -> EvaluationRow:
+    if split not in ("validation", "test"):
+        raise SwipeEvaluationError("evaluation split must be validation or test")
     if len(line) > MAXIMUM_JSONL_LINE_BYTES:
         raise SwipeEvaluationError("held-out swipe row is too large")
     try:
@@ -323,7 +326,7 @@ def _parse_test_row(line: bytes, layout: dict[str, Any]) -> EvaluationRow:
         raise SwipeEvaluationError(f"held-out swipe data contains invalid JSON: {failure}") from failure
     if not isinstance(value, dict) or set(value) != TEST_ROW_KEYS:
         raise SwipeEvaluationError("held-out swipe row has an unexpected schema")
-    if value.get("schemaVersion") != 1 or value.get("split") != "test" or value.get("layoutId") != layout["id"]:
+    if value.get("schemaVersion") != 1 or value.get("split") != split or value.get("layoutId") != layout["id"]:
         raise SwipeEvaluationError("held-out swipe row has an incompatible identity")
     identifier = value.get("id")
     session_id = value.get("sessionId")
@@ -371,12 +374,12 @@ def _parse_test_row(line: bytes, layout: dict[str, Any]) -> EvaluationRow:
     )
 
 
-def load_test_rows(path: pathlib.Path, layout: dict[str, Any]) -> list[EvaluationRow]:
+def load_test_rows(path: pathlib.Path, layout: dict[str, Any], split: str = "test") -> list[EvaluationRow]:
     rows = []
     identifiers = set()
     with path.open("rb") as stream:
         for line in stream:
-            row = _parse_test_row(line, layout)
+            row = _parse_test_row(line, layout, split)
             if row.identifier in identifiers:
                 raise SwipeEvaluationError("held-out swipe row ids are not unique")
             identifiers.add(row.identifier)
@@ -415,9 +418,13 @@ def select_rows(
     return result
 
 
-def build_lexicon(data_root: pathlib.Path, layout: dict[str, Any]) -> dict[str, list[LexiconEntry]]:
+def build_lexicon(
+    data_root: pathlib.Path, layout: dict[str, Any], *, evaluation_split: str = "test",
+) -> dict[str, list[LexiconEntry]]:
+    if evaluation_split not in ("validation", "test"):
+        raise SwipeEvaluationError("evaluation split must be validation or test")
     frequencies: collections.Counter[tuple[str, str]] = collections.Counter()
-    for filename in ("train.jsonl", "validation.jsonl"):
+    for filename in (("train.jsonl",) if evaluation_split == "validation" else ("train.jsonl", "validation.jsonl")):
         with (data_root / filename).open("rb") as stream:
             for line in stream:
                 if len(line) > MAXIMUM_JSONL_LINE_BYTES:
@@ -433,11 +440,15 @@ def build_lexicon(data_root: pathlib.Path, layout: dict[str, Any]) -> dict[str, 
                 if not isinstance(language, str) or not language or not isinstance(target, str) or not target:
                     raise SwipeEvaluationError(f"{filename} contains an invalid target")
                 frequencies[(_normalize(target), language)] += 1
-    class_by_label = _class_by_label(layout)
     surfaces = sorted(
         ((word, language, frequency) for (word, language), frequency in frequencies.items()),
         key=lambda item: (-item[2], item[0], item[1]),
     )[:MAXIMUM_LEXICON_WORDS]
+    return lexicon_entries(surfaces, layout)
+
+
+def lexicon_entries(surfaces, layout: dict[str, Any]) -> dict[str, list[LexiconEntry]]:
+    class_by_label = _class_by_label(layout)
     entries = []
     for word, language, frequency in surfaces:
         for emissions in emission_variants(word, class_by_label, language):
@@ -449,6 +460,61 @@ def build_lexicon(data_root: pathlib.Path, layout: dict[str, Any]) -> dict[str, 
     if not by_language:
         raise SwipeEvaluationError("training vocabulary produced no decodable lexicon entries")
     return dict(by_language)
+
+
+def load_dictionary_lexicon(path: pathlib.Path, apk: pathlib.Path, layout: dict[str, Any]):
+    """Read an instrumented native vocabulary dump and verify its originating APK."""
+    if path.stat().st_size > 32 * 1024 * 1024:
+        raise SwipeEvaluationError("dictionary lexicon export exceeds its size bound")
+    try:
+        value = json.loads(path.read_bytes())
+    except (ValueError, UnicodeDecodeError) as failure:
+        raise SwipeEvaluationError("dictionary lexicon export is invalid JSON") from failure
+    if not isinstance(value, dict) or value.get("schemaVersion") != 1 or value.get("source") != "bundled-static-dictionary":
+        raise SwipeEvaluationError("dictionary lexicon export has an incompatible identity")
+    if value.get("maximumWords") != MAXIMUM_LEXICON_WORDS:
+        raise SwipeEvaluationError("dictionary vocabulary bound differs from production")
+    if value.get("apkSha256") != model_sources.file_sha256(apk):
+        raise SwipeEvaluationError("dictionary export and APK hashes differ")
+    asset = value.get("dictionaryAsset")
+    if asset != "dicts/main_en-US.dict":
+        raise SwipeEvaluationError("only the bundled en-US dictionary is supported by this diagnostic")
+    try:
+        with zipfile.ZipFile(apk) as archive:
+            digest = hashlib.sha256(archive.read("assets/" + asset)).hexdigest()
+    except (KeyError, zipfile.BadZipFile) as failure:
+        raise SwipeEvaluationError("APK lacks the exported dictionary asset") from failure
+    if digest != value.get("dictionarySha256"):
+        raise SwipeEvaluationError("dictionary export and bundled asset hashes differ")
+    words = value.get("words")
+    if not isinstance(words, list) or not 1 <= len(words) <= MAXIMUM_LEXICON_WORDS:
+        raise SwipeEvaluationError("dictionary export has an invalid vocabulary size")
+    identities = set()
+    surfaces = []
+    for word in words:
+        if not isinstance(word, dict) or set(word) != {"word", "languageTag", "frequency", "possiblyOffensive"}:
+            raise SwipeEvaluationError("dictionary word has an invalid schema")
+        surface, frequency = word["word"], word["frequency"]
+        if (not isinstance(surface, str) or not 1 <= len(surface) <= 128
+                or word["languageTag"] != "en-US" or type(frequency) is not int or not 0 <= frequency <= 255
+                or type(word["possiblyOffensive"]) is not bool):
+            raise SwipeEvaluationError("dictionary word has invalid values")
+        normalized = _normalize(surface)
+        if normalized in identities:
+            raise SwipeEvaluationError("dictionary export contains duplicate normalized words")
+        identities.add(normalized)
+        # Default keyboard policy excludes possibly offensive static candidates.
+        if not word["possiblyOffensive"]:
+            surfaces.append((normalized, "en", frequency))
+    return lexicon_entries(surfaces, layout), {
+        "source": "bundled-static-dictionary",
+        "sourceSplits": [],
+        "apkSha256": value["apkSha256"],
+        "dictionaryAsset": asset,
+        "dictionarySha256": digest,
+        "lexiconExportSha256": model_sources.file_sha256(path),
+        "possiblyOffensiveWordsExcluded": True,
+    }
 
 
 def build_trie(entries: Iterable[LexiconEntry], approximate_length: int) -> TrieNode:
@@ -893,11 +959,20 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
         raise SwipeEvaluationError("export and evaluation data manifests do not match")
     layout = load_layout(data_root / "layout.json")
     rows = select_rows(
-        load_test_rows(data_root / "test.jsonl", layout),
+        load_test_rows(data_root / f"{args.split}.jsonl", layout, args.split),
         sample_count=args.sample_count,
         minimum_per_stratum=args.minimum_per_stratum,
     )
-    lexicon = build_lexicon(data_root, layout)
+    if bool(args.dictionary_lexicon) != bool(args.dictionary_apk):
+        raise SwipeEvaluationError("dictionary lexicon and originating APK must be supplied together")
+    lexicon_source = {
+        "source": "corpus-derived",
+        "sourceSplits": ["train"] if args.split == "validation" else ["train", "validation"],
+    }
+    if args.dictionary_lexicon:
+        lexicon, lexicon_source = load_dictionary_lexicon(args.dictionary_lexicon, args.dictionary_apk, layout)
+    else:
+        lexicon = build_lexicon(data_root, layout, evaluation_split=args.split)
     lexicon_words = {
         language: {entry.word for entry in entries}
         for language, entries in lexicon.items()
@@ -1078,13 +1153,15 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
             export_report.get("releaseEligible") is True and prepared.get("schemaVersion") == 1 and not args.development
         ),
         "sample": {
+            "split": args.split,
             "rows": len(rows),
             "sessions": len({row.session_id for row in rows}),
             "minimumRowsPerStratum": args.minimum_per_stratum,
             "selection": "sha256-row-id-stratified-v1",
         },
         "lexicon": {
-            "sourceSplits": ["train", "validation"],
+            **lexicon_source,
+            "evaluatedTargetsExcludedFromConstruction": True,
             "testTargetsExcludedFromConstruction": True,
             "maximumWords": MAXIMUM_LEXICON_WORDS,
             "words": len({(entry.word, entry.language) for entries in lexicon.values() for entry in entries}),
@@ -1126,13 +1203,17 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
             "model": {"path": model_path.name, "sha256": model_sources.file_sha256(model_path)},
             "exportReportSha256": export_report_hash,
             "splitManifestSha256": split_manifest_hash,
-            "testDataSha256": prepared["outputs"]["test.jsonl"]["sha256"],
+            "evaluatorSha256": model_sources.file_sha256(pathlib.Path(__file__)),
+            **({"testDataSha256": prepared["outputs"]["test.jsonl"]["sha256"]} if args.split == "test" else {}),
+            "evaluationDataSha256": prepared["outputs"][f"{args.split}.jsonl"]["sha256"],
             "modelSpecSha256": spec.sha256,
         },
         "toolchain": versions,
         "limitations": [
             "Host CPU timing is not Android device latency or memory evidence.",
-            "The diagnostic lexicon is corpus-derived rather than the production AOSP dictionary.",
+            ("The diagnostic lexicon is corpus-derived rather than the production AOSP dictionary."
+             if not args.dictionary_lexicon else
+             "The native dictionary dump is hash-bound to the supplied APK; complete runtime fusion remains unmeasured."),
             "Personal, context, language-lock, retained AOSP gesture suggestions, and complete final fusion are not measured.",
         ],
     }
@@ -1160,6 +1241,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--data-root", type=pathlib.Path, default=DEFAULT_DATA_ROOT)
     parser.add_argument("--export-report", type=pathlib.Path, default=DEFAULT_REPORT)
     parser.add_argument("--output", type=pathlib.Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--dictionary-lexicon", type=pathlib.Path)
+    parser.add_argument("--dictionary-apk", type=pathlib.Path)
+    parser.add_argument("--split", choices=("validation", "test"), default="test")
     parser.add_argument("--sample-count", type=int, default=5_000)
     parser.add_argument("--minimum-per-stratum", type=int, default=500)
     parser.add_argument("--beam-width", type=int, choices=range(1, 257), default=64)

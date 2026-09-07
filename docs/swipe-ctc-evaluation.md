@@ -4,11 +4,12 @@
 stratified held-out sample using the same CTC blank/repeat rules and lexicon-constrained prefix beam
 semantics as the Android decoder. It also mirrors the pure-Kotlin geometric template cost, including
 live-geometry trace edits and turn evidence, then normalizes the two decoder slates independently
-before their bounded union. Release-mode diagnostics require at least 5,000 test gestures and 500
+before their bounded union. Release-mode diagnostics require at least 5,000 evaluated gestures and 500
 examples from every length, sloppiness, double-letter, and return-trip stratum.
 
-The lexicon is derived only from the prepared train and validation targets. Test targets never enter
-lexicon construction. The command verifies the pinned prepared-corpus hashes, exported-model hash,
+By default the lexicon is derived from prepared train and validation targets and the evaluated
+split is `test`. Use `--split validation` for development comparisons; its corpus lexicon uses
+only train targets. Evaluated targets never enter lexicon construction. The command verifies the pinned prepared-corpus hashes, exported-model hash,
 manifest binding, fixed tensor ABI, CPU-only provider, and exact NumPy/ONNX Runtime tool versions
 before inference:
 
@@ -26,7 +27,7 @@ intentionally reserve one of the 32 bounded scorer slots for the empty swipe raw
 matching the Android publication path.
 
 The report explicitly marks itself diagnostic-only. Host timing is not Android performance
-evidence, the corpus lexicon is not the production AOSP dictionary, and the command does not
+evidence, and the command does not
 evaluate personal, language-lock, context, retained AOSP gesture suggestions, or complete final
 fusion. Consequently, even a report that clears the numerical swipe thresholds does not satisfy
 Phase 0. The vectorized Python geometry timing is diagnostic implementation timing, not a claim
@@ -73,3 +74,30 @@ frequency, with deterministic ties. The scan still runs in the background. Instr
 the actual bundled binary dictionary and checks that these late-traversal words survive the bounded
 index. This fixes vocabulary loss; it does not change the corpus-lexicon diagnostic above or establish
 an Android quality/latency pass.
+
+## Native dictionary validation diagnostic
+
+The Android dictionary regression test can export the production collector's selected static words
+with `-e exportStaticLexicon true`. It writes `files/static-swipe-lexicon.json` inside the debug app,
+including the installed APK and bundled dictionary SHA-256 hashes. Manually install the debug and
+instrumentation APKs before this command; Gradle's connected-test task uninstalls them afterwards.
+
+```sh
+adb shell am instrument -w -r \
+  -e class helium314.keyboard.latin.engine.StaticDictionaryInstrumentedTest \
+  -e exportStaticLexicon true \
+  org.libreboard.keyboard.debug.test/androidx.test.runner.AndroidJUnitRunner
+adb exec-out run-as org.libreboard.keyboard.debug cat files/static-swipe-lexicon.json \
+  > build/device-evidence/static-swipe-lexicon.json
+build/model-venv/bin/python tools/evaluate_swipe_ctc.py --split validation \
+  --dictionary-lexicon build/device-evidence/static-swipe-lexicon.json \
+  --dictionary-apk app/build/outputs/apk/debugNoMinify/LibreBoard_0.1.0-alpha01-debugNoMinify.apk \
+  --output build/reports/swipe-native-validation.json
+```
+
+The evaluator rejects mismatching APK/asset hashes, duplicate normalized entries, and oversized
+vocabulary exports. This diagnostic currently supports the bundled en-US dictionary, maps it to the
+corpus's English language tag, and excludes possibly offensive words under the default policy.
+It does not reconstruct vocabulary from evaluation targets. Reports retain split identity and hashes
+of the input data, vocabulary export, originating APK, asset, and evaluator. Native vocabulary improves
+coverage fidelity but still does not measure the complete Android publication path or device latency.

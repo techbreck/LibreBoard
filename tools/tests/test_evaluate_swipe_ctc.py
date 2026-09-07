@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import tempfile
+import zipfile
 import pathlib
 import sys
 import unittest
@@ -47,6 +50,48 @@ def trie(entries: list[evaluator.LexiconEntry]) -> evaluator.TrieNode:
 
 
 class EvaluateSwipeCtcTest(unittest.TestCase):
+    def test_validation_vocabulary_excludes_validation_and_test_targets(self):
+        layout = {"keyLabels": list("catdog"), "keyMask": [1] * 6}
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            for split, target in (("train", "cat"), ("validation", "dog"), ("test", "god")):
+                (root / f"{split}.jsonl").write_text(json.dumps({
+                    "split": split, "language": "en", "target": target,
+                }) + "\n")
+            validation = evaluator.build_lexicon(root, layout, evaluation_split="validation")
+            final = evaluator.build_lexicon(root, layout, evaluation_split="test")
+            self.assertEqual({"cat"}, {entry.word for entry in validation["en"]})
+            self.assertEqual({"cat", "dog"}, {entry.word for entry in final["en"]})
+
+    def test_native_dictionary_export_requires_matching_apk_and_asset(self):
+        layout = {"keyLabels": list("catdog"), "keyMask": [1] * 6}
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            apk, export = root / "test.apk", root / "lexicon.json"
+            with zipfile.ZipFile(apk, "w") as archive:
+                archive.writestr("assets/dicts/main_en-US.dict", b"dictionary")
+            value = {
+                "schemaVersion": 1, "source": "bundled-static-dictionary", "maximumWords": 100000,
+                "apkSha256": hashlib.sha256(apk.read_bytes()).hexdigest(),
+                "dictionaryAsset": "dicts/main_en-US.dict",
+                "dictionarySha256": hashlib.sha256(b"dictionary").hexdigest(),
+                "words": [{"word": "cat", "languageTag": "en-US", "frequency": 200, "possiblyOffensive": False},
+                          {"word": "dog", "languageTag": "en-US", "frequency": 100, "possiblyOffensive": True}],
+            }
+            export.write_text(json.dumps(value))
+            entries, provenance = evaluator.load_dictionary_lexicon(export, apk, layout)
+            self.assertEqual(["cat"], [entry.word for entry in entries["en"]])
+            self.assertEqual([], provenance["sourceSplits"])
+            for field in ("apkSha256", "dictionarySha256"):
+                corrupt = dict(value, **{field: "0" * 64})
+                export.write_text(json.dumps(corrupt))
+                with self.assertRaises(evaluator.SwipeEvaluationError):
+                    evaluator.load_dictionary_lexicon(export, apk, layout)
+            value["words"].append(dict(value["words"][0], word="CAT"))
+            export.write_text(json.dumps(value))
+            with self.assertRaises(evaluator.SwipeEvaluationError):
+                evaluator.load_dictionary_lexicon(export, apk, layout)
+
     def test_greedy_and_prefix_beam_handle_blank_separated_double_letters(self):
         entries = [
             evaluator.LexiconEntry("al", "en", (1, 2), 100),
