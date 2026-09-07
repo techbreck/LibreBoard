@@ -125,3 +125,10 @@ vocabulary and evaluated partition differ.
 The retained report is `build/reports/swipe-native-validation.json`, SHA-256
 `7e3f838b60898ac06487833c473fe3b2ece8d7df2a0369cea11c341dd664eb56`. It records the exact model,
 vocabulary, APK, evaluator and split hashes. Full Android fusion and device budgets remain unmeasured.
+
+A matched 1,000-path validation development comparison used 100 rows per required stratum. Widening
+the beam from 64 to 256 changed union top-1 from 86.6% to 88.0% and top-3 from 92.7% to 92.8%, while
+host prefix-decoding p95 increased from about 21 ms to 91 ms. Both runs remained below the absolute
+quality gates. These host diagnostics do not justify changing the production beam or asserting an
+Android performance result. The origin APK used for the native vocabulary is retained locally as
+`build/device-evidence/static-vocabulary-origin.apk` so later APK builds cannot erase that provenance.
