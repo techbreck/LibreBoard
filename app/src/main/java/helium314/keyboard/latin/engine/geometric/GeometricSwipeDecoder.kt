@@ -208,6 +208,8 @@ object TraceKeySequence {
 /** Language-scoped surface-to-gesture aliases; candidates retain their original tagged surface. */
 internal object SwipeWordGesture {
     fun variants(word: String, languageTag: String): List<String> {
+        // Lowercase ASCII letters are already NFKC-normalized in every supported language.
+        if (word.isNotEmpty() && word.all { it in 'a'..'z' }) return listOf(word)
         val normalized = normalizeCandidate(word)
         // Almost every dictionary word has one spelling path. Avoid constructing a sequence,
         // set and list for each character when no German alternatives can be produced.

@@ -133,7 +133,7 @@ class CtcSwipeDecoder(
                             probability.nonBlank + logProbabilities[outputClass],
                         )
                     }
-                    val child = node.children[outputClass] ?: continue
+                    val child = node.child(outputClass) ?: continue
                     val extensionProbability = if (repeatedClass) probability.blank else total
                     if (extensionProbability == LOG_ZERO) continue
                     val extended = prefix.append(outputClass)
@@ -380,24 +380,44 @@ class CtcSwipeDecoder(
         fun add(classes: IntArray, word: LexiconWord) {
             var node = root
             classes.forEach { outputClass ->
-                node = node.children.getOrPut(outputClass) { TrieNode(node.depth + 1) }
+                node = node.getOrCreateChild(outputClass)
             }
             if (node.words.none { it.word == word.word && it.languageTag == word.languageTag }) {
-                node.words += word
+                node.words = if (node.words.isEmpty()) listOf(word) else node.words + word
                 wordCount++
             }
         }
 
         fun node(classes: IntArray): TrieNode? {
             var node = root
-            classes.forEach { outputClass -> node = node.children[outputClass] ?: return null }
+            classes.forEach { outputClass -> node = node.child(outputClass) ?: return null }
             return node
         }
     }
 
     private class TrieNode(val depth: Int) {
-        val children = HashMap<Int, TrieNode>()
-        val words = ArrayList<LexiconWord>()
+        // Most dictionary nodes have zero or one child and no terminal word. Avoid allocating
+        // two collections (plus their backing tables) for every character of every gesture.
+        private var firstClass = 0
+        private var firstChild: TrieNode? = null
+        private var otherChildren: HashMap<Int, TrieNode>? = null
+        var words: List<LexiconWord> = emptyList()
+
+        fun child(outputClass: Int): TrieNode? =
+            if (outputClass == firstClass) firstChild else otherChildren?.get(outputClass)
+
+        fun getOrCreateChild(outputClass: Int): TrieNode {
+            child(outputClass)?.let { return it }
+            val created = TrieNode(depth + 1)
+            if (firstChild == null) {
+                firstClass = outputClass
+                firstChild = created
+            } else {
+                val remaining = otherChildren ?: HashMap<Int, TrieNode>(2).also { otherChildren = it }
+                remaining[outputClass] = created
+            }
+            return created
+        }
     }
 
     private class BeamProbability(

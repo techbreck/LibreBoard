@@ -170,3 +170,9 @@ Every ranked slate was identical after these changes. Observed decoder p50/p95 c
 ongoing training and are not a release benchmark. The result remains above the 200 ms gate.
 Retained local reports are `build/device-evidence/swipe-android-diagnostic/android-report-stages.json`
 and `android-report-optimized.json`; the earlier cold run is `android-report-initial.json`.
+
+A follow-up stores a trie's first child directly and allocates child maps/terminal lists only when
+needed, while lowercase ASCII words bypass unnecessary Unicode normalization. All 100 ranked slates
+again matched exactly; observed p50/p95 was 224/315 ms in
+`android-report-sparse-trie.json`. The full host suite still passes 357 tests. This further reduces
+temporary allocation, but does not establish the release latency or added-memory budgets.
