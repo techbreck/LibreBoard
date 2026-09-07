@@ -171,3 +171,48 @@ autocorrection events, so they must not be described as an unbiased sample of or
 Publisher event labels were inferred automatically; strict alignment filters reduce ambiguity but do
 not turn this into a manually reviewed corpus. The component remains `releaseEligible: false`:
 it does not supply the missing spatial, spacing, personal/compound, device or quality evidence.
+
+The same pinned ITE files also support `tools/prepare_ite_contractions.py`. It uses an explicit
+English contraction list, excludes noun possessives, and applies exact prefix/reference alignment.
+It yields 16,406 human text-only contraction cases, including 3,244 held-out cases. Its session IDs
+are deliberately identical to the valid-word adapter's participant IDs so the same person cannot
+cross partitions when the components are combined. Personal words and compounds remain absent.
+
+```sh
+python3 tools/prepare_ite_contractions.py
+```
+
+## Combining verified components
+
+`tools/merge_tap_evaluation_sources.py` validates every source hash and row, preserves original IDs,
+labels and session grouping, rejects duplicate row/dataset IDs, and requires one common license.
+It writes all original source manifests into a hash-bound provenance sidecar. It does not invent
+consent metadata, relabel cases, or make the merged dataset release-eligible.
+
+```sh
+python3 tools/merge_tap_evaluation_sources.py \
+  --component build/evaluation-sources/google-tsi-tap-v1/source-manifest.json \
+  --component build/evaluation-sources/noisy-phone-v1/source-manifest.json \
+  --component build/evaluation-sources/ite-valid-words-v1/source-manifest.json \
+  --component build/evaluation-sources/ite-contractions-v1/source-manifest.json \
+  --output-root build/evaluation-sources/combined-tap-v1
+python3 tools/prepare_tap_evaluation.py \
+  build/evaluation-sources/combined-tap-v1/tap-cases.jsonl \
+  --source-manifest build/evaluation-sources/combined-tap-v1/source-manifest.json \
+  --output-root build/evaluation-data/combined-tap-v1 --allow-small
+```
+
+The 2026-09-08 merge contains 87,188 rows from 23,512 grouped sessions; 8,746 participant groups
+occur in both ITE components and retain one shared split. Its held-out corpus is:
+
+| Category | Held-out rows | Remaining data gate |
+| --- | ---: | --- |
+| Human spatial tap errors | 2,113 | 887 more required |
+| Valid-word corrections | 6,132 | Count minimum met |
+| Valid-word keeps | 4,635 | Count minimum met |
+| Contractions | 3,244 | Lexical total met; personal/compound strata missing |
+| Split/join cases | 0 | 500 required |
+
+Normal preparation still rejects this corpus; the diagnostic `--allow-small` manifest lists these
+exact deficits and remains `releaseEligible: false`. No model-quality or device result follows from
+meeting an individual category's row count.
