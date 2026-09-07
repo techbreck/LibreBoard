@@ -14,6 +14,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GeometricSwipeDecoderTest {
+    @Test
+    fun spellingPathsPreserveJoinersUnicodeAndGermanAlternativeOrder() {
+        assertEquals(listOf("keyboard"), SwipeWordGesture.variants("KEYBOARD", "en-US"))
+        assertEquals(listOf("dont"), SwipeWordGesture.variants("don't", "en-US"))
+        assertEquals(listOf("cafés"), SwipeWordGesture.variants("Cafe\u0301’s", "fr-FR"))
+        assertEquals(listOf("fußball"), SwipeWordGesture.variants("Fuß-ball", "en-US"))
+        assertEquals(listOf("fußball", "fusball", "fussball"), SwipeWordGesture.variants("Fuß-ball", "de-DE"))
+        assertEquals(listOf("äß", "äs", "äss", "aß", "as", "ass"), SwipeWordGesture.variants("Ä-ß", "de"))
+        assertEquals(emptyList<String>(), SwipeWordGesture.variants("'-’", "en-US"))
+    }
+
     private val geometry = KeyGeometry(
         300f,
         100f,

@@ -194,6 +194,10 @@ class CtcSwipeDecoder(
         val classByLabel = keyLabels.mapIndexedNotNull { index, label ->
             label?.let { normalizeCandidate(it) to index + 1 }
         }.toMap()
+        val asciiClasses = IntArray(128)
+        classByLabel.forEach { (label, outputClass) ->
+            if (label.length == 1 && label[0].code < asciiClasses.size) asciiClasses[label[0].code] = outputClass
+        }
         val trie = LexiconTrie()
         val iterator = words.iterator()
         var inspected = 0
@@ -202,24 +206,30 @@ class CtcSwipeDecoder(
             inspected++
             val word = iterator.next()
             if (word.languageTag !in allowedLanguageTags) continue
-            val emissions = emissionClasses(word, classByLabel)
+            val emissions = emissionClasses(word, classByLabel, asciiClasses)
             emissions.forEach { trie.add(it, word) }
         }
         return trie
     }
 
-    private fun emissionClasses(word: LexiconWord, classByLabel: Map<String, Int>): List<IntArray> =
-        SwipeWordGesture.variants(word.word, word.languageTag).mapNotNull { gesture ->
-            val classes = ArrayList<Int>(gesture.length)
+    private fun emissionClasses(word: LexiconWord, classByLabel: Map<String, Int>, asciiClasses: IntArray): List<IntArray> {
+        val emissions = SwipeWordGesture.variants(word.word, word.languageTag).mapNotNull { gesture ->
+            val classes = IntArray(gesture.length)
+            var count = 0
             var index = 0
             while (index < gesture.length) {
                 val codePoint = gesture.codePointAt(index)
-                val outputClass = classByLabel[String(Character.toChars(codePoint))] ?: return@mapNotNull null
-                classes += outputClass
+                val outputClass = if (codePoint < asciiClasses.size) asciiClasses[codePoint] else
+                    classByLabel[String(Character.toChars(codePoint))] ?: 0
+                if (outputClass == 0) return@mapNotNull null
+                classes[count++] = outputClass
                 index += Character.charCount(codePoint)
             }
-            classes.takeIf { it.isNotEmpty() && it.size <= MAX_EMISSION_LENGTH }?.toIntArray()
-        }.distinctBy { it.toList() }
+            if (count == 0 || count > MAX_EMISSION_LENGTH) null else
+                if (count == classes.size) classes else classes.copyOf(count)
+        }
+        return if (emissions.size <= 1) emissions else emissions.distinctBy { it.toList() }
+    }
 
     private fun validOutput(result: CtcInferenceResult): Boolean {
         val logits = result.logits ?: return false

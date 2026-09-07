@@ -32,7 +32,9 @@ class SwipeLexiconIndex private constructor(
             }
             .filterNot { blockPossiblyOffensive && it.possiblyOffensive }
             .sortedWith(compareByDescending<LexiconWord> { it.personal }.thenByDescending { it.frequency })
-            .distinctBy { normalizeCandidate(it.word) to canonicalLanguageTag(it.languageTag) }
+            // from() already deduplicates normalized word/language keys into disjoint length
+            // buckets, and requested languages are distinct above. Re-normalizing every word
+            // here repeats expensive Unicode/Locale work on each gesture without changing output.
             .take(maximumWords)
             .toList()
     }

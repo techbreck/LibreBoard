@@ -208,16 +208,23 @@ object TraceKeySequence {
 /** Language-scoped surface-to-gesture aliases; candidates retain their original tagged surface. */
 internal object SwipeWordGesture {
     fun variants(word: String, languageTag: String): List<String> {
-        val german = Locale.forLanguageTag(languageTag).language == "de"
-        var variants = listOf("")
         val normalized = normalizeCandidate(word)
+        // Almost every dictionary word has one spelling path. Avoid constructing a sequence,
+        // set and list for each character when no German alternatives can be produced.
+        if (normalized.none { it == 'ä' || it == 'ö' || it == 'ü' || it == 'ß' } ||
+            Locale.forLanguageTag(languageTag).language != "de") {
+            val gesture = if (normalized.any { it == '\'' || it == '\u2019' || it == '-' }) {
+                normalized.filterNot { it == '\'' || it == '\u2019' || it == '-' }
+            } else normalized
+            return if (gesture.isEmpty()) emptyList() else listOf(gesture)
+        }
+        var variants = listOf("")
         var index = 0
         while (index < normalized.length) {
             val codePoint = normalized.codePointAt(index)
             val character = String(Character.toChars(codePoint))
             val alternatives = when {
                 codePoint == '\''.code || codePoint == 0x2019 || codePoint == '-'.code -> listOf("")
-                !german -> listOf(character)
                 character == "ä" -> listOf("ä", "a")
                 character == "ö" -> listOf("ö", "o")
                 character == "ü" -> listOf("ü", "u")

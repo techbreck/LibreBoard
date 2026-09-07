@@ -140,3 +140,33 @@ on 315 paths, but reduced union top-1/top-3 from 86.6%/92.7% to 84.2%/91.5%. Sta
 from 88.2%/92.2% to 87.7%/91.8%. The experiment was rejected; production still uses the existing
 dictionary-constrained decoder. The local report is
 `build/reports/swipe-native-validation-greedy-oov-1000.json` and includes the experimental script hash.
+
+## Android decoder diagnostic
+
+`tools/prepare_swipe_android_diagnostic.py` binds 100 validation paths (at least 10 per required
+stratum) to the checked swipe export. The opt-in `SwipeRuntimeInstrumentedTest` reads the installed
+native English dictionary, runs the source-built ONNX adapter and Kotlin CTC decoder, and records
+the exact fixture, model, APK and dictionary hashes with every ranked slate and stage timings.
+Its fixture/model belong in the debug app's private `files/swipe-runtime-diagnostic` directory.
+Run with `-e libreboardRequireSwipeRuntime true -e swipeFixtureSha256 <printed-hash>`; the optional
+`swipeMaximumRows` argument permits a smaller profiling run and is recorded in the report.
+
+The diagnostic uses a generous 60-second per-path deadline so slow work is measured rather than
+hidden behind production timeouts. It replays the already prepared 64-point paths through Android's
+feature conversion; this is not original raw-sensor replay or an interchangeable Python inference
+measurement. It excludes retained AOSP suggestions, final fusion, editor publication and personal
+data. It cannot satisfy Phase 0 or the Android device matrix.
+
+On the arm64 API 36 AOSP emulator, the 100-path unminified debug run scored 89% top-1 and 90% top-3.
+Stage measurements found inference p95 around 4.4 ms, vocabulary lookup around 222 ms and the
+remaining trie/beam work around 1.61 seconds. A software-clock profile identified spelling-path
+allocation and garbage collection as major costs. Ordinary words now avoid per-character variant
+expansion, ASCII labels use a direct class table, and the immutable vocabulary index no longer
+repeats normalization/deduplication on every query. German alternatives retain their existing order
+and bounds; Unicode and joiner regressions pass.
+
+Every ranked slate was identical after these changes. Observed decoder p50/p95 changed from
+1,132/1,813 ms to 250/362 ms; lookup p95 changed from 222 to 13 ms. These runs shared the host with
+ongoing training and are not a release benchmark. The result remains above the 200 ms gate.
+Retained local reports are `build/device-evidence/swipe-android-diagnostic/android-report-stages.json`
+and `android-report-optimized.json`; the earlier cold run is `android-report-initial.json`.
