@@ -160,6 +160,11 @@ must permit typing while issuing zero surrounding-text reads. These framework te
 the installed IME through another application's window and do not establish WebView or Termux
 compatibility.
 
+`StaticDictionaryInstrumentedTest` reads the bundled English binary through the native dictionary
+iterator. It exercises the 100,000-entry boundary and requires frequent words beyond that boundary
+to survive the bounded frequency-ranked swipe index. Host tests cover input-order invariance,
+deterministic ties, normalized duplicate replacement and rejection of unusable words.
+
 The connected suite must expand with external-app editor fixtures for composing reconciliation, cursor movement,
 correction rejection, WebView, terminal single-commit behavior, model failure, clipboard expiry,
 the complete SAF backup/restore UI flow, the clipboard-search interaction flow, language lock, and latency collection as those

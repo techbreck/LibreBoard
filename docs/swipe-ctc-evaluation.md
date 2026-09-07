@@ -41,3 +41,35 @@ without consulting held-out targets.
 German candidates remain language-tagged while popup-only `ä`, `ö`, `ü`, and `ß` receive bounded
 German-only gesture variants over their visible base keys. The original surface is retained, and the
 same aliases are used by both Android decoders and the offline CTC evaluator.
+
+## Full combined-decoder diagnostic, 2026-09-08
+
+The 5,000-path run of the existing exported model measured:
+
+| Decoder | Top-1 | Top-3 |
+| --- | ---: | ---: |
+| CTC beam | 85.24% | 90.98% |
+| CTC with static scoring | 85.14% | 91.76% |
+| Geometric with static scoring | 77.50% | 88.32% |
+| CTC/geometric union with static scoring | 86.32% | 92.66% |
+
+The union reduced top-1 error by 39.2% relative to geometry, but missed the absolute swipe gates.
+Its very-sloppy top-1 was 71.4%; long-word top-1 was 72.93%. The corpus-derived vocabulary covered
+95.52% of targets, leaving little margin for the 95% top-3 target even with improved ranking.
+Further comparisons should measure the production dictionary path; do not add held-out targets to
+the diagnostic lexicon. Model or decoder selection must use validation data, not tune this test set.
+
+Evidence: `build/model-export/swipe-latin-v1/ctc-geometric-evaluation-report.json`, SHA-256
+`3bab7fdf4b6f87706194d9829c7d11e761ff0315138e317eeb18c079d12ee816`, bound to model SHA-256
+`1301f0d076f526fe0b67f2ea86a38abc8448f6de54d2c7191c002dcd4d05d38c`.
+The run used the default sample/stratum counts and one inference thread. Host timing was collected
+while context training was active and is not Android performance evidence. Phase 0 remains open.
+
+The subsequent native dictionary check found a separate live-path defect: the bundled English
+dictionary has 160,715 entries, and trie traversal places frequent words including `the`, `to`,
+`of` and `with` after entry 100,000. The old index stopped at that position. Index construction now
+scans up to 1,000,000 entries per language while retaining at most 100,000 distinct words ranked by
+frequency, with deterministic ties. The scan still runs in the background. Instrumentation uses
+the actual bundled binary dictionary and checks that these late-traversal words survive the bounded
+index. This fixes vocabulary loss; it does not change the corpus-lexicon diagnostic above or establish
+an Android quality/latency pass.

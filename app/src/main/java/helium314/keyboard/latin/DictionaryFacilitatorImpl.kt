@@ -29,6 +29,7 @@ import helium314.keyboard.latin.dictionary.ExpandableBinaryDictionary
 import helium314.keyboard.latin.dictionary.UserBinaryDictionary
 import helium314.keyboard.latin.engine.geometric.LexiconWord
 import helium314.keyboard.latin.engine.geometric.SwipeLexiconIndex
+import helium314.keyboard.latin.engine.geometric.StaticSwipeLexiconCollector
 import helium314.keyboard.latin.permissions.PermissionsUtil
 import helium314.keyboard.latin.personalization.UserHistoryDictionary
 import helium314.keyboard.latin.settings.Settings
@@ -308,17 +309,21 @@ class DictionaryFacilitatorImpl : DictionaryFacilitator {
         val words = ArrayList<LexiconWord>()
         groups.forEach { group ->
             val languageTag = group.locale.toLanguageTag()
-            group.getDict(Dictionary.TYPE_MAIN)?.visitUnigrams(MAX_STATIC_SWIPE_WORDS_PER_LANGUAGE) {
+            // Native iteration is trie order, not frequency order. Stopping after the retained
+            // vocabulary limit omitted common words near the end of the bundled dictionary.
+            val collector = StaticSwipeLexiconCollector(MAX_STATIC_SWIPE_WORDS_PER_LANGUAGE)
+            group.getDict(Dictionary.TYPE_MAIN)?.visitUnigrams(MAX_STATIC_SWIPE_SCAN_WORDS_PER_LANGUAGE) {
                     word, frequency, isNotAWord, isPossiblyOffensive ->
                 if (!isNotAWord && frequency >= 0 && word.isNotBlank() && word.all(::isSwipeWordCharacter)) {
-                    words += LexiconWord(
+                    collector.add(LexiconWord(
                         word = word,
                         languageTag = languageTag,
                         frequency = frequency,
                         possiblyOffensive = isPossiblyOffensive,
-                    )
+                    ))
                 }
             }
+            words += collector.words()
         }
         val rebuilt = SwipeLexiconIndex.from(words)
         synchronized(this) {
@@ -711,6 +716,7 @@ class DictionaryFacilitatorImpl : DictionaryFacilitator {
         // HACK: This threshold is being used when adding a capitalized entry in the User History dictionary.
         private const val CAPITALIZED_FORM_MAX_PROBABILITY_FOR_INSERT = 140
         private const val MAX_STATIC_SWIPE_WORDS_PER_LANGUAGE = 100_000
+        private const val MAX_STATIC_SWIPE_SCAN_WORDS_PER_LANGUAGE = 1_000_000
 
         private fun isSwipeWordCharacter(character: Char): Boolean =
             character.isLetter() || character == '\'' || character == '\u2019' || character == '-'
