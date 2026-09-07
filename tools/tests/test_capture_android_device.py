@@ -26,6 +26,8 @@ class FakeAdb:
             "ro.kernel.qemu": "0",
             "ro.boot.qemu": "0",
             "ro.config.low_ram": "false",
+            "ro.debuggable": "0",
+            "debug.force_low_ram": "",
         }
         self.meminfo = "MemTotal:        8074032 kB\nMemFree:         1000000 kB\n"
         self.packages = {capture.LIBREBOARD_PACKAGE}
@@ -108,6 +110,17 @@ class CaptureAndroidDeviceTest(unittest.TestCase):
         self.assertTrue(report["sandboxedGooglePlayInstalled"])
         self.assertEqual(sorted(capture.PLAY_PACKAGES), report["installedGooglePlayPackages"])
         self.assertEqual(3, len(report["blockers"]))
+
+    def test_forced_low_ram_requires_debuggable_os_and_records_its_origin(self):
+        fake = FakeAdb()
+        fake.properties["debug.force_low_ram"] = "true"
+        self.assertFalse(self.inspect(fake)["isLowRamDevice"])
+        fake.properties["ro.debuggable"] = "1"
+        report = self.inspect(fake)
+        self.assertTrue(report["isLowRamDevice"])
+        self.assertEqual("debug-forced", report["lowRamConfiguration"]["mode"])
+        self.assertTrue(report["lowRamConfiguration"]["requiresAppApiVerification"])
+        self.assertFalse(report["isReleaseEvidence"])
 
     def test_multiple_or_unready_devices_require_an_explicit_ready_serial(self):
         multiple = FakeAdb(devices=(

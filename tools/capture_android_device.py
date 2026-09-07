@@ -151,6 +151,8 @@ def inspect_device(
         "kernelQemu": "ro.kernel.qemu",
         "bootQemu": "ro.boot.qemu",
         "lowRamFlag": "ro.config.low_ram",
+        "debuggableFlag": "ro.debuggable",
+        "forcedLowRamFlag": "debug.force_low_ram",
     }
     values = {name: shell("getprop", prop) for name, prop in properties.items()}
     if any(not values[name] for name in (
@@ -164,6 +166,10 @@ def inspect_device(
         raise DeviceCaptureError("device API level is invalid") from failure
     if values["lowRamFlag"] not in {"", "false", "true"}:
         raise DeviceCaptureError("device low-RAM property is invalid")
+
+    if values["debuggableFlag"] not in {"", "0", "1"} or values["forcedLowRamFlag"] not in {"", "false", "true"}:
+        raise DeviceCaptureError("device debug low-RAM properties are invalid")
+    forced_low_ram = values["debuggableFlag"] == "1" and values["forcedLowRamFlag"] == "true"
 
     memory_match = MEM_TOTAL.search(shell("cat", "/proc/meminfo"))
     if memory_match is None:
@@ -203,7 +209,14 @@ def inspect_device(
         "buildFingerprint": values["buildFingerprint"],
         "osBuildIncremental": values["osBuildIncremental"],
         "physicalDevice": physical,
-        "isLowRamDevice": values["lowRamFlag"] == "true",
+        "isLowRamDevice": values["lowRamFlag"] == "true" or forced_low_ram,
+        "lowRamConfiguration": {
+            "ro.config.low_ram": values["lowRamFlag"],
+            "ro.debuggable": values["debuggableFlag"],
+            "debug.force_low_ram": values["forcedLowRamFlag"],
+            "mode": "product" if values["lowRamFlag"] == "true" else "debug-forced" if forced_low_ram else "normal",
+            "requiresAppApiVerification": True,
+        },
         "memoryMiB": memory_mib,
         "libreBoardInstalled": LIBREBOARD_PACKAGE in packages,
         "sandboxedGooglePlayInstalled": bool(installed_play),

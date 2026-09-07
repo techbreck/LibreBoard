@@ -128,9 +128,9 @@ python3 tools/capture_android_device.py --serial emulator-5554 \
   -Pandroid.testInstrumentationRunnerArguments.libreboardRequireLowRam=true
 ```
 
-The property command must print exactly `true`; if it is empty or `false`, this boot is an ordinary
-emulator run and must not be labeled low-RAM evidence. Do not override the read-only property to
-make an evidence check pass. Use an appropriately configured system image and repeat the cold boot.
+For product-configured low-RAM evidence, the property must print exactly `true`. Do not override
+the read-only property to make a check pass. A debug build can alternatively exercise Android
+low-RAM behavior with the supported switch below; always label that configuration explicitly.
 The capture also records `/proc/meminfo` as rounded-up
 MiB. The opt-in instrumentation assertion independently checks `ActivityManager.isLowRamDevice()`
 and proves that the real device policy disables the context model while retaining CTC swipe. A
@@ -140,8 +140,32 @@ The emulator's RAM-floor behavior is implemented in AOSP's
 [`main-common.c`](https://android.googlesource.com/platform/external/qemu/+/emu-master-dev/android/android-emu/android/main-common.c).
 During the 2026-09-08 recheck, the available API 36 AVD booted with `-lowram -memory 1536` but
 reported no low-RAM property; the required instrumentation assertion failed as intended. The normal
-suite passed on that boot, including the three real editor-connection tests. A qualifying low-RAM
-rerun remains outstanding.
+suite passed on that boot, including the three real editor-connection tests.
+
+For a debuggable AOSP emulator (`ro.debuggable=1`), AOSP's
+[`ActivityManager`](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/core/java/android/app/ActivityManager.java)
+also honors `debug.force_low_ram`. Restart Android services after setting it because the framework
+caches the value at class initialization:
+
+```sh
+adb root
+adb shell setprop debug.force_low_ram true
+adb shell stop
+adb shell start
+# Wait for Android services, then run the suite with libreboardRequireLowRam=true.
+```
+
+On 2026-09-08, the API 36 emulator passed all eight privacy/storage tests with the low-RAM
+assertion enabled. The launch requested 1,536 MiB without `-lowram`; the emulator applied its normal
+RAM floor and the guest reported 1,975 MiB. The platform API returned true; real `NeuralDevicePolicy`
+disabled context rescoring while keeping CTC eligible. The local raw output is
+`build/reports/forced-lowram-instrumentation.log`, and its read-only device capture is
+`build/device-evidence/api36-forced-lowram.json`. Capture records all three properties and labels
+this mode `debug-forced`; its property-derived boolean still requires the in-app API assertion.
+This establishes fallback-policy behavior on a forced low-RAM emulator, not the full Phase 0
+latency/memory/quality matrix or a product-configured Android Go image. Clear the debug property
+and restart services or cold-boot without a snapshot before an ordinary run.
+
 The suite checks the installed package rather than only source XML: merged permissions, backup and
 cleartext flags, the IME service permission/direct-boot flag, the non-exported clipboard-search
 activity, the Android `EditorInfo` policy matrix, and real credential-encrypted SQLite behavior for
