@@ -101,3 +101,27 @@ corpus's English language tag, and excludes possibly offensive words under the d
 It does not reconstruct vocabulary from evaluation targets. Reports retain split identity and hashes
 of the input data, vocabulary export, originating APK, asset, and evaluator. Native vocabulary improves
 coverage fidelity but still does not measure the complete Android publication path or device latency.
+
+## Native-vocabulary validation, 2026-09-08
+
+A separate 5,000-path **validation** run with at least 500 rows in every required stratum used the
+APK-bound 100,000-word collector export (99,222 decodable words after the offensive-word filter).
+Vocabulary coverage was 95.44%; the greedy-selected length window covered 99.98% of targets.
+
+| Decoder | Top-1 | Top-3 |
+| --- | ---: | ---: |
+| CTC beam | 85.32% | 91.16% |
+| CTC with static scoring | 87.10% | 91.98% |
+| Geometric with static scoring | 67.74% | 82.72% |
+| CTC/geometric union with static scoring | 86.68% | 92.38% |
+
+The union's return-trip top-3 was 87.90%, also below its 90% gate. Short-word top-3 passed at 98.07%.
+The union reduced top-1 error by 58.71% relative to geometry, but all three neural rankings still
+missed the overall absolute thresholds. Static CTC had slightly better top-1 than the union; this
+is a validation diagnostic to investigate, not a reason to claim the release quality problem solved.
+Do not compare these numbers causally with the earlier corpus-vocabulary **test** run: both the
+vocabulary and evaluated partition differ.
+
+The retained report is `build/reports/swipe-native-validation.json`, SHA-256
+`7e3f838b60898ac06487833c473fe3b2ece8d7df2a0369cea11c341dd664eb56`. It records the exact model,
+vocabulary, APK, evaluator and split hashes. Full Android fusion and device budgets remain unmeasured.
