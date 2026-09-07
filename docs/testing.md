@@ -222,3 +222,32 @@ python3 tools/verify_release.py --source
 The full artifact/evidence command is documented by `python3 tools/verify_release.py --help` and is
 run only when the physical and reproducible-build inputs exist. Checked-in templates remain marked
 blocked until a real release candidate passes.
+
+## Real IME window test
+
+`LiveImeInstrumentedTest` is opt-in because it requires the debug keyboard to be selected as the
+system IME. Its non-exported `EditorFixtureActivity` exists only in `debugNoMinify`; release builds
+do not include the fixture. After the editor obtains window focus and the restarted IME reconnects,
+the test waits for stable keyboard geometry, obtains actual key hitboxes and injects touchscreen
+DOWN/UP events through Android. It checks each character, exactly one word/space commit, and
+replacement of a selected word with the trailing space preserved. It does not call the input logic
+directly or inject hardware text events that bypass the IME.
+
+On a disposable emulator, record the current default IME and `show_ime_with_hard_keyboard` value,
+install the debug and test APKs, then run:
+
+```sh
+adb shell ime enable org.libreboard.keyboard.debug/helium314.keyboard.latin.LatinIME
+adb shell ime set org.libreboard.keyboard.debug/helium314.keyboard.latin.LatinIME
+adb shell settings put secure show_ime_with_hard_keyboard 1
+adb shell am instrument -w -r -e libreboardRequireLiveIme true \
+  org.libreboard.keyboard.debug.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+Restore the previous IME and hardware-keyboard setting afterwards. The 2026-09-08 API 36 run passed
+12 device tests with the dedicated low-RAM test skipped; the live-window test passed in isolation
+and with the complete suite. Raw output is retained at `build/reports/live-ime-full-device-suite.log`.
+The corresponding 354 host tests and APK source/privacy/native checks passed. The fixture explicitly
+accounts for instrumentation restarting the selected IME and for its opening animation; elapsed
+fixture startup time is not a keyboard latency measurement. This same-package editor test does not
+replace cross-app WebView/terminal, Direct Boot, or physical GrapheneOS acceptance.
