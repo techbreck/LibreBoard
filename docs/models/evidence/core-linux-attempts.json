@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "releaseEligible": false,
+  "sourceCommit": "d421b3e345758068f213d8f3b62949270a273ec2",
+  "attempts": [
+    {
+      "name": "a",
+      "log": "build/reports/linux-core-a-daemon-failure.log",
+      "state": "failed",
+      "reason": "Gradle daemon disappeared during Kotlin compilation; exact cause not established",
+      "memoryLimit": "3g"
+    },
+    {
+      "name": "a-retry",
+      "log": "build/reports/linux-core-a-retry.log",
+      "container": "libreboard-core-repro-a-retry",
+      "state": "stopped",
+      "memoryLimit": "3500m",
+      "compilerStrategy": "in-process",
+      "gradleJvmargs": "-Xmx2048m",
+      "reusesOwnInterruptedCompilationDirectory": true,
+      "reason": "Intentional serialization during R8: VM had under 80 MiB available and no swap. Completed native/Kotlin/Java outputs preserved for resume."
+    },
+    {
+      "name": "b-initial-cache",
+      "log": "build/reports/linux-core-b-shared-cache-failure.log",
+      "state": "failed",
+      "reason": "Concurrent Gradle cache ownership lock across containers"
+    },
+    {
+      "name": "b",
+      "log": "build/reports/linux-core-b.log",
+      "container": "libreboard-core-repro-b",
+      "state": "running",
+      "memoryLimit": "5g",
+      "separateGradleCacheVolume": true,
+      "initialMemoryLimit": "3g",
+      "memoryChangeStage": "After Kotlin compilation, before Java/dex/R8",
+      "memoryChanges": [
+        "3g initially",
+        "3500m after Kotlin",
+        "5g after stopping A during R8 to serialize memory-heavy work"
+      ]
+    }
+  ],
+  "scope": "Progress only; no APK comparison or reproducibility pass yet"
+}

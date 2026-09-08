@@ -359,3 +359,10 @@ saved default APK, although the APK container hashes differ; this is restoration
 byte-for-byte reproducibility. Hash-bound measurements are in
 [`runtime-initializer-experiments.json`](models/evidence/runtime-initializer-experiments.json).
 These emulator samples use the original context model and do not qualify release memory or latency.
+
+A separate 7.6M-parameter context student smoke graph (512 training examples, one epoch) passed the
+same Android combined swipe/context kernel parity test. Its INT4 graph is 4,436,097 bytes. Sampled
+added PSS was 37.67 MiB across 47 samples; single-run context timings for 1/8/32 candidate rows were
+16.49/12.13/26.07 ms. These measurements motivate full training and evaluation; they do not establish
+quality, p95 latency, or release peak memory. The default model specification remains unchanged.
+See [the bound smoke evidence](models/evidence/context-small-android-smoke.json).

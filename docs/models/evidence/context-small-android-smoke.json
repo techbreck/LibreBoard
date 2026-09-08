@@ -1,0 +1,115 @@
+{
+  "androidReport": {
+    "apkSha256": "358f86dfef9f32c78afdbc1513f1165ddaff09d4e7f3486b5a42bbf4e7419ca8",
+    "buildFingerprint": "Android/sdk_phone64_arm64/emu64a:16/BE2A.250530.026.D1/13818094:userdebug/test-keys",
+    "cases": [
+      {
+        "memoryAfterInference": {
+          "javaHeapUsedBytes": 4808912,
+          "nativeHeapAllocatedBytes": 29830256,
+          "processPssKiB": 129229
+        },
+        "memoryAfterSwipeInference": {
+          "javaHeapUsedBytes": 4851248,
+          "nativeHeapAllocatedBytes": 30919232,
+          "processPssKiB": 130127
+        },
+        "rows": 1,
+        "singleRunMs": 16.490916
+      },
+      {
+        "memoryAfterInference": {
+          "javaHeapUsedBytes": 4856560,
+          "nativeHeapAllocatedBytes": 33087856,
+          "processPssKiB": 131523
+        },
+        "memoryAfterSwipeInference": {
+          "javaHeapUsedBytes": 4898896,
+          "nativeHeapAllocatedBytes": 35253120,
+          "processPssKiB": 131635
+        },
+        "rows": 8,
+        "singleRunMs": 12.125875
+      },
+      {
+        "memoryAfterInference": {
+          "javaHeapUsedBytes": 4952528,
+          "nativeHeapAllocatedBytes": 39588256,
+          "processPssKiB": 134819
+        },
+        "memoryAfterSwipeInference": {
+          "javaHeapUsedBytes": 4994864,
+          "nativeHeapAllocatedBytes": 39586880,
+          "processPssKiB": 134847
+        },
+        "rows": 32,
+        "singleRunMs": 26.068417
+      }
+    ],
+    "combinedModelSnapshots": true,
+    "fixtureSha256": "fcefca8bff5aaee2c386d5a891fb48979376ebbd451b95f9314c297d5ee595ad",
+    "memoryAfterClose": {
+      "javaHeapUsedBytes": 5166896,
+      "nativeHeapAllocatedBytes": 11474384,
+      "processPssKiB": 124483
+    },
+    "memoryAfterOpen": {
+      "javaHeapUsedBytes": 4808128,
+      "nativeHeapAllocatedBytes": 28499088,
+      "processPssKiB": 128449
+    },
+    "memoryAfterSwipeOpen": {
+      "javaHeapUsedBytes": 4742592,
+      "nativeHeapAllocatedBytes": 17109392,
+      "processPssKiB": 116143
+    },
+    "memoryBeforeOpen": {
+      "javaHeapUsedBytes": 4644192,
+      "nativeHeapAllocatedBytes": 5903712,
+      "processPssKiB": 96243
+    },
+    "memoryScope": "Whole-process snapshots, not isolated added peak memory or a release gate",
+    "modelSha256": "bace86d8bee2dff21b229bd57f5137a5f9aee47be3f2e6e6cf67c9ed982f1360",
+    "releaseEligible": false,
+    "sampledMemory": {
+      "maximumJavaHeapUsedBytes": 4994864,
+      "maximumNativeHeapAllocatedBytes": 39725952,
+      "maximumProcessPssKiB": 134819,
+      "requestedDelayBetweenSamplesMs": 5,
+      "samples": 47,
+      "scope": "Observed whole-process maxima at different times; do not sum heap maxima or infer a release peak pass"
+    },
+    "schemaVersion": 1,
+    "supportedAbis": [
+      "arm64-v8a"
+    ],
+    "swipeModelSha256": "1301f0d076f526fe0b67f2ea86a38abc8448f6de54d2c7191c002dcd4d05d38c",
+    "syntheticKernelParityOnly": true
+  },
+  "candidateCommit": "f3d6220f1065ccddfe8bfe19fbea4d0943dbebc9",
+  "limitations": [
+    "Partial training smoke model, not a quality candidate.",
+    "Single-run kernel timings are not Android p95 or full IME latency.",
+    "Whole-process sampled PSS does not establish release added peak memory.",
+    "Host-exported development graph; Linux reproducibility pending."
+  ],
+  "modelBytes": 4436097,
+  "parameterCount": 7605760,
+  "provenance": {
+    "androidReportSha256": "79d7ce19be47d0ffc2daf70e357dccae957ca2cbe73bf2a352c5da1eb3084ec1",
+    "contextFixtureRoot": "/Users/breck/Projects/LibreBoard-context-small-student/build/device-evidence/context-small-smoke-runtime",
+    "coreApkSha256": "358f86dfef9f32c78afdbc1513f1165ddaff09d4e7f3486b5a42bbf4e7419ca8",
+    "instrumentationApkSha256": "4baff48586bf06df52f541817852adb8fe2596f2f9ab9ba5dc22fdf35b786924",
+    "instrumentationSourceSha256": "b1b14d69cb8ae5ae76f16d8bdb7ab0b806c5ec555f58d36651bbd17fc715f3c5",
+    "releaseEligible": false,
+    "runnerSha256": "727277ea2c9ec281e24abe5176a126b8a94d5f0a4169a5afae5566f4bbc533b6",
+    "runtimeSourceSha256": "06dd0523684ebbe9b997a50891ce201def19d86c2551a7ed9c9d58cebe316911",
+    "sourceCommit": "a30c90f7fe696e71c2c003355bfd28d2a80270c9",
+    "swipeModelPath": "/Users/breck/Projects/LibreBoard/build/device-evidence/swipe-android-diagnostic/swipe.onnx"
+  },
+  "releaseEligible": false,
+  "sampledAddedPssMiB": 37.671875,
+  "schemaVersion": 1,
+  "trainingEpochs": 1,
+  "trainingExamples": 512
+}

@@ -75,3 +75,20 @@ signing-key acceptance, a model-qualified APK comparison, or the Phase 0/device 
 
 The isolated [Linux core build recipe](linux-core-build.md) records the pinned Android tool inputs
 and independent source-archive procedure for the corresponding Linux comparison.
+
+## Linux core comparison, 2026-09-08
+
+The two Linux compilation directories for commit `d421b3e345758068f213d8f3b62949270a273ec2`
+produced byte-identical unsigned universal core APKs: 21,623,196 bytes, SHA-256
+`4691b5c016119b8473cf33bd3a79a4a732bd5f5c861cae8227d984d4da6107cc`.
+Packaging verification passed, and all 1,689 regular tracked source files matched the pinned archive.
+The [comparison report](../models/evidence/core-linux-reproducibility.json) binds the exact image,
+source archive, verifier and APK hashes. It uses the earlier local Linux image identified in that
+report; it does not claim an execution of a later revised image recipe.
+
+Build A resumed its own interrupted compilation after an unexplained Gradle daemon disappearance;
+a subsequent retry was deliberately stopped before serializing the memory-intensive builds. Build B
+used an isolated Gradle cache. Build/configuration caches were disabled, but A's own completed task
+outputs were retained. The [attempt history](../models/evidence/core-linux-attempts.json) preserves
+those distinctions. This is evidence for the pinned core checkpoint, not the current HEAD, a
+model-qualified APK, accepted signing, or physical-device qualification.

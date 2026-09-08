@@ -1,0 +1,46 @@
+{
+  "apkChecksPassed": true,
+  "apks": [
+    {
+      "bytes": 21623196,
+      "path": "build/apk-reproducibility/checkout-linux-a/app/build/outputs/apk/release/LibreBoard_0.1.0-alpha01-release.apk",
+      "sha256": "4691b5c016119b8473cf33bd3a79a4a732bd5f5c861cae8227d984d4da6107cc"
+    },
+    {
+      "bytes": 21623196,
+      "path": "build/apk-reproducibility/checkout-linux-b/app/build/outputs/apk/release/LibreBoard_0.1.0-alpha01-release.apk",
+      "sha256": "4691b5c016119b8473cf33bd3a79a4a732bd5f5c861cae8227d984d4da6107cc"
+    }
+  ],
+  "appCommit": "d421b3e345758068f213d8f3b62949270a273ec2",
+  "byteIdentical": true,
+  "containers": [
+    {
+      "exitCode": 0,
+      "id": "42def7444ea9f9bf2fd353b2df2a1b1b39f266d4dc35611c19804cec3f2572bf",
+      "imageId": "sha256:b8392aea6407184644a09a1c1bf69ef797abecb80aea24c00e04b9be7f1da565",
+      "memoryLimitBytes": 5368709120,
+      "name": "libreboard-core-repro-a-final",
+      "oomKilled": false
+    },
+    {
+      "exitCode": 0,
+      "id": "de08be25f3d0df2a30dce6870f89370f938c212f8e31cde9b38e678a5c2f865a",
+      "imageId": "sha256:b8392aea6407184644a09a1c1bf69ef797abecb80aea24c00e04b9be7f1da565",
+      "memoryLimitBytes": 5368709120,
+      "name": "libreboard-core-repro-b"
+    }
+  ],
+  "limitations": [
+    "Unsigned core-only APKs, not a model-qualified or signed release.",
+    "A resumed its own interrupted compilation after its initial Gradle daemon disappeared; B used an isolated Gradle cache.",
+    "Compiler process strategy and memory limits differed; exact attempt history is retained separately."
+  ],
+  "releaseEligible": false,
+  "schemaVersion": 1,
+  "scope": "Independent Linux compilation directories with strict dependency verification and Gradle build/configuration caches disabled",
+  "sourceArchiveSha256": "8fd0b45317963fca6824b9046b94ca1e24f028f1afa01b126634e6068e3d5bdf",
+  "trackedSourceFilesVerified": 1689,
+  "verificationLogSha256": "77838a860d3ad07769b66ee5c8a10790671d01c2114213574cb329f8d8917f09",
+  "verifierSha256": "7b15f155fc8c73983dba2e1a30967e1159c0e2273ad1d8b03b03553940a79142"
+}
