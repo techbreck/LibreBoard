@@ -190,3 +190,27 @@ scoring and Linux builds changed host load, so these are diagnostics, not a cont
 The final result still exceeds 200 ms. Reports are retained as `android-report-final-slate.json`,
 `android-report-frame-score.json`, `android-report-ascii-trie.json` and the hash-bound
 `decoder-allocation-comparison.json` in the same local evidence directory.
+
+## Reference-prefix diagnostic preparation
+
+`python3 tools/prepare_swipe_reference_context.py` verifies the pinned raw FUTO source bytes,
+prepared swipe split bytes, and every source-to-prepared identity before publishing diagnostic
+JSONL sidecars under `build/evaluation-data/swipe-reference-context-v1`. Existing output directories
+are refused so earlier evidence is preserved. The committed manifest is
+`docs/models/evidence/swipe-reference-context-v1.json`.
+
+The publisher collected swipes against predefined sentence prompts. These sidecars contain the
+prompt prefix before the indexed target, not captured prior editor input. They exclude the current
+target and following words, preserve first-word empty prefixes, and bound context to 256 UTF-16
+units. Sentence/index/target alignment must match exactly after the documented normalization;
+publisher-invalid sentences are excluded without guessing repairs.
+
+The verified test set has 53,551 aligned paths (48,255 nonempty prefixes and 5,296 empty prefixes),
+with 285 publisher-invalid rows excluded. Validation has 47,292 aligned paths, with 63 excluded.
+Every required test stratum retains at least 500 paths; the smallest is very-sloppy at 2,277.
+These counts match the independent source screen. Five focused prefix tests and the complete
+215-test Python suite passed (13 expected skips).
+
+The sidecars preserve CTC split membership but do not independently qualify context-model holdout.
+Use the shared-session audit before evaluating a context candidate. Prompt-prefix diagnostics do
+not establish real editor-history performance, full runtime fusion, or release readiness.

@@ -1,0 +1,73 @@
+{
+  "alignedStrata": {
+    "test": {
+      "clean": 43082,
+      "double_letter": 5278,
+      "long": 6193,
+      "medium": 28116,
+      "return_trip": 15833,
+      "short": 19242,
+      "sloppy": 10469,
+      "very_sloppy": 2277
+    },
+    "validation": {
+      "clean": 38029,
+      "double_letter": 4531,
+      "long": 5597,
+      "medium": 24387,
+      "return_trip": 13910,
+      "short": 17308,
+      "sloppy": 9263,
+      "very_sloppy": 2324
+    }
+  },
+  "contextOrigin": "publisher_reference_prefix",
+  "counts": {
+    "test": {
+      "aligned": 53551,
+      "empty_prefix": 5296,
+      "invalid_sentence_flag": 285,
+      "matched": 53836,
+      "nonempty_prefix": 48255
+    },
+    "validation": {
+      "aligned": 47292,
+      "empty_prefix": 4713,
+      "invalid_sentence_flag": 63,
+      "matched": 47355,
+      "nonempty_prefix": 42579
+    }
+  },
+  "diagnosticOnly": true,
+  "helperSha256": {
+    "audit_joint_model_splits.py": "272e2a83e22f749272cac6bafb91593d8e70909f1ca63875da8dfee1163ac953",
+    "prepare_context_dataset.py": "d0266abfecb8608dcdd915c7fa520406673da770c143ecf23cfbc137183335c1",
+    "prepare_swipe_dataset.py": "d5d03b091a47eee9e843d41f42ed207bf519b02c6afdb5173c7e011078f7d0c6"
+  },
+  "license": "MIT",
+  "limitations": [
+    "Prefixes come from publisher prompts, not captured prior editor input.",
+    "Target and following words are excluded from every context prefix.",
+    "Prepared CTC identities and splits are preserved; joint context-model holdout must be audited separately.",
+    "No model quality, full fusion, device, memory or release gate is qualified."
+  ],
+  "maximumContextUtf16Units": 256,
+  "outputs": {
+    "test.jsonl": {
+      "bytes": 19532361,
+      "records": 53551,
+      "sha256": "4b7004108b40dad07a1f73a88eea2931092b56e624ec7458e8d834e49a0c9f6c"
+    },
+    "validation.jsonl": {
+      "bytes": 17526738,
+      "records": 47292,
+      "sha256": "cd7f9b06d3ba9cff3358803e017a6ef19c55ccbed8208a14411629ffabd17dd8"
+    }
+  },
+  "releaseEligible": false,
+  "schemaVersion": 1,
+  "sourceId": "futo-swipe-dataset-v1",
+  "sourceManifestSha256": "22d5de1bd8937bb6052c6bc04afd178d0d9037b3c8642cf78492b01cf2b4d213",
+  "swipeCorpusManifestSha256": "c56b13c5895a0037df4599753963fb16ba2b43bd60ff7f2ea7074959dca715cd",
+  "toolSha256": "ec930ccd12e1a2c52b700c7ca5b7cef644fbeccbe4fbe5c54af3d5137e6b099a"
+}
