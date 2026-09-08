@@ -15,6 +15,10 @@ import helium314.keyboard.latin.engine.onnx.OnnxContextInferenceSession
 import helium314.keyboard.latin.engine.onnx.OnnxRuntimeSessionFactory
 import java.io.File
 import java.security.MessageDigest
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.*
@@ -69,6 +73,7 @@ class ContextRuntimeInstrumentedTest {
             sha256(swipeModel).also { assertEquals(args.getString("swipeModelSha256"), it) }
         } else null
         val memoryBeforeOpen = memorySnapshot()
+        val sampler = if (combined) RuntimeMemorySampler() else null
         var swipeSession: OnnxCtcInferenceSession? = null
         var memoryAfterSwipeOpen: JSONObject? = null
         val results = JSONArray()
@@ -140,7 +145,9 @@ class ContextRuntimeInstrumentedTest {
                         .put("memoryAfterSwipeInference", if (combined) memorySnapshot() else JSONObject.NULL))
                 }
             }
-        } finally { swipeSession?.close() }
+        } finally {
+            try { swipeSession?.close() } finally { sampler?.close() }
+        }
         File(directory, "android-report.json").writeText(JSONObject()
             .put("schemaVersion", 1).put("releaseEligible", false).put("syntheticKernelParityOnly", true)
             .put("fixtureSha256", fixtureHash).put("modelSha256", sha256(model))
@@ -150,7 +157,51 @@ class ContextRuntimeInstrumentedTest {
             .put("buildFingerprint", Build.FINGERPRINT).put("supportedAbis", JSONArray(Build.SUPPORTED_ABIS.toList()))
             .put("memoryBeforeOpen", memoryBeforeOpen).put("memoryAfterOpen", memoryAfterOpen)
             .put("memoryAfterClose", memorySnapshot())
+            .put("sampledMemory", sampler?.report() ?: JSONObject.NULL)
             .put("memoryScope", "Whole-process snapshots, not isolated added peak memory or a release gate")
             .put("cases", results).toString() + "\n")
     }
+}
+
+/** Test-only sampling can miss short peaks and adds overhead; it is not release qualification. */
+private class RuntimeMemorySampler : AutoCloseable {
+    private val running = AtomicBoolean(true)
+    private val samples = AtomicInteger()
+    private val maximumPss = AtomicInteger()
+    private val maximumNative = AtomicLong()
+    private val maximumJava = AtomicLong()
+    private val failure = AtomicReference<Throwable?>()
+    private val worker = Thread({
+        try {
+            while (running.get()) {
+                val memory = Debug.MemoryInfo().also(Debug::getMemoryInfo)
+                val runtime = Runtime.getRuntime()
+                maximumPss.accumulateAndGet(memory.totalPss, ::maxOf)
+                maximumNative.accumulateAndGet(Debug.getNativeHeapAllocatedSize(), ::maxOf)
+                maximumJava.accumulateAndGet(runtime.totalMemory() - runtime.freeMemory(), ::maxOf)
+                samples.incrementAndGet()
+                Thread.sleep(5)
+            }
+        } catch (_: InterruptedException) {
+            // Explicit close interrupts the sampling delay.
+        } catch (error: Throwable) {
+            failure.set(error)
+        }
+    }, "LibreBoardMemoryProbe").apply { isDaemon = true; start() }
+
+    override fun close() {
+        running.set(false)
+        worker.interrupt()
+        worker.join(2_000)
+        check(!worker.isAlive) { "memory sampler did not stop" }
+        check(failure.get() == null) { "memory sampler failed: ${failure.get()}" }
+        check(samples.get() > 0) { "memory sampler did not collect a sample" }
+    }
+
+    fun report(): JSONObject = JSONObject()
+        .put("samples", samples.get()).put("requestedDelayBetweenSamplesMs", 5)
+        .put("maximumProcessPssKiB", maximumPss.get())
+        .put("maximumNativeHeapAllocatedBytes", maximumNative.get())
+        .put("maximumJavaHeapUsedBytes", maximumJava.get())
+        .put("scope", "Observed whole-process maxima at different times; do not sum heap maxima or infer a release peak pass")
 }

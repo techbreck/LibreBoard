@@ -336,3 +336,16 @@ budget. This is a diagnostic concern, not a formal peak-memory verdict or a rele
 report, APK and source/test-APK hash sidecar are retained under
 `build/device-evidence/context-swipe-combined-kernel-v1`. Repeat the diagnostic for the corrected
 shared-session candidate and measure the complete workload on the required device matrix.
+
+Combined mode now also samples process PSS and native/Java heap counters during loading, inference
+and closing, with a requested 5 ms delay between samples. It stops and joins the sampler even when
+an assertion fails. The reported maxima can occur at different times and must not be added together;
+sampling can miss short peaks and adds overhead, so the result remains diagnostic-only.
+
+The default-runtime sampled run observed a 64.05 MiB process-PSS increase across 126 samples. A local
+experiment disabling ORT CPU arenas observed 70.54 MiB across 124 samples, despite a smaller native
+heap counter. That experiment was rejected and production allocator settings are unchanged. The
+baseline and experiment reports, APKs, instrumentation APKs and source hashes are retained in
+`build/device-evidence/combined-sampled-default` and `combined-sampled-no-arena`; the rejected source
+patch is `build/reports/rejected-no-arena-runtime.patch`. These measurements still use the preserved
+independent-split context candidate and do not qualify the corrected candidate or complete workload.
