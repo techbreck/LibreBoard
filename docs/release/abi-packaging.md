@@ -72,3 +72,6 @@ metadata was committed. CI now builds and verifies the core release APK as well 
 
 This comparison uses one macOS host/toolchain. It does not replace an independent Linux rebuild,
 signing-key acceptance, a model-qualified APK comparison, or the Phase 0/device release gates.
+
+The isolated [Linux core build recipe](linux-core-build.md) records the pinned Android tool inputs
+and independent source-archive procedure for the corresponding Linux comparison.

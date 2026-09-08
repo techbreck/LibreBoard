@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: GPL-3.0-only
+FROM python:3.11.14-slim-bookworm@sha256:65a93d69fa75478d554f4ad27c85c1e69fa184956261b4301ebaf6dbb0a3543d
+RUN apt-get update && apt-get install -y --no-install-recommends openjdk-17-jdk-headless git ca-certificates unzip && rm -rf /var/lib/apt/lists/*
+ENV ANDROID_HOME=/opt/android-sdk JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+ADD --checksum=sha256:2d2d50857e4eb553af5a6dc3ad507a17adf43d115264b1afc116f95c92e5e258 https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip /tmp/command-line-tools.zip
+RUN mkdir -p /opt/android-sdk/cmdline-tools && unzip -q /tmp/command-line-tools.zip -d /opt/android-sdk/cmdline-tools && mv /opt/android-sdk/cmdline-tools/cmdline-tools /opt/android-sdk/cmdline-tools/12.0 && rm /tmp/command-line-tools.zip
+COPY licenses /opt/android-sdk/licenses
+RUN /opt/android-sdk/cmdline-tools/12.0/bin/sdkmanager --sdk_root=/opt/android-sdk 'platforms;android-36' 'build-tools;35.0.0' 'ndk;28.0.13004108'
+WORKDIR /source
