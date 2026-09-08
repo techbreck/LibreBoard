@@ -652,6 +652,8 @@ class VerifyReleaseEvidenceTest(unittest.TestCase):
                 "latencyMs": {system: 20.0 for system in predictions},
                 "strata": strata or [],
             }
+            if category == "lexical":
+                document["lexicalKind"] = evaluate_engine.LEXICAL_KINDS[number % 3]
             if should_correct is not None:
                 document["shouldCorrect"] = should_correct
             documents.append(document)
@@ -888,6 +890,27 @@ class VerifyReleaseEvidenceTest(unittest.TestCase):
             "Phase 0 report does not satisfy valid-word correction and keep minimums",
             self.verify(),
         )
+
+    def test_release_sized_contractions_cannot_hide_missing_lexical_kinds(self):
+        from dataclasses import replace
+        rows = [replace(row, lexical_kind="contraction") if row.category == "lexical" else row
+                for row in self.measurement_examples]
+        with self.assertRaisesRegex(evaluate_engine.EvaluationError, "lexical coverage missing"):
+            evaluate_engine.evaluate(rows, self.phase0_metadata(),
+                                     measurement_sha256=sha256(self.measurement_payload))
+
+    def test_rejects_missing_or_unreconciled_lexical_coverage(self):
+        for invalid in (None, {"contraction": 500, "personal": 0, "compound": 0},
+                        {"contraction": 500, "personal": 1, "compound": 1},
+                        {"contraction": 498, "personal": True, "compound": 1}):
+            with self.subTest(counts=invalid):
+                phase0 = self.phase0()
+                phase0["lexicalCounts"] = invalid
+                self.write_reports(phase0=phase0)
+                self.assertIn(
+                    "Phase 0 report does not reconcile contraction, personal and compound coverage",
+                    self.verify(),
+                )
 
     def test_rejects_invalid_per_environment_latency(self):
         phase0 = self.phase0()

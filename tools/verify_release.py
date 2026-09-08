@@ -1375,6 +1375,14 @@ def validate_phase0_report(errors: list[str], report: dict, apk_hash: str) -> di
         for stratum, minimum in MINIMUM_PHASE0_SWIPE_STRATA_COUNTS.items()
     ):
         fail(errors, "Phase 0 report does not satisfy swipe stratum minimums")
+    lexical_counts = report.get("lexicalCounts")
+    if (not isinstance(lexical_counts, dict)
+            or set(lexical_counts) != set(evaluate_engine.LEXICAL_KINDS)
+            or any(isinstance(value, bool) or not isinstance(value, int) or value < 1
+                   for value in lexical_counts.values())
+            or not isinstance(counts, dict)
+            or sum(lexical_counts.values()) != counts.get("lexical")):
+        fail(errors, "Phase 0 report does not reconcile contraction, personal and compound coverage")
     valid_word_counts = report.get("validWordCounts")
     if (
         not isinstance(valid_word_counts, dict)

@@ -29,7 +29,7 @@ def example(
     latency = {system: 20.0 for system in predictions}
     latency.update(latency_overrides or {})
     value = {
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "id": f"example-{number}",
         "sessionId": session or f"session-{number}",
         "split": split,
@@ -43,6 +43,8 @@ def example(
     if split == "test":
         value["environmentKind"] = environment_kind
         value["testRunId"] = test_run_id
+    if category == "lexical":
+        value["lexicalKind"] = "contraction"
     if should_correct is not None:
         value["shouldCorrect"] = should_correct
     return parse_example(value, number)
@@ -50,7 +52,7 @@ def example(
 
 def metadata():
     return {
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "appCommit": "a" * 40,
         "coreApkSha256": "b" * 64,
         "swipeModelSha256": "c" * 64,
@@ -92,6 +94,29 @@ def metadata():
 
 
 class EvaluateEngineTest(unittest.TestCase):
+    def test_lexical_kind_is_required_and_category_scoped(self):
+        row = {"schemaVersion": 3, "id": "lexical", "sessionId": "session", "split": "train",
+               "category": "lexical", "raw": "dont", "target": "don't"}
+        for invalid in (None, "unknown", True):
+            with self.subTest(kind=invalid), self.assertRaisesRegex(EvaluationError, "valid lexicalKind"):
+                parse_example({**row, "lexicalKind": invalid}, 1)
+        with self.assertRaisesRegex(EvaluationError, "valid lexicalKind"):
+            parse_example(row, 1)
+        self.assertEqual("contraction", parse_example({**row, "lexicalKind": "contraction"}, 1).lexical_kind)
+        with self.assertRaisesRegex(EvaluationError, "only for lexical"):
+            parse_example({**row, "category": "tap_error", "lexicalKind": "contraction"}, 1)
+        with self.assertRaisesRegex(EvaluationError, "unsupported schemaVersion"):
+            parse_example({**row, "schemaVersion": 2, "lexicalKind": "contraction"}, 1)
+
+    def test_valid_word_labels_cannot_reclassify_keeps_as_corrections(self):
+        row = {"schemaVersion": 3, "id": "valid", "sessionId": "session", "split": "train",
+               "category": "valid_word", "raw": "their", "target": "there"}
+        with self.assertRaisesRegex(EvaluationError, "contradicts"):
+            parse_example({**row, "shouldCorrect": False}, 1)
+        with self.assertRaisesRegex(EvaluationError, "contradicts"):
+            parse_example({**row, "target": "THEIR", "shouldCorrect": True}, 1)
+        self.assertFalse(parse_example({**row, "target": "THEIR", "shouldCorrect": False}, 1).should_correct)
+
     def test_passing_measurements_satisfy_every_gate(self):
         tap_systems = {
             "heliboard": ["wrong"],

@@ -20,10 +20,11 @@ from dataclasses import dataclass
 from typing import Any, Iterable
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 TAP_SYSTEMS = ("heliboard", "fused", "fused_personal", "fused_neural")
 SWIPE_SYSTEMS = ("geometric", "ctc", "fused_swipe")
 ALL_SYSTEMS = TAP_SYSTEMS + SWIPE_SYSTEMS
+LEXICAL_KINDS = ("contraction", "personal", "compound")
 TAP_CATEGORIES = ("tap_error", "valid_word", "spacing", "lexical")
 MINIMUM_COUNTS = {
     "tap_error": 3_000,
@@ -76,6 +77,7 @@ class Example:
     latency_ms: dict[str, float]
     strata: frozenset[str]
     should_correct: bool | None
+    lexical_kind: str | None
 
 
 def normalized(value: str) -> str:
@@ -165,8 +167,17 @@ def parse_example(raw: dict[str, Any], line_number: int) -> Example:
     should_correct = raw.get("shouldCorrect")
     if raw["category"] == "valid_word" and not isinstance(should_correct, bool):
         raise EvaluationError(f"{location}: valid_word examples require shouldCorrect")
+    if raw["category"] == "valid_word" and should_correct != (normalized(raw["raw"]) != normalized(raw["target"])):
+        raise EvaluationError(f"{location}: shouldCorrect contradicts the normalized raw and target")
     if raw["category"] != "valid_word" and should_correct is not None:
         raise EvaluationError(f"{location}: shouldCorrect is valid only for valid_word examples")
+
+    lexical_kind = raw.get("lexicalKind")
+    if raw["category"] == "lexical":
+        if not isinstance(lexical_kind, str) or lexical_kind not in LEXICAL_KINDS:
+            raise EvaluationError(f"{location}: lexical examples require a valid lexicalKind")
+    elif "lexicalKind" in raw:
+        raise EvaluationError(f"{location}: lexicalKind is valid only for lexical examples")
 
     return Example(
         identifier=raw["id"],
@@ -181,6 +192,7 @@ def parse_example(raw: dict[str, Any], line_number: int) -> Example:
         latency_ms=latency,
         strata=frozenset(strata_raw),
         should_correct=should_correct,
+        lexical_kind=lexical_kind,
     )
 
 
@@ -272,6 +284,7 @@ def check_dataset(
     dict[str, int],
     dict[str, dict[str, int]],
     dict[str, int],
+    dict[str, int],
 ]:
     ids = Counter(example.identifier for example in examples)
     duplicates = sorted(identifier for identifier, count in ids.items() if count > 1)
@@ -324,6 +337,12 @@ def check_dataset(
                    if counts[category] < minimum]
         if missing:
             raise EvaluationError("held-out dataset minimums not met: " + ", ".join(missing))
+    lexical_counts = {kind: sum(row.category == "lexical" and row.lexical_kind == kind for row in test)
+                      for kind in LEXICAL_KINDS}
+    if enforce_minimum_counts and any(count == 0 for count in lexical_counts.values()):
+        raise EvaluationError("lexical coverage missing: " + ", ".join(
+            kind for kind, count in lexical_counts.items() if count == 0
+        ))
     valid_word_counts = {
         "correct": sum(
             example.category == "valid_word" and example.should_correct is True
@@ -348,7 +367,7 @@ def check_dataset(
         swipe,
         MINIMUM_SWIPE_STRATA_COUNTS if enforce_minimum_counts else {"short": 1, "return_trip": 1},
     )
-    return test, dict(sorted(counts.items())), strata, environment_counts, valid_word_counts
+    return test, dict(sorted(counts.items())), strata, environment_counts, valid_word_counts, lexical_counts
 
 
 def validate_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
@@ -441,7 +460,7 @@ def evaluate(
     if not isinstance(measurement_sha256, str) or not SHA256.fullmatch(measurement_sha256):
         raise EvaluationError("measurement dataset requires a lowercase SHA-256")
     evidence = validate_metadata(metadata)
-    test, counts, swipe_strata, environment_counts, valid_word_counts = check_dataset(
+    test, counts, swipe_strata, environment_counts, valid_word_counts, lexical_counts = check_dataset(
         examples,
         evidence["environments"],
         enforce_minimum_counts,
@@ -459,6 +478,7 @@ def evaluate(
         "counts": counts,
         "swipeStrataCounts": swipe_strata,
         "validWordCounts": valid_word_counts,
+        "lexicalCounts": lexical_counts,
         "environmentCounts": environment_counts,
         "environmentLatencyMs": {},
         "systems": {},
