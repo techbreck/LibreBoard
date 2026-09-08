@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Build runtime/android/Dockerfile.core first and record the resolved base image ID.
+ARG CORE_IMAGE=libreboard-core-release:local
+FROM ${CORE_IMAGE}
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential patch && rm -rf /var/lib/apt/lists/*
+RUN /opt/android-sdk/cmdline-tools/12.0/bin/sdkmanager --sdk_root=/opt/android-sdk 'cmake;3.31.6'
+ENV PATH="/opt/android-sdk/cmake/3.31.6/bin:${PATH}"
+COPY requirements.lock /opt/onnxruntime-build-requirements.lock
+RUN python -m pip install --no-cache-dir --require-hashes -r /opt/onnxruntime-build-requirements.lock
+RUN /opt/android-sdk/cmdline-tools/12.0/bin/sdkmanager --sdk_root=/opt/android-sdk 'platforms;android-34' 'build-tools;30.0.3'
+WORKDIR /source

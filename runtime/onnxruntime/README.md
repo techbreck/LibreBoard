@@ -75,3 +75,30 @@ mistyped, or reshaped input/output before inference.
 Two independent clean Linux invocations must produce byte-identical AARs before the runtime is
 enabled in a release APK. The final APK verifier remains authoritative for packaged permissions,
 native-library allowlists, 16 KiB ELF segments, and ZIP alignment.
+
+## Linux build environment
+
+Build the core toolchain image using `docs/release/linux-core-build.md`, then prepare the runtime
+image with the committed Python dependency lock:
+
+```sh
+mkdir -p build/linux-runtime-context
+cp models/training/requirements-onnxruntime-build-linux-x86_64.lock build/linux-runtime-context/requirements.lock
+docker build --platform linux/amd64 -f runtime/onnxruntime/Dockerfile.linux \
+  -t libreboard-runtime-build:local build/linux-runtime-context
+docker image inspect libreboard-core-release:local libreboard-runtime-build:local --format '{{.Id}}'
+```
+
+The image adds CMake 3.31.6, native compiler utilities, and the API 34 / Build Tools 30.0.3
+inputs required by the pinned upstream Android library project. It reuses the core image's
+previously accepted Android SDK licenses. Record both resolved image IDs: a local tag alone does
+not pin the environment, and package repository contents can change between image builds.
+
+The first prepared runtime image resolved to
+`sha256:f6e9c2f240620458f548daca3dfc759974c5fad51edd6ba2ce50f8d7ba6518ce`, based on core image
+`sha256:425b1a57386654a8124fab1d5c02c182a4e9aa26fe0f4d15ed1c84f461c0187e`.
+Its offline `tools/build_onnxruntime_android.py --check-only` invocation passed with the
+source mounted read-only and the development operator inventory. This verifies build inputs;
+it does not establish a successful native build or byte-identical AARs. Those remain pending.
+Use separate empty build roots mounted at the same container path for the two native builds,
+and serialize heavy builds on memory-constrained hosts.
