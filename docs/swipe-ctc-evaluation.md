@@ -265,3 +265,27 @@ excluded by policy or emission constraints. Increasing usable vocabulary from 99
 would raise membership coverage only from 5,732 to 5,742 of 6,000 rows. Production limits therefore
 remain unchanged. Evidence is in `docs/models/evidence/full-dictionary-validation-coverage.json`;
 APK and instrumented export provenance is in `full-static-vocabulary-provenance.json` there.
+
+## Candidate-coverage experiments after the frozen baseline
+
+A source-verified vocabulary analysis reads only the 919,337 training rows when constructing
+supplements; validation targets are used only for membership measurement. Known offensive flags
+from the bundled dictionary are excluded, but corpus additions still require a complete policy
+review before adoption. The coverage report is `docs/models/evidence/swipe-training-vocabulary-coverage.json`.
+
+| Minimum distinct training sessions | Additional decodable words | Newly covered validation rows |
+| --- | ---: | ---: |
+| 1 | 27,614 | 104 |
+| 2 | 4,089 | 55 |
+| 5 | 404 | 30 |
+| 10 | 131 | 20 |
+
+Separately, re-running only CTC inference on the exact 6,000 frozen paths produced unconstrained
+ASCII spellings, excluding known offensive words. Appending a new spelling within either a 31- or
+32-candidate bound recovered 41 targets without losing another target at truncation: candidate
+recall rose from 5,670 to 5,711 of 6,000 (95.18%). Six known-offensive spellings were rejected.
+The report is `docs/models/evidence/swipe-greedy-candidate-recall.json`.
+
+These are coverage bounds, not improved ranking results. The earlier greedy-ranking experiment
+regressed and remains rejected. Production vocabulary, scoring, and policy are unchanged; any
+candidate expansion still needs actual ranking, latency, memory, and full-runtime validation.

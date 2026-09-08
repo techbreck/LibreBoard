@@ -1,0 +1,34 @@
+{
+  "candidateBound31Check": {
+    "baselineTargetPresent": 5670,
+    "rows": 6000,
+    "withGreedyTargetPresent": 5711
+  },
+  "candidatesSha256": "15104b74ba3ee27e13c26cd31fcd9c006c6215b6ad4f0b984616560779baafb0",
+  "counts": {
+    "baselineTargetPresent": 5670,
+    "knownOffensiveRejected": 6,
+    "newTargetsRecovered": 41,
+    "proposedCandidateAdded": 1800,
+    "proposedTargetPresent": 5711,
+    "rows": 6000,
+    "targetsLostAtReplacement": 0
+  },
+  "diagnosticOnly": true,
+  "knownOffensiveSourceSha256": "e23644662586f6bcb76f4bc0d9e01e7f38efd89afb823fc2b2a4530177a97525",
+  "limitations": [
+    "Candidate membership only: does not score or adopt greedy suggestions.",
+    "At most 32 merged candidates; an extra spelling replaces the last baseline candidate.",
+    "Prior greedy ranking regressed; full ranking and runtime checks remain required.",
+    "No production behavior, safety policy, or release gate was changed."
+  ],
+  "modelSha256": "1301f0d076f526fe0b67f2ea86a38abc8448f6de54d2c7191c002dcd4d05d38c",
+  "releaseEligible": false,
+  "schemaVersion": 1,
+  "slatesSha256": "fbbbcd0ef004f651a2e6c698ce6d834d4d2ca8d5f8195a6c9996e5ff2c61776e",
+  "toolSha256": "388a7cbd951d02cf14e03288d8e7fedd3b0c0301f14d1fbb6b48c037c852bfb9",
+  "toolchain": {
+    "numpy": "2.2.6",
+    "onnxruntime": "1.26.0"
+  }
+}

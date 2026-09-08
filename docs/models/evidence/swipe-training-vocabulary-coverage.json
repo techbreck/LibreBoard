@@ -1,0 +1,43 @@
+{
+  "corpusManifestSha256": "c56b13c5895a0037df4599753963fb16ba2b43bd60ff7f2ea7074959dca715cd",
+  "diagnosticOnly": true,
+  "knownOffensiveSourceSha256": "e23644662586f6bcb76f4bc0d9e01e7f38efd89afb823fc2b2a4530177a97525",
+  "limitations": [
+    "Only frozen training rows construct the vocabulary; validation is used solely to measure coverage.",
+    "Known native offensive flags are excluded, but new corpus words have not received a complete policy review.",
+    "Vocabulary coverage is not retrieval, ranking, latency, memory or release evidence; production is unchanged."
+  ],
+  "options": {
+    "1": {
+      "combinedVocabularyCoveredRows": 5836,
+      "minimumTrainingSessions": 1,
+      "newlyCoveredValidationRows": 104,
+      "supplementWords": 27614
+    },
+    "10": {
+      "combinedVocabularyCoveredRows": 5752,
+      "minimumTrainingSessions": 10,
+      "newlyCoveredValidationRows": 20,
+      "supplementWords": 131
+    },
+    "2": {
+      "combinedVocabularyCoveredRows": 5787,
+      "minimumTrainingSessions": 2,
+      "newlyCoveredValidationRows": 55,
+      "supplementWords": 4089
+    },
+    "5": {
+      "combinedVocabularyCoveredRows": 5762,
+      "minimumTrainingSessions": 5,
+      "newlyCoveredValidationRows": 30,
+      "supplementWords": 404
+    }
+  },
+  "releaseEligible": false,
+  "schemaVersion": 1,
+  "slatesSha256": "fbbbcd0ef004f651a2e6c698ce6d834d4d2ca8d5f8195a6c9996e5ff2c61776e",
+  "toolSha256": "ce1e54da120ada29b8d8572d3aa03cc78069a153036cc4e537bc8a099aa1ad51",
+  "trainingDataSha256": "fdef76ca8c722531d9f5866f0148eba1a9e0f464d2cbaa7d4e7dffeaec2a3d3e",
+  "trainingRecords": 919337,
+  "trainingVocabularySha256": "768bbadfc0d854b24301481aabb7d675e862bec989735be341e3e349e8ebcdc1"
+}
