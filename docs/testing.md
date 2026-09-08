@@ -308,10 +308,13 @@ The 2026-09-08 arm64 API 36 AOSP emulator run passed all three shapes for the de
 nor physical-device evidence, and do not establish the 35 ms context dispatch budget. The retained
 local report and originating APK are under `build/device-evidence/context-runtime-smoke/`.
 
-The full trained context graph also passes the same Android kernel-parity test. The test now records
-whole-process PSS, allocated native heap and used Java heap before model open, after open, after each
-inference and after close. These bounded snapshots expose loading/inference growth without claiming
-to capture isolated peak model memory. Full-candidate results and limitations are recorded in
+An earlier full trained context graph (independent-split weights, not the shared-session canonical
+export) also passed the same Android kernel-parity test. The test now records whole-process PSS,
+allocated native heap and used Java heap before model open, after open, after each inference and
+after close. These bounded snapshots expose loading/inference growth without claiming to capture
+isolated peak model memory. Do not attribute those timings or scores to
+`8566382e57ea5a9af76ddf600e189572d62fcc8b227de8415ce88ad0e172022b`. Repeat the fixture against that
+exact hash after a Linux runtime AAR exists. Limitations are recorded in
 [`models/context/MODEL_CARD.md`](../models/context/MODEL_CARD.md).
 
 ## Simultaneous model kernel snapshots

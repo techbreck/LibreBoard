@@ -205,16 +205,18 @@ The current swipe model card and exact reproduction commands are in
 `models/swipe/MODEL_CARD.md`; the context architecture and export contract are in
 `models/context/MODEL_CARD.md`. The pinned gesture inputs total roughly 5.7 GB, so fetching them remains
 an explicit operator action rather than a side effect of Gradle or tests. The context source,
-deterministic bilingual corpus/tokenizer and completed teacher-scoring result are pinned. The full
-context student has completed all four epochs and checked INT4 export, with Android synthetic kernel
-parity for batch sizes 1, 8 and 32. Both models still await acceptance against the independent quality,
-performance and physical-device gates; see the context model card for the full candidate hashes.
+deterministic bilingual corpus/tokenizer and completed teacher-scoring result are pinned. The
+shared-session full context student has completed all four epochs and two byte-identical Linux INT4
+exports. Distillation validation/test diagnostics exist for that Linux artifact. Android synthetic
+kernel parity for batches 1, 8 and 32 was measured on other weights and must not be attributed to
+the shared-session canonical export. Both models still await acceptance against the independent
+quality, performance and physical-device gates; see the context model card for the full candidate
+hashes.
 
-The fixed swipe and full context checkpoints now each have [two identical clean Linux exports](linux-export.md).
-The canonical context export also has full validation/test diagnostics and Android kernel-parity
-evidence. These close export/diagnostic slices only; APK reproduction and all quality/device gates
-remain separate.
+The fixed swipe checkpoint and both context checkpoints have [Linux export comparisons](linux-export.md).
+These close export/diagnostic slices only; APK reproduction, a model-qualified runtime AAR, and all
+quality/device gates remain separate.
 
 See [shared context/swipe session splits](joint-session-splits.md) before interpreting combined-model
-quality. The original independent context split is unsuitable for the full CTC test pool; a corrected
-shared-session candidate is being regenerated.
+quality. The original independent context split is unsuitable for the full CTC test pool; the
+corrected shared-session candidate is trained and exported, not yet Android-qualified.
