@@ -19,7 +19,9 @@ docker image inspect --format '{{.Id}}' libreboard-core-release:local
 
 Build a clean source archive with an explicitly recorded commit. Give each reproduction its own
 archive directory, and retain the logs and output APKs. A shared Gradle download cache is allowed;
-build and configuration caches remain disabled:
+build and configuration caches remain disabled. Reuse the cache volume sequentially. Concurrent
+containers need separate cache volumes because Gradle's lock-owner coordination cannot cross their
+PID/network namespaces; sharing a live cache can time out before configuration:
 
 ```sh
 mkdir -p build/linux-core-source
