@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "modelId": "context-en-de-v1",
   "teacherSourceId": "hanse2-100m-base-teacher-v1",
-  "tokenizerSha256": "1395e285927bfbfa5888dc7c83e4f57dfcfbfeb54f29a3cf2437f5db3d71d6a2",
+  "tokenizerSha256": "e2089ddfa01ff69eba73195cb3623c86703a812a712ec356ec5fe837297a8cc9",
   "maximumPrefixTeacherTokens": 64,
   "maximumCandidateTeacherTokens": 16,
   "maximumPrefixStudentTokens": 22,
