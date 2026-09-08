@@ -102,3 +102,11 @@ source mounted read-only and the development operator inventory. This verifies b
 it does not establish a successful native build or byte-identical AARs. Those remain pending.
 Use separate empty build roots mounted at the same container path for the two native builds,
 and serialize heavy builds on memory-constrained hosts.
+
+Run native compilation as an unprivileged container user: the pinned upstream build script rejects
+root execution. Match the output directory owner's UID/GID, set a writable `HOME` and
+`GRADLE_USER_HOME`, and grant that user access only to its output and Gradle cache. When mounting
+source read-only, provide a writable temporary mount at
+`/source/third_party/onnxruntime/java/.gradle` for the upstream project cache. Keep the source,
+operator configuration, and build scripts read-only. The input-only check does not exercise the
+upstream root-user guard; verify this execution setup before starting the full native compile.
