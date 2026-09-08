@@ -51,3 +51,15 @@ prompts in training and three additional prompts in validation, giving 87 exclus
 prompt-disjoint test diagnostic. No exact overlap was found in the German project-authored rows.
 Full held-out reports must remain available alongside any excluded-prompt diagnostic. This audit
 covers exact complete prepared text; shared prefixes or semantic similarity remain unmeasured.
+
+`tools/evaluate_context_model.py` accepts `--prompt-audit-corpus-manifest` and
+`--prompt-audit-data-root` together. It re-verifies the prepared corpus bytes, requires its hash to
+match the trained distillation corpus, and reconstructs each excluded teacher-scored identifier
+from the source record ID, prefix tokens, normalized candidates, and policy hash. Any unmapped
+exclusion aborts evaluation. It always retains the full metrics; `promptDisjointDiagnostic` adds
+separate metrics and explicit exclusion counts/IDs. This avoids treating sentence IDs as scored
+example IDs, which use a different hash contract.
+
+A 100-row smoke run with the historical canonical model exercised both paths, including an actual
+excluded row. The full sample remained 100 rows and the separate diagnostic contained 99. These
+are validation checks of the evaluator, not quality results for the corrected shared-session model.

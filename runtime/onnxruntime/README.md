@@ -117,3 +117,9 @@ native build does not need to modify the SDK during configuration. That updated 
 `sha256:57d61051fc53c6b8d9b21ca2d370a4408dbcb8e86836d3ffa66a81c154e90622`.
 The SDK package name is mutable; retain the resolved image ID and package revision with evidence.
 A Gradle dry run verifies configuration and task selection, not successful compilation or packaging.
+
+The updated image also passed `assembleRelease --dry-run --offline` with networking disabled,
+UID/GID `501:20`, source mounted read-only, and writable output/cache mounts. Upstream Gradle
+reported an analytics home-directory warning for the numeric UID, but configuration completed.
+This confirms the packaging configuration needs no further SDK downloads; native compilation and
+AAR comparison remain separate checks.
