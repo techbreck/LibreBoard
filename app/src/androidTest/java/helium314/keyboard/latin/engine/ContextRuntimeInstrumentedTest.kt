@@ -7,6 +7,8 @@ import android.os.SystemClock
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.AndroidJUnit4
 import helium314.keyboard.latin.BuildConfig
+import helium314.keyboard.latin.engine.ctc.CtcSwipeFeatures
+import helium314.keyboard.latin.engine.onnx.OnnxCtcInferenceSession
 import helium314.keyboard.latin.engine.context.ContextModelBatch
 import helium314.keyboard.latin.engine.onnx.LibreBoardOnnxContracts
 import helium314.keyboard.latin.engine.onnx.OnnxContextInferenceSession
@@ -60,54 +62,90 @@ class ContextRuntimeInstrumentedTest {
                 .put("nativeHeapAllocatedBytes", Debug.getNativeHeapAllocatedSize())
                 .put("javaHeapUsedBytes", runtime.totalMemory() - runtime.freeMemory())
         }
+        val combined = args.getString("libreboardRequireCombinedRuntime") == "true"
+        val swipeModel = File(directory, "swipe.onnx")
+        val swipeHash = if (combined) {
+            assertTrue(swipeModel.length() in 1..(3L * 1024 * 1024))
+            sha256(swipeModel).also { assertEquals(args.getString("swipeModelSha256"), it) }
+        } else null
         val memoryBeforeOpen = memorySnapshot()
-        val opened = OnnxRuntimeSessionFactory.open(model, LibreBoardOnnxContracts.contextEnDe)
-        assertEquals("the packaged kernels must load the context graph", EngineAvailability.AVAILABLE, opened.availability)
-        val memoryAfterOpen = memorySnapshot()
+        var swipeSession: OnnxCtcInferenceSession? = null
+        var memoryAfterSwipeOpen: JSONObject? = null
         val results = JSONArray()
-        OnnxContextInferenceSession(requireNotNull(opened.session)).use { session ->
-            val cases = fixture.getJSONArray("cases")
-            assertEquals(3, cases.length())
-            for ((index, rows) in listOf(1, 8, 32).withIndex()) {
-                val case = cases.getJSONObject(index)
-                assertEquals(rows, case.getInt("rows"))
-                val expected = case.getJSONArray("expectedScores")
-                assertEquals(rows, expected.length())
-                val ids = LongArray(rows * 32)
-                val attention = LongArray(rows * 32)
-                val candidates = FloatArray(rows * 32)
-                repeat(rows) { row ->
-                    val offset = row * 32
-                    listOf(1L, 3L, 6L, 7L).forEachIndexed { column, id ->
-                        ids[offset + column] = id
-                        attention[offset + column] = 1
-                    }
-                    for (column in 24..25) {
-                        ids[offset + column] = (column - 16).toLong()
-                        attention[offset + column] = 1
-                        candidates[offset + column] = 1f
-                    }
-                }
-                val batch = ContextModelBatch(rows, 32, ids, attention, candidates, LongArray(rows))
-                val started = SystemClock.elapsedRealtimeNanos()
-                val output = session.infer(batch, Deadline.afterMillis(60_000))
-                val elapsed = (SystemClock.elapsedRealtimeNanos() - started) / 1_000_000.0
-                assertEquals(EngineAvailability.AVAILABLE, output.availability)
-                val scores = requireNotNull(output.candidateLogLikelihoods)
-                assertEquals(rows, scores.size)
-                scores.forEachIndexed { row, score ->
-                    assertTrue(score.isFinite())
-                    val reference = expected.getDouble(row)
-                    assertTrue(reference.isFinite())
-                    assertEquals("Android/host score parity for batch $rows row $row", reference, score.toDouble(), 0.001)
-                }
-                results.put(JSONObject().put("rows", rows).put("singleRunMs", elapsed)
-                    .put("memoryAfterInference", memorySnapshot()))
+        var memoryAfterOpen: JSONObject? = null
+        try {
+            if (combined) {
+                val swipeOpened = OnnxRuntimeSessionFactory.open(swipeModel, LibreBoardOnnxContracts.swipeCtc)
+                assertEquals(EngineAvailability.AVAILABLE, swipeOpened.availability)
+                swipeSession = OnnxCtcInferenceSession(requireNotNull(swipeOpened.session))
+                memoryAfterSwipeOpen = memorySnapshot()
             }
-        }
+            val opened = OnnxRuntimeSessionFactory.open(model, LibreBoardOnnxContracts.contextEnDe)
+            assertEquals("the packaged kernels must load the context graph", EngineAvailability.AVAILABLE, opened.availability)
+            memoryAfterOpen = memorySnapshot()
+            OnnxContextInferenceSession(requireNotNull(opened.session)).use { session ->
+                val cases = fixture.getJSONArray("cases")
+                assertEquals(3, cases.length())
+                for ((index, rows) in listOf(1, 8, 32).withIndex()) {
+                    val case = cases.getJSONObject(index)
+                    assertEquals(rows, case.getInt("rows"))
+                    val expected = case.getJSONArray("expectedScores")
+                    assertEquals(rows, expected.length())
+                    val ids = LongArray(rows * 32)
+                    val attention = LongArray(rows * 32)
+                    val candidates = FloatArray(rows * 32)
+                    repeat(rows) { row ->
+                        val offset = row * 32
+                        listOf(1L, 3L, 6L, 7L).forEachIndexed { column, id ->
+                            ids[offset + column] = id
+                            attention[offset + column] = 1
+                        }
+                        for (column in 24..25) {
+                            ids[offset + column] = (column - 16).toLong()
+                            attention[offset + column] = 1
+                            candidates[offset + column] = 1f
+                        }
+                    }
+                    val batch = ContextModelBatch(rows, 32, ids, attention, candidates, LongArray(rows))
+                    val started = SystemClock.elapsedRealtimeNanos()
+                    val output = session.infer(batch, Deadline.afterMillis(60_000))
+                    val elapsed = (SystemClock.elapsedRealtimeNanos() - started) / 1_000_000.0
+                    assertEquals(EngineAvailability.AVAILABLE, output.availability)
+                    val scores = requireNotNull(output.candidateLogLikelihoods)
+                    assertEquals(rows, scores.size)
+                    scores.forEachIndexed { row, score ->
+                        assertTrue(score.isFinite())
+                        val reference = expected.getDouble(row)
+                        assertTrue(reference.isFinite())
+                        assertEquals("Android/host score parity for batch $rows row $row", reference, score.toDouble(), 0.001)
+                    }
+                    val memoryAfterContextInference = memorySnapshot()
+                    swipeSession?.let { swipe ->
+                        // Fixed-size synthetic tensors exercise both loaded graphs without making
+                        // a swipe quality, decoder-memory, or live-fusion claim.
+                        val centers = FloatArray(128).also {
+                            it[0] = 0.25f; it[1] = 0.5f; it[2] = 0.75f; it[3] = 0.5f
+                        }
+                        val mask = FloatArray(64).also { it[0] = 1f; it[1] = 1f }
+                        val labels = MutableList<String?>(64) { null }.also { it[0] = "a"; it[1] = "b" }
+                        val path = FloatArray(128) { if (it % 2 == 0) (it / 2) / 63f else 0.5f }
+                        val swipeOutput = swipe.infer(CtcSwipeFeatures(path, centers, mask, labels), Deadline.afterMillis(60_000))
+                        assertEquals(EngineAvailability.AVAILABLE, swipeOutput.availability)
+                        val logits = requireNotNull(swipeOutput.logits)
+                        assertEquals(32 * 65, logits.size)
+                        assertTrue(logits.all(Float::isFinite))
+                    }
+                    results.put(JSONObject().put("rows", rows).put("singleRunMs", elapsed)
+                        .put("memoryAfterInference", memoryAfterContextInference)
+                        .put("memoryAfterSwipeInference", if (combined) memorySnapshot() else JSONObject.NULL))
+                }
+            }
+        } finally { swipeSession?.close() }
         File(directory, "android-report.json").writeText(JSONObject()
             .put("schemaVersion", 1).put("releaseEligible", false).put("syntheticKernelParityOnly", true)
             .put("fixtureSha256", fixtureHash).put("modelSha256", sha256(model))
+            .put("combinedModelSnapshots", combined).put("swipeModelSha256", swipeHash ?: JSONObject.NULL)
+            .put("memoryAfterSwipeOpen", memoryAfterSwipeOpen ?: JSONObject.NULL)
             .put("apkSha256", sha256(File(context.applicationInfo.sourceDir)))
             .put("buildFingerprint", Build.FINGERPRINT).put("supportedAbis", JSONArray(Build.SUPPORTED_ABIS.toList()))
             .put("memoryBeforeOpen", memoryBeforeOpen).put("memoryAfterOpen", memoryAfterOpen)

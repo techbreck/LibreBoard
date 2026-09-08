@@ -313,3 +313,26 @@ whole-process PSS, allocated native heap and used Java heap before model open, a
 inference and after close. These bounded snapshots expose loading/inference growth without claiming
 to capture isolated peak model memory. Full-candidate results and limitations are recorded in
 [`models/context/MODEL_CARD.md`](../models/context/MODEL_CARD.md).
+
+## Simultaneous model kernel snapshots
+
+The opt-in `ContextRuntimeInstrumentedTest` also accepts
+`-e libreboardRequireCombinedRuntime true -e swipeModelSha256 <exact-hash>` alongside its existing
+context-runtime and fixture-hash arguments. Put the checked swipe graph at
+`files/context-runtime-smoke/swipe.onnx`. The test validates both graph hashes, keeps both sessions
+open, checks context batches 1/8/32 against the host reference, and runs fixed-size synthetic swipe
+tensors between those batches. Both sessions close on failure as well as success. Ordinary test runs
+still skip all fixture injection.
+
+The report marks `combinedModelSnapshots`, binds both model hashes, and records process PSS,
+Java-heap and native-heap snapshots before opening, after each model opens, after each inference and
+after both sessions close. These are snapshots, not isolated added peak memory. No static vocabulary,
+CTC trie, candidate fusion, editor workload or physical-device qualification is included.
+
+The 2026-09-08 arm64 emulator run with the preserved independent-split context candidate and canonical
+Linux swipe graph passed both kernel checks. Process PSS rose from 96,404 KiB to an observed maximum
+of 162,073 KiB (64.13 MiB difference), leaving no demonstrated headroom under the 64 MiB combined
+budget. This is a diagnostic concern, not a formal peak-memory verdict or a release pass. The exact
+report, APK and source/test-APK hash sidecar are retained under
+`build/device-evidence/context-swipe-combined-kernel-v1`. Repeat the diagnostic for the corrected
+shared-session candidate and measure the complete workload on the required device matrix.
