@@ -2,16 +2,23 @@
 
 ## Status
 
-The shared-session correction is being prepared in an isolated candidate checkout. Its schema-2
-data policy binds the swipe policy hash and assigns shared FUTO sessions to exactly the same split
-in both pipelines, while retaining separate project-authored namespaces. It has 68,494 sentences:
-61,604 train, 3,253 validation and 3,637 test. The previous teacher manifest must not be used with
-this changed corpus; fresh teacher scoring, training and evaluation are required. Measurements
-below describe the earlier independent-split candidate until replacement evidence is recorded.
+The shared-session corpus, tokenizer binding, and teacher manifest are on main. The schema-2 data
+policy binds the swipe policy hash and assigns shared FUTO sessions to the same split in both
+pipelines, with separate project-authored namespaces. The scored corpus has 68,494 sentences:
+61,604 train, 3,253 validation and 3,637 test. Independently split context data was rejected for
+cross-task session leakage and must not be mixed with these artifacts.
 
-No release weights are accepted yet. This card defines the fixed architecture, tokenizer and export
-contracts that a trained `context-en-de-v1.onnx` candidate must satisfy before it can enter the
-official data-only model pack.
+A four-epoch 35,662,848-parameter student completed training on 2026-09-08. Two independent Linux
+INT4 exports are byte-identical across all eight files. Distillation ranking diagnostics and the
+export hashes are in [`docs/models/evidence/`](../../docs/models/evidence/). Those metrics are
+teacher candidate-ranking results, not human tap-correction quality, swipe accuracy, or Android
+latency. Historical Android kernel timings used other weights and must not be attributed to this
+canonical export.
+
+No release weights are accepted. This card defines the architecture, tokenizer, and export contracts
+a `context-en-de-v1.onnx` candidate must satisfy before it can enter the official data-only model
+pack. The smaller 7,605,760-parameter student is an explicit experiment with the same tensor ABI; it
+is not the default and is not adopted.
 
 ## Purpose and limits
 
@@ -103,9 +110,10 @@ build/context-model-venv/bin/python tools/train_context_model.py --threads 4
 build/context-model-venv/bin/python tools/export_context_model.py
 ```
 
-The completed teacher-scoring report is committed as an immutable manifest. The recipe remains
-incomplete release evidence until the full student report, two byte-identical Linux exports and held-out
-quality measurements are accepted.
+The completed teacher-scoring report is committed as an immutable manifest. The four-epoch student
+report and two byte-identical Linux exports exist; they are not release evidence. Held-out human
+quality, full-IME latency and memory, physical-device, runtime-AAR, signing, and packaging gates
+remain open.
 
 After export, measure the quantized graph itself:
 
