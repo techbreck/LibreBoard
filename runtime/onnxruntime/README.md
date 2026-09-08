@@ -110,3 +110,10 @@ source read-only, provide a writable temporary mount at
 `/source/third_party/onnxruntime/java/.gradle` for the upstream project cache. Keep the source,
 operator configuration, and build scripts read-only. The input-only check does not exercise the
 upstream root-user guard; verify this execution setup before starting the full native compile.
+
+The first packaging dry run passed after upstream Gradle installed Platform-Tools 37.0.1 into
+its container. The recipe now installs `platform-tools` when building the image, so an unprivileged
+native build does not need to modify the SDK during configuration. That updated image resolved to
+`sha256:57d61051fc53c6b8d9b21ca2d370a4408dbcb8e86836d3ffa66a81c154e90622`.
+The SDK package name is mutable; retain the resolved image ID and package revision with evidence.
+A Gradle dry run verifies configuration and task selection, not successful compilation or packaging.

@@ -8,4 +8,5 @@ ENV PATH="/opt/android-sdk/cmake/3.31.6/bin:${PATH}"
 COPY requirements.lock /opt/onnxruntime-build-requirements.lock
 RUN python -m pip install --no-cache-dir --require-hashes -r /opt/onnxruntime-build-requirements.lock
 RUN /opt/android-sdk/cmdline-tools/12.0/bin/sdkmanager --sdk_root=/opt/android-sdk 'platforms;android-34' 'build-tools;30.0.3'
+RUN /opt/android-sdk/cmdline-tools/12.0/bin/sdkmanager --sdk_root=/opt/android-sdk 'platform-tools'
 WORKDIR /source
