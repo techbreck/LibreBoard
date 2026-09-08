@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "status": "failed",
+  "nativePairCompleted": false,
+  "releaseEligible": false,
+  "imageId": "sha256:34c6bfa469b1afb637cbe9e95c3a5ec2a5c5e4ad011953cce70d0d83073a1fe7",
+  "container": "libreboard-runtime-repro-debian-a2",
+  "state": {
+    "Status": "exited",
+    "OOMKilled": false,
+    "ExitCode": 1,
+    "StartedAt": "2026-09-08T08:21:42.660111229Z",
+    "FinishedAt": "2026-09-08T08:26:37.965591779Z"
+  },
+  "log": "build/reports/linux-runtime-debian-a2.log",
+  "logSha256": "7aaf04364fe734f2054dcb487356c1742fcae77e9ccec1b0370418e47c3651bf",
+  "failure": "tmpfs at /source/third_party/onnxruntime/java/build did not satisfy gradlew clean. Gradle deletes the build directory; rmdir of a tmpfs mount point fails. No SIGSEGV.",
+  "confirmedProbe": "A nested read-write bind of a copy of third_party/onnxruntime/java over the read-only source mount can create and delete java/build while /source remains EROFS.",
+  "limitations": [
+    "Preserved a2 container and log. Native AAR pair still absent."
+  ]
+}

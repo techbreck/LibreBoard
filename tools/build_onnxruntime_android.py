@@ -261,9 +261,9 @@ def validate_java_outputs_writable(java_dir: pathlib.Path | None = None) -> None
             probe.unlink()
         except OSError as exc:
             raise BuildConfigurationError(
-                f"{path} is not writable; when source is mounted read-only, provide a writable "
-                "tmpfs or bind mount at third_party/onnxruntime/java/.gradle and "
-                "third_party/onnxruntime/java/build"
+                f"{path} is not writable; when source is mounted read-only, bind a writable copy "
+                "of third_party/onnxruntime/java over that path. Gradle clean deletes java/build "
+                "and cannot rmdir a tmpfs mount point."
             ) from exc
 
 
