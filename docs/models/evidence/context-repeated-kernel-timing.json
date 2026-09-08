@@ -1,0 +1,457 @@
+{
+  "limitations": [
+    "Synthetic kernels only, not full IME latency or added model peak memory.",
+    "Memory sampling and changing host contention affect timing; not a controlled hardware benchmark.",
+    "Small model uses 512-example partial training; large model uses preserved original corpus.",
+    "Final trained small model and physical devices still require measurement."
+  ],
+  "percentilesIndependentlyVerified": true,
+  "releaseEligible": false,
+  "runs": [
+    {
+      "androidReport": {
+        "apkSha256": "358f86dfef9f32c78afdbc1513f1165ddaff09d4e7f3486b5a42bbf4e7419ca8",
+        "buildFingerprint": "Android/sdk_phone64_arm64/emu64a:16/BE2A.250530.026.D1/13818094:userdebug/test-keys",
+        "cases": [
+          {
+            "memoryAfterInference": {
+              "javaHeapUsedBytes": 4767952,
+              "nativeHeapAllocatedBytes": 29826384,
+              "processPssKiB": 129296
+            },
+            "memoryAfterSwipeInference": {
+              "javaHeapUsedBytes": 5032768,
+              "nativeHeapAllocatedBytes": 30919040,
+              "processPssKiB": 130390
+            },
+            "repeatedTiming": {
+              "measuredIterations": 30,
+              "p50Ms": 5.939042,
+              "p95Ms": 7.191958,
+              "p99Ms": 7.784875,
+              "samplesMs": [
+                6.504583,
+                6.125167,
+                6.159458,
+                5.773375,
+                5.763375,
+                5.213667,
+                5.828083,
+                6.291792,
+                5.895709,
+                5.938042,
+                5.817708,
+                7.191958,
+                5.163416,
+                6.911708,
+                7.784875,
+                6.5485,
+                6.277709,
+                6.782208,
+                6.07775,
+                6.544,
+                5.990042,
+                5.522417,
+                6.870208,
+                5.860375,
+                5.316792,
+                5.551375,
+                5.306625,
+                5.939042,
+                5.836208,
+                6.713083
+              ],
+              "scope": "Repeated synthetic context kernel only; memory sampler and host contention may affect timings",
+              "warmupIterations": 3
+            },
+            "rows": 1,
+            "singleRunMs": 14.50425
+          },
+          {
+            "memoryAfterInference": {
+              "javaHeapUsedBytes": 5038080,
+              "nativeHeapAllocatedBytes": 33084304,
+              "processPssKiB": 131790
+            },
+            "memoryAfterSwipeInference": {
+              "javaHeapUsedBytes": 5444128,
+              "nativeHeapAllocatedBytes": 35252928,
+              "processPssKiB": 132126
+            },
+            "repeatedTiming": {
+              "measuredIterations": 30,
+              "p50Ms": 10.050291,
+              "p95Ms": 12.548666,
+              "p99Ms": 12.6505,
+              "samplesMs": [
+                10.050291,
+                10.023292,
+                10.575292,
+                9.320333,
+                12.6505,
+                10.312334,
+                10.331959,
+                10.663084,
+                8.950333,
+                9.969917,
+                10.653125,
+                9.781625,
+                10.740584,
+                9.759666,
+                10.58375,
+                9.840084,
+                9.355458,
+                10.038334,
+                9.204291,
+                9.481584,
+                9.987792,
+                9.556958,
+                9.365792,
+                10.543792,
+                12.370417,
+                10.150375,
+                12.548666,
+                10.322958,
+                10.972291,
+                11.855583
+              ],
+              "scope": "Repeated synthetic context kernel only; memory sampler and host contention may affect timings",
+              "warmupIterations": 3
+            },
+            "rows": 8,
+            "singleRunMs": 13.152416
+          },
+          {
+            "memoryAfterInference": {
+              "javaHeapUsedBytes": 5505952,
+              "nativeHeapAllocatedBytes": 39586416,
+              "processPssKiB": 135282
+            },
+            "memoryAfterSwipeInference": {
+              "javaHeapUsedBytes": 6490752,
+              "nativeHeapAllocatedBytes": 39586528,
+              "processPssKiB": 136266
+            },
+            "repeatedTiming": {
+              "measuredIterations": 30,
+              "p50Ms": 24.863583,
+              "p95Ms": 27.845334,
+              "p99Ms": 29.489125,
+              "samplesMs": [
+                25.723792,
+                25.182417,
+                26.311666,
+                24.328709,
+                24.893625,
+                24.285458,
+                24.988541,
+                24.227417,
+                25.350083,
+                25.67825,
+                25.796917,
+                23.492416,
+                23.657792,
+                24.487125,
+                23.954834,
+                24.863583,
+                23.286125,
+                23.827125,
+                23.117458,
+                24.486166,
+                26.425208,
+                27.736667,
+                29.489125,
+                26.5,
+                24.677375,
+                23.705958,
+                25.489292,
+                24.602083,
+                27.845334,
+                25.576875
+              ],
+              "scope": "Repeated synthetic context kernel only; memory sampler and host contention may affect timings",
+              "warmupIterations": 3
+            },
+            "rows": 32,
+            "singleRunMs": 33.774916
+          }
+        ],
+        "combinedModelSnapshots": true,
+        "fixtureSha256": "fcefca8bff5aaee2c386d5a891fb48979376ebbd451b95f9314c297d5ee595ad",
+        "memoryAfterClose": {
+          "javaHeapUsedBytes": 6662784,
+          "nativeHeapAllocatedBytes": 11472464,
+          "processPssKiB": 125431
+        },
+        "memoryAfterOpen": {
+          "javaHeapUsedBytes": 4767168,
+          "nativeHeapAllocatedBytes": 28496144,
+          "processPssKiB": 128472
+        },
+        "memoryAfterSwipeOpen": {
+          "javaHeapUsedBytes": 4701632,
+          "nativeHeapAllocatedBytes": 17108768,
+          "processPssKiB": 116220
+        },
+        "memoryBeforeOpen": {
+          "javaHeapUsedBytes": 4603232,
+          "nativeHeapAllocatedBytes": 5902896,
+          "processPssKiB": 96566
+        },
+        "memoryScope": "Whole-process snapshots, not isolated added peak memory or a release gate",
+        "modelSha256": "bace86d8bee2dff21b229bd57f5137a5f9aee47be3f2e6e6cf67c9ed982f1360",
+        "releaseEligible": false,
+        "sampledMemory": {
+          "maximumJavaHeapUsedBytes": 6490752,
+          "maximumNativeHeapAllocatedBytes": 39786688,
+          "maximumProcessPssKiB": 136262,
+          "requestedDelayBetweenSamplesMs": 5,
+          "samples": 128,
+          "scope": "Observed whole-process maxima at different times; do not sum heap maxima or infer a release peak pass"
+        },
+        "schemaVersion": 1,
+        "supportedAbis": [
+          "arm64-v8a"
+        ],
+        "swipeModelSha256": "1301f0d076f526fe0b67f2ea86a38abc8448f6de54d2c7191c002dcd4d05d38c",
+        "syntheticKernelParityOnly": true
+      },
+      "label": "small-context-repeated-timing-v1",
+      "provenance": {
+        "androidReportSha256": "c31fbe924eeaecff598e128fc646c6abe66c8f909c41bde2ffb75c7ffe8b2979",
+        "contextFixtureRoot": "/Users/breck/Projects/LibreBoard-context-small-student/build/device-evidence/context-small-smoke-runtime",
+        "coreApkSha256": "358f86dfef9f32c78afdbc1513f1165ddaff09d4e7f3486b5a42bbf4e7419ca8",
+        "instrumentationApkSha256": "5932271de70085a711b7e1f515a139538384f5dba3787a54ca00f6ed1b644d75",
+        "instrumentationSourceSha256": "d57057526a13776e79e9e09ed896fa3630817b58a562d6cd4711439794604431",
+        "releaseEligible": false,
+        "runnerSha256": "2f2543b0ab38e2b678e7a07bf7ae11c1d046e7693d20be1aeb9da4511ed6885a",
+        "runtimeSourceSha256": "06dd0523684ebbe9b997a50891ce201def19d86c2551a7ed9c9d58cebe316911",
+        "sourceCommit": "8816052157e3337d3a46f6e21c067142ea11ff33",
+        "swipeModelPath": "/Users/breck/Projects/LibreBoard/build/device-evidence/swipe-android-diagnostic/swipe.onnx"
+      }
+    },
+    {
+      "androidReport": {
+        "apkSha256": "358f86dfef9f32c78afdbc1513f1165ddaff09d4e7f3486b5a42bbf4e7419ca8",
+        "buildFingerprint": "Android/sdk_phone64_arm64/emu64a:16/BE2A.250530.026.D1/13818094:userdebug/test-keys",
+        "cases": [
+          {
+            "memoryAfterInference": {
+              "javaHeapUsedBytes": 4833488,
+              "nativeHeapAllocatedBytes": 51992160,
+              "processPssKiB": 152524
+            },
+            "memoryAfterSwipeInference": {
+              "javaHeapUsedBytes": 5155648,
+              "nativeHeapAllocatedBytes": 55248400,
+              "processPssKiB": 153793
+            },
+            "repeatedTiming": {
+              "measuredIterations": 30,
+              "p50Ms": 33.839042,
+              "p95Ms": 45.69175,
+              "p99Ms": 126.638208,
+              "samplesMs": [
+                29.338666,
+                29.48775,
+                30.170458,
+                31.398083,
+                30.549125,
+                28.54275,
+                30.665625,
+                29.848958,
+                35.43875,
+                45.69175,
+                126.638208,
+                37.787709,
+                33.990626,
+                34.017417,
+                37.197708,
+                31.505875,
+                33.831708,
+                41.401,
+                39.272875,
+                34.084,
+                37.108667,
+                44.933958,
+                43.755458,
+                38.991833,
+                29.649917,
+                29.942042,
+                30.192834,
+                33.839042,
+                31.253708,
+                44.365791
+              ],
+              "scope": "Repeated synthetic context kernel only; memory sampler and host contention may affect timings",
+              "warmupIterations": 3
+            },
+            "rows": 1,
+            "singleRunMs": 41.368875
+          },
+          {
+            "memoryAfterInference": {
+              "javaHeapUsedBytes": 5160960,
+              "nativeHeapAllocatedBytes": 59582160,
+              "processPssKiB": 156295
+            },
+            "memoryAfterSwipeInference": {
+              "javaHeapUsedBytes": 5739136,
+              "nativeHeapAllocatedBytes": 61750864,
+              "processPssKiB": 157210
+            },
+            "repeatedTiming": {
+              "measuredIterations": 30,
+              "p50Ms": 57.891417,
+              "p95Ms": 74.932417,
+              "p99Ms": 99.572084,
+              "samplesMs": [
+                61.230875,
+                63.9125,
+                63.90875,
+                99.572084,
+                61.985458,
+                57.4325,
+                59.205709,
+                57.13175,
+                65.7465,
+                57.891417,
+                57.539583,
+                58.030541,
+                53.574625,
+                54.216667,
+                53.054834,
+                54.923916,
+                53.78825,
+                72.05775,
+                61.484042,
+                54.480792,
+                62.178666,
+                68.764875,
+                58.6945,
+                55.267583,
+                55.777708,
+                56.059416,
+                60.045083,
+                74.932417,
+                54.527208,
+                50.7015
+              ],
+              "scope": "Repeated synthetic context kernel only; memory sampler and host contention may affect timings",
+              "warmupIterations": 3
+            },
+            "rows": 8,
+            "singleRunMs": 63.153417
+          },
+          {
+            "memoryAfterInference": {
+              "javaHeapUsedBytes": 5825536,
+              "nativeHeapAllocatedBytes": 70411632,
+              "processPssKiB": 163298
+            },
+            "memoryAfterSwipeInference": {
+              "javaHeapUsedBytes": 7113440,
+              "nativeHeapAllocatedBytes": 70403792,
+              "processPssKiB": 164503
+            },
+            "repeatedTiming": {
+              "measuredIterations": 30,
+              "p50Ms": 159.601458,
+              "p95Ms": 183.930542,
+              "p99Ms": 189.289375,
+              "samplesMs": [
+                153.0675,
+                161.753917,
+                161.41775,
+                160.357917,
+                154.551416,
+                160.851959,
+                165.996833,
+                183.930542,
+                189.289375,
+                157.975167,
+                157.401667,
+                155.897459,
+                161.197958,
+                153.352751,
+                178.01725,
+                162.742958,
+                159.601458,
+                149.947667,
+                164.006959,
+                161.555958,
+                157.025042,
+                155.417416,
+                150.535834,
+                161.431959,
+                152.483875,
+                160.684166,
+                159.010792,
+                177.189959,
+                159.356375,
+                152.930167
+              ],
+              "scope": "Repeated synthetic context kernel only; memory sampler and host contention may affect timings",
+              "warmupIterations": 3
+            },
+            "rows": 32,
+            "singleRunMs": 179.324667
+          }
+        ],
+        "combinedModelSnapshots": true,
+        "fixtureSha256": "a9cdfb09c39cd1a76d8917e42f14525e83a7b6721d43c01273acf3dd9dd0e32a",
+        "memoryAfterClose": {
+          "javaHeapUsedBytes": 7285472,
+          "nativeHeapAllocatedBytes": 11553184,
+          "processPssKiB": 134499
+        },
+        "memoryAfterOpen": {
+          "javaHeapUsedBytes": 4799936,
+          "nativeHeapAllocatedBytes": 50429344,
+          "processPssKiB": 150900
+        },
+        "memoryAfterSwipeOpen": {
+          "javaHeapUsedBytes": 4701632,
+          "nativeHeapAllocatedBytes": 17095872,
+          "processPssKiB": 116010
+        },
+        "memoryBeforeOpen": {
+          "javaHeapUsedBytes": 4603232,
+          "nativeHeapAllocatedBytes": 5890576,
+          "processPssKiB": 96425
+        },
+        "memoryScope": "Whole-process snapshots, not isolated added peak memory or a release gate",
+        "modelSha256": "53e1a1d29566efaa4ca3fe1b396206c10d211cdb2394d231dc0413b146dc17a2",
+        "releaseEligible": false,
+        "sampledMemory": {
+          "maximumJavaHeapUsedBytes": 7113440,
+          "maximumNativeHeapAllocatedBytes": 70744016,
+          "maximumProcessPssKiB": 164499,
+          "requestedDelayBetweenSamplesMs": 5,
+          "samples": 563,
+          "scope": "Observed whole-process maxima at different times; do not sum heap maxima or infer a release peak pass"
+        },
+        "schemaVersion": 1,
+        "supportedAbis": [
+          "arm64-v8a"
+        ],
+        "swipeModelSha256": "1301f0d076f526fe0b67f2ea86a38abc8448f6de54d2c7191c002dcd4d05d38c",
+        "syntheticKernelParityOnly": true
+      },
+      "label": "large-context-repeated-timing-v1",
+      "provenance": {
+        "androidReportSha256": "df1ab2615b293991624502e80feb5ab9fd9a1bcc6b16dbdd8f8cb07c9b78f80c",
+        "contextFixtureRoot": "/Users/breck/Projects/LibreBoard/build/device-evidence/context-linux-full-runtime",
+        "coreApkSha256": "358f86dfef9f32c78afdbc1513f1165ddaff09d4e7f3486b5a42bbf4e7419ca8",
+        "instrumentationApkSha256": "5932271de70085a711b7e1f515a139538384f5dba3787a54ca00f6ed1b644d75",
+        "instrumentationSourceSha256": "d57057526a13776e79e9e09ed896fa3630817b58a562d6cd4711439794604431",
+        "releaseEligible": false,
+        "runnerSha256": "2f2543b0ab38e2b678e7a07bf7ae11c1d046e7693d20be1aeb9da4511ed6885a",
+        "runtimeSourceSha256": "06dd0523684ebbe9b997a50891ce201def19d86c2551a7ed9c9d58cebe316911",
+        "sourceCommit": "8816052157e3337d3a46f6e21c067142ea11ff33",
+        "swipeModelPath": "/Users/breck/Projects/LibreBoard/build/device-evidence/swipe-android-diagnostic/swipe.onnx"
+      }
+    }
+  ],
+  "schemaVersion": 1
+}

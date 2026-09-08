@@ -366,3 +366,16 @@ added PSS was 37.67 MiB across 47 samples; single-run context timings for 1/8/32
 16.49/12.13/26.07 ms. These measurements motivate full training and evaluation; they do not establish
 quality, p95 latency, or release peak memory. The default model specification remains unchanged.
 See [the bound smoke evidence](models/evidence/context-small-android-smoke.json).
+
+For repeated synthetic kernel timing, pass instrumentation argument
+`-e contextTimingIterations 30`. Zero (the default) disables repetitions; enabled counts must be
+20–100. Each batch size uses three warm-ups and retains every measured timing, with parity checked
+on every inference. Percentiles use the nearest-rank definition.
+
+On the low-RAM emulator, the smaller partial-training graph recorded context-kernel p95 values of
+7.19/12.55/27.85 ms for 1/8/32 candidates; the preserved large graph recorded 45.69/74.93/183.93 ms.
+The raw samples and independent percentile verification are retained in
+[context-repeated-kernel-timing.json](models/evidence/context-repeated-kernel-timing.json).
+Both runs kept the swipe graph loaded and memory sampling active. These diagnostic measurements
+exclude tokenization, candidate generation, decoder, fusion, and deadline fallback; changing host
+load prevents interpreting them as a controlled comparison or a release performance pass.

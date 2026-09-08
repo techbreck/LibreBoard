@@ -67,6 +67,12 @@ class ContextRuntimeInstrumentedTest {
                 .put("javaHeapUsedBytes", runtime.totalMemory() - runtime.freeMemory())
         }
         val combined = args.getString("libreboardRequireCombinedRuntime") == "true"
+        val timingIterations = args.getString("contextTimingIterations")?.let {
+            requireNotNull(it.toIntOrNull()) { "contextTimingIterations must be an integer" }
+        } ?: 0
+        require(timingIterations == 0 || timingIterations in 20..100) {
+            "contextTimingIterations must be zero or between 20 and 100"
+        }
         val swipeModel = File(directory, "swipe.onnx")
         val swipeHash = if (combined) {
             assertTrue(swipeModel.length() in 1..(3L * 1024 * 1024))
@@ -140,7 +146,33 @@ class ContextRuntimeInstrumentedTest {
                         assertEquals(32 * 65, logits.size)
                         assertTrue(logits.all(Float::isFinite))
                     }
+                    val repeatedTiming = if (timingIterations > 0) {
+                        fun checkedInference(): Double {
+                            val start = SystemClock.elapsedRealtimeNanos()
+                            val inference = session.infer(batch, Deadline.afterMillis(60_000))
+                            val milliseconds = (SystemClock.elapsedRealtimeNanos() - start) / 1_000_000.0
+                            assertEquals(EngineAvailability.AVAILABLE, inference.availability)
+                            val values = requireNotNull(inference.candidateLogLikelihoods)
+                            assertEquals(rows, values.size)
+                            values.forEachIndexed { row, value ->
+                                assertTrue(value.isFinite())
+                                assertEquals(expected.getDouble(row), value.toDouble(), 0.001)
+                            }
+                            return milliseconds
+                        }
+                        repeat(3) { checkedInference() }
+                        val times = List(timingIterations) { checkedInference() }
+                        val sorted = times.sorted()
+                        fun percentile(value: Double): Double = sorted[
+                            (kotlin.math.ceil(value * sorted.size).toInt() - 1).coerceIn(sorted.indices)
+                        ]
+                        JSONObject().put("warmupIterations", 3).put("measuredIterations", timingIterations)
+                            .put("samplesMs", JSONArray(times)).put("p50Ms", percentile(0.50))
+                            .put("p95Ms", percentile(0.95)).put("p99Ms", percentile(0.99))
+                            .put("scope", "Repeated synthetic context kernel only; memory sampler and host contention may affect timings")
+                    } else null
                     results.put(JSONObject().put("rows", rows).put("singleRunMs", elapsed)
+                        .put("repeatedTiming", repeatedTiming ?: JSONObject.NULL)
                         .put("memoryAfterInference", memoryAfterContextInference)
                         .put("memoryAfterSwipeInference", if (combined) memorySnapshot() else JSONObject.NULL))
                 }
