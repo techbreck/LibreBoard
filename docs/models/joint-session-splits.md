@@ -37,3 +37,17 @@ The before/after diagnostic reports are retained alongside this document under `
 They bind both corpus manifests and the audit tool. Session separation does not prove prompt or
 text separation between sessions. Context validation sessions are excluded from the final joint
 test pool; overlap between the two validation sets is expected with the corrected assignment.
+
+## Exact prompt overlap within the shared-session corpus
+
+`tools/audit_context_prompt_overlap.py` verifies each prepared sentence file against its corpus
+manifest, then compares complete texts after NFKC, case folding, and whitespace normalization,
+scoped by language. It does not modify split membership. The shared-session audit is recorded in
+`docs/models/evidence/context-shared-prompt-overlap.json`, including hashed row IDs for a separate
+prompt-disjoint diagnostic.
+
+Of the English external-source rows, 72 validation prompts also occur in training. Test has 84
+prompts in training and three additional prompts in validation, giving 87 exclusions for a
+prompt-disjoint test diagnostic. No exact overlap was found in the German project-authored rows.
+Full held-out reports must remain available alongside any excluded-prompt diagnostic. This audit
+covers exact complete prepared text; shared prefixes or semantic similarity remain unmeasured.
