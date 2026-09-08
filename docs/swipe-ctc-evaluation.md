@@ -214,3 +214,17 @@ These counts match the independent source screen. Five focused prefix tests and 
 The sidecars preserve CTC split membership but do not independently qualify context-model holdout.
 Use the shared-session audit before evaluating a context candidate. Prompt-prefix diagnostics do
 not establish real editor-history performance, full runtime fusion, or release readiness.
+
+## Retaining candidate scores for later context diagnostics
+
+The optional `--slates-output /path/to/new-slates.jsonl` argument saves each selected row's identity,
+session, language, target, strata, and ordered CTC, geometric, and merged candidates with their
+spatial and frequency scores. The evaluation report records the completed file's SHA-256, size,
+and row count. Output appears only after evaluation succeeds; existing paths are refused and
+partial output is removed after failure. Use a separate path for the report.
+
+Score retention does not change inference, sampling, ranking, or quality gates. In the verified
+100-row native-vocabulary validation run, all four baseline metric tables were unchanged, and
+replaying the saved merged scores reproduced every stratum's top-1/top-3 counts. The complete
+219-test Python suite passed with 13 expected skips. Saved slates remain host diagnostics: adding
+reference context later still requires a model/split audit and does not establish full IME fusion.

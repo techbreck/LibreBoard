@@ -945,6 +945,52 @@ def _percentiles(values: Sequence[float]) -> dict[str, float]:
 
 
 def evaluate(args: argparse.Namespace) -> dict[str, Any]:
+    destination = getattr(args, "slates_output", None)
+    if destination is None:
+        return _evaluate(args)
+    destination = destination.resolve()
+    if destination == args.output.resolve():
+        raise SwipeEvaluationError("candidate slates and evaluation report need separate paths")
+    if destination.exists():
+        raise SwipeEvaluationError("candidate slate output already exists; preserve earlier evidence")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(prefix=".swipe-slates-", dir=destination.parent)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            report = _evaluate(args, stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+        staged = pathlib.Path(temporary)
+        report["candidateSlates"] = {
+            "schemaVersion": 1,
+            "path": str(destination),
+            "sha256": model_sources.file_sha256(staged),
+            "bytes": staged.stat().st_size,
+            "records": report["sample"]["rows"],
+            "diagnosticOnly": True,
+        }
+        # Publish only a complete successful run, without replacing concurrent/prior evidence.
+        os.link(staged, destination)
+        return report
+    finally:
+        pathlib.Path(temporary).unlink(missing_ok=True)
+
+
+def _write_candidate_slate(stream, row, ctc, geometric, merged):
+    def candidates(slate):
+        return [{"word": item.entry.word, "language": item.entry.language,
+                 "frequency": item.entry.frequency, "spatial": item.spatial} for item in slate]
+    record = {
+        "schemaVersion": 1, "id": row.identifier, "sessionId": row.session_id,
+        "language": row.language, "target": row.target, "strata": sorted(row.strata),
+        "ctc": candidates(ctc), "geometric": candidates(geometric),
+        "merged": candidates(merged),
+    }
+    stream.write(json.dumps(record, sort_keys=True, separators=(",", ":"),
+                            ensure_ascii=False, allow_nan=False).encode() + b"\n")
+
+
+def _evaluate(args: argparse.Namespace, slate_stream=None) -> dict[str, Any]:
     if not args.development and (args.sample_count < 5_000 or args.minimum_per_stratum < 500):
         raise SwipeEvaluationError("release diagnostics require 5,000 rows and 500 rows per stratum")
     spec = swipe_model_contract.load_spec(args.spec)
@@ -1059,6 +1105,8 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
         merged = merge_swipe_slates(decoded, geometric)
         ctc_geometric_fusion = rank_static_fusion(merged)
         finished = time.perf_counter_ns()
+        if slate_stream is not None:
+            _write_candidate_slate(slate_stream, row, decoded, geometric, merged)
         predictions = [entry.word for entry in decoded]
         static_predictions = [entry.word for entry in static_fusion]
         geometric_predictions = [entry.word for entry in geometric_fusion]
@@ -1241,6 +1289,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--data-root", type=pathlib.Path, default=DEFAULT_DATA_ROOT)
     parser.add_argument("--export-report", type=pathlib.Path, default=DEFAULT_REPORT)
     parser.add_argument("--output", type=pathlib.Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--slates-output", type=pathlib.Path,
+                        help="Save complete hash-bound candidate scores for later diagnostics; refuses existing paths")
     parser.add_argument("--dictionary-lexicon", type=pathlib.Path)
     parser.add_argument("--dictionary-apk", type=pathlib.Path)
     parser.add_argument("--split", choices=("validation", "test"), default="test")
