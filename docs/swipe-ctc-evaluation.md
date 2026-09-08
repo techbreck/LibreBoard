@@ -228,3 +228,22 @@ Score retention does not change inference, sampling, ranking, or quality gates. 
 replaying the saved merged scores reproduced every stratum's top-1/top-3 counts. The complete
 219-test Python suite passed with 13 expected skips. Saved slates remain host diagnostics: adding
 reference context later still requires a model/split audit and does not establish full IME fusion.
+
+## Frozen 6,000-row validation baseline for context reranking
+
+The native-vocabulary validation run retained complete candidate scores for 6,000 rows, with 600
+minimum rows per stratum. Its report and replay checks are committed under `docs/models/evidence/`
+as `swipe-validation-context-base-6000.json` and `context-swipes-slate-verification.json`. All four
+metric tables were reproduced from the saved scores, and 5,997 rows joined to aligned prompt
+prefixes; every required stratum retained at least 600 rows.
+
+CTC alone scored 85.27% top-1 / 91.33% top-3; static fusion scored 87.10% / 92.17%; geometry scored
+67.63% / 82.70%; CTC plus geometry scored 86.67% / 92.52%. The combined relative top-1 error
+reduction over geometry was 58.81%, but the absolute quality gates still failed.
+
+The candidate-recall audit (`swipe-validation-candidate-recall-bound.json`) exposes a further
+constraint: the merged 32-candidate slate contains the target in only 5,670 of 6,000 rows (94.50%).
+Even its untrimmed CTC/geometric union contains only 5,690 targets (94.83%). A perfect reranker
+cannot attain 95% top-3 on these fixed slates. Further candidate-generation coverage work is needed;
+context reranking alone cannot close that gate. This bound applies to the isolated diagnostic,
+not the unmeasured complete IME path with retained AOSP and personal suggestions.

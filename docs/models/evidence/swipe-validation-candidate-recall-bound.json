@@ -1,0 +1,158 @@
+{
+  "alignedCohort": {
+    "mergedTargetPresent": 5668,
+    "rows": 5997
+  },
+  "candidateRecall": {
+    "ctc": {
+      "clean": {
+        "recall": 0.944578313253012,
+        "rows": 4565,
+        "targetPresent": 4312
+      },
+      "double_letter": {
+        "recall": 0.8771929824561403,
+        "rows": 627,
+        "targetPresent": 550
+      },
+      "long": {
+        "recall": 0.8509142053445851,
+        "rows": 711,
+        "targetPresent": 605
+      },
+      "medium": {
+        "recall": 0.9258404746209624,
+        "rows": 3034,
+        "targetPresent": 2809
+      },
+      "overall": {
+        "recall": 0.9413333333333334,
+        "rows": 6000,
+        "targetPresent": 5648
+      },
+      "return_trip": {
+        "recall": 0.8859649122807017,
+        "rows": 1710,
+        "targetPresent": 1515
+      },
+      "short": {
+        "recall": 0.9906873614190688,
+        "rows": 2255,
+        "targetPresent": 2234
+      },
+      "sloppy": {
+        "recall": 0.9310104529616725,
+        "rows": 1435,
+        "targetPresent": 1336
+      },
+      "very_sloppy": {
+        "recall": 0.92,
+        "rows": 600,
+        "targetPresent": 552
+      }
+    },
+    "geometric": {
+      "clean": {
+        "recall": 0.9404162102957284,
+        "rows": 4565,
+        "targetPresent": 4293
+      },
+      "double_letter": {
+        "recall": 0.8516746411483254,
+        "rows": 627,
+        "targetPresent": 534
+      },
+      "long": {
+        "recall": 0.8241912798874824,
+        "rows": 711,
+        "targetPresent": 586
+      },
+      "medium": {
+        "recall": 0.8945286750164799,
+        "rows": 3034,
+        "targetPresent": 2714
+      },
+      "overall": {
+        "recall": 0.8951666666666667,
+        "rows": 6000,
+        "targetPresent": 5371
+      },
+      "return_trip": {
+        "recall": 0.8637426900584795,
+        "rows": 1710,
+        "targetPresent": 1477
+      },
+      "short": {
+        "recall": 0.9184035476718404,
+        "rows": 2255,
+        "targetPresent": 2071
+      },
+      "sloppy": {
+        "recall": 0.751219512195122,
+        "rows": 1435,
+        "targetPresent": 1078
+      },
+      "very_sloppy": {
+        "recall": 0.5533333333333333,
+        "rows": 600,
+        "targetPresent": 332
+      }
+    },
+    "merged": {
+      "clean": {
+        "recall": 0.9496166484118291,
+        "rows": 4565,
+        "targetPresent": 4335
+      },
+      "double_letter": {
+        "recall": 0.8915470494417863,
+        "rows": 627,
+        "targetPresent": 559
+      },
+      "long": {
+        "recall": 0.8579465541490858,
+        "rows": 711,
+        "targetPresent": 610
+      },
+      "medium": {
+        "recall": 0.9317732366512854,
+        "rows": 3034,
+        "targetPresent": 2827
+      },
+      "overall": {
+        "recall": 0.945,
+        "rows": 6000,
+        "targetPresent": 5670
+      },
+      "return_trip": {
+        "recall": 0.8941520467836257,
+        "rows": 1710,
+        "targetPresent": 1529
+      },
+      "short": {
+        "recall": 0.9902439024390244,
+        "rows": 2255,
+        "targetPresent": 2233
+      },
+      "sloppy": {
+        "recall": 0.9303135888501742,
+        "rows": 1435,
+        "targetPresent": 1335
+      },
+      "very_sloppy": {
+        "recall": 0.9133333333333333,
+        "rows": 600,
+        "targetPresent": 548
+      }
+    }
+  },
+  "diagnosticOnly": true,
+  "limitations": [
+    "Candidate recall is an upper bound for reranking these fixed slates, not measured context-model quality.",
+    "Context cannot recover a target absent from the slate; retained AOSP/personal/full runtime fusion remain unmeasured."
+  ],
+  "releaseEligible": false,
+  "schemaVersion": 1,
+  "slatesSha256": "fbbbcd0ef004f651a2e6c698ce6d834d4d2ca8d5f8195a6c9996e5ff2c61776e",
+  "untrimmedUnionTargetPresent": 5690
+}
