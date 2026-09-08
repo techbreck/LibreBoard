@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "diagnosticOnly": true,
+  "releaseEligible": false,
+  "evaluationReportSha256": "401d5454c96e7455e2f440ed0b930c31ef3a0ad7947e36ba116f95eb78b51ad0",
+  "slatesSha256": "a2ec1b7603d55afdf02f5fd6097d9ebaac1a5cf9c334e74e3a8ada48cdb3a29a",
+  "prefixManifestSha256": "7eca2aeddd94e8a9a4f7455a59efc860bf2b597f491f25d58fe203fcd6ec4ad1",
+  "rows": 1000,
+  "allFourMetricTablesReproduced": true,
+  "alignedRows": 999,
+  "alignedStrata": {
+    "clean": 755,
+    "double_letter": 103,
+    "long": 122,
+    "medium": 489,
+    "return_trip": 286,
+    "short": 388,
+    "sloppy": 244,
+    "very_sloppy": 100
+  },
+  "toolSha256": "aba6d26591e34833af68305d444ceeb36cca4b98243c6d388be7f55d10af705b",
+  "limitations": [
+    "No context inference or full runtime fusion; this verifies the completed baseline and joins."
+  ]
+}

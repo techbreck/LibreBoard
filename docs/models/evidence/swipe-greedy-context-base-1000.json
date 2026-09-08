@@ -1,0 +1,514 @@
+{
+  "artifacts": {
+    "evaluationDataSha256": "bc11f707c849b9c9daec5a5ffef06108771887f1c9d019b4c123f4bf8714be6e",
+    "evaluatorSha256": "5d81900d00904e0aa21c7f2d70d10b1ec297355bb3a56af8d6567833612c766d",
+    "experimentScriptSha256": "8c2c4f616ab4604e1c1b46d2782f25690f5fa1fe0ca4cedde1ca8d94d6864899",
+    "exportReportSha256": "04a261eef7db4adf18b7342fe4421326321a6cb674076b4915ff50c817d6342b",
+    "knownOffensiveSourceSha256": "e23644662586f6bcb76f4bc0d9e01e7f38efd89afb823fc2b2a4530177a97525",
+    "model": {
+      "path": "swipe-latin-v1.onnx",
+      "sha256": "1301f0d076f526fe0b67f2ea86a38abc8448f6de54d2c7191c002dcd4d05d38c"
+    },
+    "modelSpecSha256": "78ad40a1a873ed86803f28d7677e57bae665fca808d032cc927f581b42d43928",
+    "splitManifestSha256": "c56b13c5895a0037df4599753963fb16ba2b43bd60ff7f2ea7074959dca715cd"
+  },
+  "candidateSlates": {
+    "bytes": 7257244,
+    "diagnosticOnly": true,
+    "path": "/Users/breck/Projects/LibreBoard/build/reports/swipe-greedy-context-base-1000.jsonl",
+    "records": 1000,
+    "schemaVersion": 1,
+    "sha256": "a2ec1b7603d55afdf02f5fd6097d9ebaac1a5cf9c334e74e3a8ada48cdb3a29a"
+  },
+  "ctcGeometricFusionMetrics": {
+    "clean": {
+      "inVocabulary": 717,
+      "lengthWindowCoverage": 0.9986772486772487,
+      "lengthWindowEligible": 755,
+      "rows": 756,
+      "top1": 650,
+      "top1Accuracy": 0.8597883597883598,
+      "top3": 702,
+      "top3Accuracy": 0.9285714285714286,
+      "vocabularyCoverage": 0.9484126984126984
+    },
+    "double_letter": {
+      "inVocabulary": 91,
+      "lengthWindowCoverage": 0.9903846153846154,
+      "lengthWindowEligible": 103,
+      "rows": 104,
+      "top1": 69,
+      "top1Accuracy": 0.6634615384615384,
+      "top3": 82,
+      "top3Accuracy": 0.7884615384615384,
+      "vocabularyCoverage": 0.875
+    },
+    "long": {
+      "inVocabulary": 106,
+      "lengthWindowCoverage": 0.991869918699187,
+      "lengthWindowEligible": 122,
+      "rows": 123,
+      "top1": 95,
+      "top1Accuracy": 0.7723577235772358,
+      "top3": 102,
+      "top3Accuracy": 0.8292682926829268,
+      "vocabularyCoverage": 0.8617886178861789
+    },
+    "medium": {
+      "inVocabulary": 462,
+      "lengthWindowCoverage": 1.0,
+      "lengthWindowEligible": 489,
+      "rows": 489,
+      "top1": 379,
+      "top1Accuracy": 0.7750511247443763,
+      "top3": 430,
+      "top3Accuracy": 0.8793456032719836,
+      "vocabularyCoverage": 0.9447852760736196
+    },
+    "overall": {
+      "inVocabulary": 955,
+      "lengthWindowCoverage": 0.999,
+      "lengthWindowEligible": 999,
+      "rows": 1000,
+      "top1": 842,
+      "top1Accuracy": 0.842,
+      "top3": 915,
+      "top3Accuracy": 0.915,
+      "vocabularyCoverage": 0.955
+    },
+    "return_trip": {
+      "inVocabulary": 259,
+      "lengthWindowCoverage": 0.9965156794425087,
+      "lengthWindowEligible": 286,
+      "rows": 287,
+      "top1": 221,
+      "top1Accuracy": 0.7700348432055749,
+      "top3": 249,
+      "top3Accuracy": 0.867595818815331,
+      "vocabularyCoverage": 0.9024390243902439
+    },
+    "short": {
+      "inVocabulary": 387,
+      "lengthWindowCoverage": 1.0,
+      "lengthWindowEligible": 388,
+      "rows": 388,
+      "top1": 368,
+      "top1Accuracy": 0.9484536082474226,
+      "top3": 383,
+      "top3Accuracy": 0.9871134020618557,
+      "vocabularyCoverage": 0.9974226804123711
+    },
+    "sloppy": {
+      "inVocabulary": 238,
+      "lengthWindowCoverage": 1.0,
+      "lengthWindowEligible": 244,
+      "rows": 244,
+      "top1": 192,
+      "top1Accuracy": 0.7868852459016393,
+      "top3": 213,
+      "top3Accuracy": 0.8729508196721312,
+      "vocabularyCoverage": 0.9754098360655737
+    },
+    "very_sloppy": {
+      "inVocabulary": 98,
+      "lengthWindowCoverage": 1.0,
+      "lengthWindowEligible": 100,
+      "rows": 100,
+      "top1": 75,
+      "top1Accuracy": 0.75,
+      "top3": 83,
+      "top3Accuracy": 0.83,
+      "vocabularyCoverage": 0.98
+    }
+  },
+  "decoder": {
+    "algorithm": "experimental-lexicon-ctc-with-greedy-oov-context-v1",
+    "beamWidth": 64,
+    "decoderSlatesNormalizedBeforeUnion": true,
+    "geometricAlgorithm": "production-template-cost-v1",
+    "geometricTemplates": 99222,
+    "greedyBlankFallbacks": 0,
+    "greedyExactAccuracy": 0.662,
+    "greedyOovCandidatesAdded": 315
+  },
+  "diagnosticOnly": true,
+  "geometricMetrics": {
+    "clean": {
+      "inVocabulary": 717,
+      "lengthWindowCoverage": 0.9986772486772487,
+      "lengthWindowEligible": 755,
+      "rows": 756,
+      "top1": 588,
+      "top1Accuracy": 0.7777777777777778,
+      "top3": 681,
+      "top3Accuracy": 0.9007936507936508,
+      "vocabularyCoverage": 0.9484126984126984
+    },
+    "double_letter": {
+      "inVocabulary": 91,
+      "lengthWindowCoverage": 0.9903846153846154,
+      "lengthWindowEligible": 103,
+      "rows": 104,
+      "top1": 63,
+      "top1Accuracy": 0.6057692307692307,
+      "top3": 75,
+      "top3Accuracy": 0.7211538461538461,
+      "vocabularyCoverage": 0.875
+    },
+    "long": {
+      "inVocabulary": 106,
+      "lengthWindowCoverage": 0.991869918699187,
+      "lengthWindowEligible": 122,
+      "rows": 123,
+      "top1": 94,
+      "top1Accuracy": 0.7642276422764228,
+      "top3": 102,
+      "top3Accuracy": 0.8292682926829268,
+      "vocabularyCoverage": 0.8617886178861789
+    },
+    "medium": {
+      "inVocabulary": 462,
+      "lengthWindowCoverage": 1.0,
+      "lengthWindowEligible": 489,
+      "rows": 489,
+      "top1": 347,
+      "top1Accuracy": 0.7096114519427403,
+      "top3": 404,
+      "top3Accuracy": 0.8261758691206544,
+      "vocabularyCoverage": 0.9447852760736196
+    },
+    "overall": {
+      "inVocabulary": 955,
+      "lengthWindowCoverage": 0.999,
+      "lengthWindowEligible": 999,
+      "rows": 1000,
+      "top1": 694,
+      "top1Accuracy": 0.694,
+      "top3": 838,
+      "top3Accuracy": 0.838,
+      "vocabularyCoverage": 0.955
+    },
+    "return_trip": {
+      "inVocabulary": 259,
+      "lengthWindowCoverage": 0.9965156794425087,
+      "lengthWindowEligible": 286,
+      "rows": 287,
+      "top1": 221,
+      "top1Accuracy": 0.7700348432055749,
+      "top3": 243,
+      "top3Accuracy": 0.8466898954703833,
+      "vocabularyCoverage": 0.9024390243902439
+    },
+    "short": {
+      "inVocabulary": 387,
+      "lengthWindowCoverage": 1.0,
+      "lengthWindowEligible": 388,
+      "rows": 388,
+      "top1": 253,
+      "top1Accuracy": 0.6520618556701031,
+      "top3": 332,
+      "top3Accuracy": 0.8556701030927835,
+      "vocabularyCoverage": 0.9974226804123711
+    },
+    "sloppy": {
+      "inVocabulary": 238,
+      "lengthWindowCoverage": 1.0,
+      "lengthWindowEligible": 244,
+      "rows": 244,
+      "top1": 106,
+      "top1Accuracy": 0.4344262295081967,
+      "top3": 157,
+      "top3Accuracy": 0.6434426229508197,
+      "vocabularyCoverage": 0.9754098360655737
+    },
+    "very_sloppy": {
+      "inVocabulary": 98,
+      "lengthWindowCoverage": 1.0,
+      "lengthWindowEligible": 100,
+      "rows": 100,
+      "top1": 35,
+      "top1Accuracy": 0.35,
+      "top3": 50,
+      "top3Accuracy": 0.5,
+      "vocabularyCoverage": 0.98
+    }
+  },
+  "latencyMs": {
+    "ctcGeometricFusionTotal": {
+      "p50": 174.486416,
+      "p95": 450.692208,
+      "p99": 635.701708
+    },
+    "hostDiagnosticOnly": true,
+    "inference": {
+      "p50": 2.189208,
+      "p95": 2.655459,
+      "p99": 3.473792
+    },
+    "prefixBeam": {
+      "p50": 11.068667,
+      "p95": 19.734583,
+      "p99": 109.745459
+    },
+    "total": {
+      "p50": 13.323667,
+      "p95": 22.706917,
+      "p99": 112.001584
+    },
+    "vectorizedGeometricAndFusion": {
+      "p50": 159.347084,
+      "p95": 430.833334,
+      "p99": 473.249542
+    }
+  },
+  "lexicon": {
+    "apkSha256": "fb290d7877dd95713bac015f6f7939f0b2682c302f506bcaa77bf6bbf88b3c6b",
+    "dictionaryAsset": "dicts/main_en-US.dict",
+    "dictionarySha256": "bd950ef4b57655120eee65cee62a5d216a63f721d9a8bb759ce2022437840443",
+    "evaluatedTargetsExcludedFromConstruction": true,
+    "gestureVariants": 99222,
+    "languages": [
+      "en"
+    ],
+    "lengthToleranceAbove": 4,
+    "lengthToleranceBelow": 3,
+    "lexiconExportSha256": "4018c34c1085ae980ff094b99cfad77999bdad8c0652aecf31b831ab2addac5d",
+    "maximumWords": 100000,
+    "possiblyOffensiveWordsExcluded": true,
+    "source": "bundled-static-dictionary",
+    "sourceSplits": [],
+    "testTargetsExcludedFromConstruction": true,
+    "words": 99222
+  },
+  "limitations": [
+    "Host CPU timing is not Android device latency or memory evidence.",
+    "The native dictionary dump is hash-bound to the supplied APK; complete runtime fusion remains unmeasured.",
+    "Personal, context, language-lock, retained AOSP gesture suggestions, and complete final fusion are not measured.",
+    "Experimental greedy OOV union is not the production Android decoder."
+  ],
+  "metrics": {
+    "clean": {
+      "inVocabulary": 717,
+      "lengthWindowCoverage": 0.9986772486772487,
+      "lengthWindowEligible": 755,
+      "rows": 756,
+      "top1": 515,
+      "top1Accuracy": 0.6812169312169312,
+      "top3": 701,
+      "top3Accuracy": 0.9272486772486772,
+      "vocabularyCoverage": 0.9484126984126984
+    },
+    "double_letter": {
+      "inVocabulary": 91,
+      "lengthWindowCoverage": 0.9903846153846154,
+      "lengthWindowEligible": 103,
+      "rows": 104,
+      "top1": 28,
+      "top1Accuracy": 0.2692307692307692,
+      "top3": 78,
+      "top3Accuracy": 0.75,
+      "vocabularyCoverage": 0.875
+    },
+    "long": {
+      "inVocabulary": 106,
+      "lengthWindowCoverage": 0.991869918699187,
+      "lengthWindowEligible": 122,
+      "rows": 123,
+      "top1": 24,
+      "top1Accuracy": 0.1951219512195122,
+      "top3": 102,
+      "top3Accuracy": 0.8292682926829268,
+      "vocabularyCoverage": 0.8617886178861789
+    },
+    "medium": {
+      "inVocabulary": 462,
+      "lengthWindowCoverage": 1.0,
+      "lengthWindowEligible": 489,
+      "rows": 489,
+      "top1": 279,
+      "top1Accuracy": 0.5705521472392638,
+      "top3": 426,
+      "top3Accuracy": 0.8711656441717791,
+      "vocabularyCoverage": 0.9447852760736196
+    },
+    "overall": {
+      "inVocabulary": 955,
+      "lengthWindowCoverage": 0.999,
+      "lengthWindowEligible": 999,
+      "rows": 1000,
+      "top1": 670,
+      "top1Accuracy": 0.67,
+      "top3": 910,
+      "top3Accuracy": 0.91,
+      "vocabularyCoverage": 0.955
+    },
+    "return_trip": {
+      "inVocabulary": 259,
+      "lengthWindowCoverage": 0.9965156794425087,
+      "lengthWindowEligible": 286,
+      "rows": 287,
+      "top1": 99,
+      "top1Accuracy": 0.34494773519163763,
+      "top3": 249,
+      "top3Accuracy": 0.867595818815331,
+      "vocabularyCoverage": 0.9024390243902439
+    },
+    "short": {
+      "inVocabulary": 387,
+      "lengthWindowCoverage": 1.0,
+      "lengthWindowEligible": 388,
+      "rows": 388,
+      "top1": 367,
+      "top1Accuracy": 0.9458762886597938,
+      "top3": 382,
+      "top3Accuracy": 0.9845360824742269,
+      "vocabularyCoverage": 0.9974226804123711
+    },
+    "sloppy": {
+      "inVocabulary": 238,
+      "lengthWindowCoverage": 1.0,
+      "lengthWindowEligible": 244,
+      "rows": 244,
+      "top1": 155,
+      "top1Accuracy": 0.6352459016393442,
+      "top3": 209,
+      "top3Accuracy": 0.8565573770491803,
+      "vocabularyCoverage": 0.9754098360655737
+    },
+    "very_sloppy": {
+      "inVocabulary": 98,
+      "lengthWindowCoverage": 1.0,
+      "lengthWindowEligible": 100,
+      "rows": 100,
+      "top1": 62,
+      "top1Accuracy": 0.62,
+      "top3": 85,
+      "top3Accuracy": 0.85,
+      "vocabularyCoverage": 0.98
+    }
+  },
+  "modelId": "swipe-latin-v1",
+  "phase0ReleaseEvidence": false,
+  "qualitySnapshot": {
+    "ctcGeometricTop1RelativeErrorReductionOverGeometric": 0.48366013071895425,
+    "doesNotSatisfyPhase0": true,
+    "meetsPhase0SwipeThresholdsInCtcIsolation": false,
+    "meetsPhase0SwipeThresholdsWithCtcGeometricFusion": false,
+    "meetsPhase0SwipeThresholdsWithStaticFusion": false,
+    "meetsTwentyPercentRelativeErrorReductionOverGeometric": true
+  },
+  "releaseEligibleInputs": false,
+  "sample": {
+    "minimumRowsPerStratum": 100,
+    "rows": 1000,
+    "selection": "sha256-row-id-stratified-v1",
+    "sessions": 348,
+    "split": "validation"
+  },
+  "schemaVersion": 1,
+  "staticFusionMetrics": {
+    "clean": {
+      "inVocabulary": 717,
+      "lengthWindowCoverage": 0.9986772486772487,
+      "lengthWindowEligible": 755,
+      "rows": 756,
+      "top1": 676,
+      "top1Accuracy": 0.8941798941798942,
+      "top3": 707,
+      "top3Accuracy": 0.9351851851851852,
+      "vocabularyCoverage": 0.9484126984126984
+    },
+    "double_letter": {
+      "inVocabulary": 91,
+      "lengthWindowCoverage": 0.9903846153846154,
+      "lengthWindowEligible": 103,
+      "rows": 104,
+      "top1": 72,
+      "top1Accuracy": 0.6923076923076923,
+      "top3": 82,
+      "top3Accuracy": 0.7884615384615384,
+      "vocabularyCoverage": 0.875
+    },
+    "long": {
+      "inVocabulary": 106,
+      "lengthWindowCoverage": 0.991869918699187,
+      "lengthWindowEligible": 122,
+      "rows": 123,
+      "top1": 97,
+      "top1Accuracy": 0.7886178861788617,
+      "top3": 102,
+      "top3Accuracy": 0.8292682926829268,
+      "vocabularyCoverage": 0.8617886178861789
+    },
+    "medium": {
+      "inVocabulary": 462,
+      "lengthWindowCoverage": 1.0,
+      "lengthWindowEligible": 489,
+      "rows": 489,
+      "top1": 403,
+      "top1Accuracy": 0.8241308793456033,
+      "top3": 433,
+      "top3Accuracy": 0.885480572597137,
+      "vocabularyCoverage": 0.9447852760736196
+    },
+    "overall": {
+      "inVocabulary": 955,
+      "lengthWindowCoverage": 0.999,
+      "lengthWindowEligible": 999,
+      "rows": 1000,
+      "top1": 877,
+      "top1Accuracy": 0.877,
+      "top3": 918,
+      "top3Accuracy": 0.918,
+      "vocabularyCoverage": 0.955
+    },
+    "return_trip": {
+      "inVocabulary": 259,
+      "lengthWindowCoverage": 0.9965156794425087,
+      "lengthWindowEligible": 286,
+      "rows": 287,
+      "top1": 235,
+      "top1Accuracy": 0.818815331010453,
+      "top3": 251,
+      "top3Accuracy": 0.8745644599303136,
+      "vocabularyCoverage": 0.9024390243902439
+    },
+    "short": {
+      "inVocabulary": 387,
+      "lengthWindowCoverage": 1.0,
+      "lengthWindowEligible": 388,
+      "rows": 388,
+      "top1": 377,
+      "top1Accuracy": 0.9716494845360825,
+      "top3": 383,
+      "top3Accuracy": 0.9871134020618557,
+      "vocabularyCoverage": 0.9974226804123711
+    },
+    "sloppy": {
+      "inVocabulary": 238,
+      "lengthWindowCoverage": 1.0,
+      "lengthWindowEligible": 244,
+      "rows": 244,
+      "top1": 201,
+      "top1Accuracy": 0.8237704918032787,
+      "top3": 211,
+      "top3Accuracy": 0.8647540983606558,
+      "vocabularyCoverage": 0.9754098360655737
+    },
+    "very_sloppy": {
+      "inVocabulary": 98,
+      "lengthWindowCoverage": 1.0,
+      "lengthWindowEligible": 100,
+      "rows": 100,
+      "top1": 80,
+      "top1Accuracy": 0.8,
+      "top3": 85,
+      "top3Accuracy": 0.85,
+      "vocabularyCoverage": 0.98
+    }
+  },
+  "toolchain": {
+    "numpy": "2.2.6",
+    "onnxruntime": "1.26.0"
+  }
+}

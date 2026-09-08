@@ -316,3 +316,12 @@ separation. The script omits retained AOSP suggestions, personalization, languag
 fallback, and full-IME latency. It does not change candidate recall or production fusion settings.
 The small partial-training smoke passed, and an independent replay reproduced its zero-context
 baseline exactly. No coefficient selection or quality claim follows from that smoke.
+
+The rejected greedy-OOV experiment was rerun solely to retain scored slates for the context
+comparison. Known-offensive entries from the full native dictionary were excluded. It again added
+315 candidates across 1,000 validation paths and reproduced static/union top-1/top-3 of
+87.7%/91.8% and 84.2%/91.5%, respectively. All four metric tables replay exactly from the saved slates;
+999 rows have verified reference-prefix joins, including 100 very-sloppy rows. The
+[baseline report](models/evidence/swipe-greedy-context-base-1000.json) and
+[replay proof](models/evidence/greedy-context-swipes-slate-verification.json) bind the diagnostic.
+This preserves a rejected baseline for later context scoring; it does not adopt the OOV strategy.
