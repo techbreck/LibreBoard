@@ -16,6 +16,8 @@ import sys
 import time
 from collections import defaultdict
 
+import audit_context_prompt_overlap
+import audit_joint_model_splits
 import context_model_contract
 import context_tokenizer_contract
 import evaluate_swipe_ctc
@@ -89,10 +91,40 @@ def ranking_metrics(scores, teacher_scores):
     }
 
 
+def bind_prompt_exclusions(records, source_ids, policy_sha256):
+    """Reconstruct teacher identifiers; never guess a scored row from textual similarity."""
+    remaining = set(source_ids)
+    matches = {}
+    for record in records:
+        for source_id in tuple(remaining):
+            binding = {
+                "sourceRecordId": source_id, "prefixTokenIds": record["prefixTokenIds"],
+                "candidates": [candidate["normalized"] for candidate in record["candidates"]],
+                "policySha256": policy_sha256,
+            }
+            identifier = hashlib.sha256(train_context_model.score_context_teacher._canonical_line(binding)).hexdigest()
+            if identifier == record["id"]:
+                matches[source_id] = identifier
+                remaining.remove(source_id)
+                break
+    if remaining:
+        raise ContextEvaluationError("prompt exclusions could not be bound to every scored record")
+    return matches
+
+
+def metric_report(counts):
+    metrics = {}
+    for group, values in sorted(counts.items()):
+        metrics[group] = dict(values)
+        for name in ("observedTop1", "observedTop3", "teacherTop1Agreement"):
+            metrics[group][name + "Rate"] = values[name] / values["examples"]
+    return metrics
+
+
 def evaluate(args):
     if args.maximum_examples is not None and (not args.development or args.maximum_examples < 1):
         raise ContextEvaluationError("a positive --maximum-examples requires --development")
-    spec = context_model_contract.load_spec()
+    spec = context_model_contract.load_spec(args.spec)
     report, model_path, tokenizer_path, report_hash = load_export(args.export_report, spec, args.development)
     root = args.scored_root
     manifest_path = args.distillation_manifest or root / (
@@ -103,6 +135,22 @@ def evaluate(args):
     )
     if manifest_hash != report["dataManifestSha256"]:
         raise ContextEvaluationError("evaluation data differs from trained corpus")
+    prompt_corpus = getattr(args, "prompt_audit_corpus_manifest", None)
+    prompt_root = getattr(args, "prompt_audit_data_root", None)
+    if bool(prompt_corpus) != bool(prompt_root):
+        raise ContextEvaluationError("prompt audit requires both corpus manifest and prepared data root")
+    prompt_audit = None
+    prompt_excluded = set()
+    if prompt_corpus is not None:
+        prompt_audit = audit_context_prompt_overlap.run(prompt_corpus, prompt_root)
+        if prompt_audit["contextCorpusManifestSha256"] != manifest["dataManifestSha256"]:
+            raise ContextEvaluationError("prompt audit corpus differs from the trained distillation corpus")
+        mappings = bind_prompt_exclusions(
+            audit_joint_model_splits.verified_rows(
+                root / f"{args.split}.scored.jsonl", manifest["outputs"][f"{args.split}.scored.jsonl"], args.split,
+            ), prompt_audit["excludedIds"][args.split], manifest["distillationPolicySha256"],
+        )
+        prompt_excluded = set(mappings.values())
     tokenizer = context_tokenizer_contract.load_tokenizer(
         tokenizer_path, expected_vocabulary_size=spec.architecture["vocabularySize"],
     )
@@ -124,7 +172,7 @@ def evaluate(args):
         name: sum(f"{node.domain}::{node.op_type}" == name for node in graph.graph.node)
         for name in export_context_model.EXPECTED_CUSTOM_OPERATORS
     }
-    if (custom_counts != {"com.microsoft::GatherBlockQuantized": 4, "com.microsoft::MatMulNBits": 56}
+    if (custom_counts != {"com.microsoft::GatherBlockQuantized": 4, "com.microsoft::MatMulNBits": 7 * spec.architecture["layers"]}
             or custom_counts != report.get("customOperatorCounts")):
         raise ContextEvaluationError("context custom operator counts differ from the export contract")
     del graph
@@ -144,6 +192,8 @@ def evaluate(args):
     details = manifest["outputs"][f"{args.split}.scored.jsonl"]
     counts = defaultdict(lambda: defaultdict(int))
     times = []
+    prompt_counts = defaultdict(lambda: defaultdict(int))
+    excluded_rows_seen = 0
     for index, record in enumerate(train_context_model._records(
         root / f"{args.split}.scored.jsonl", split=args.split, expected_records=details["records"],
         seed=spec.training["seed"], shuffle_buffer=1, parser_arguments=parser,
@@ -165,16 +215,15 @@ def evaluate(args):
         for group in ("overall", record["language"]):
             for key, value in metrics.items():
                 counts[group][key] += value
+                if prompt_audit is not None and record["id"] not in prompt_excluded:
+                    prompt_counts[group][key] += value
+        excluded_rows_seen += record["id"] in prompt_excluded
         if (index + 1) % 250 == 0:
             print(f"evaluated {index + 1}/{details['records']} context slates", file=sys.stderr, flush=True)
     if not times:
         raise ContextEvaluationError("context evaluation has no examples")
-    metrics = {}
-    for group, values in sorted(counts.items()):
-        metrics[group] = dict(values)
-        for name in ("observedTop1", "observedTop3", "teacherTop1Agreement"):
-            metrics[group][name + "Rate"] = values[name] / values["examples"]
-    return {
+    metrics = metric_report(counts)
+    result = {
         "schemaVersion": 1, "diagnosticOnly": True, "satisfiesPhase0": False,
         "development": args.development, "split": args.split,
         "maximumExamples": args.maximum_examples, "metrics": metrics,
@@ -191,12 +240,25 @@ def evaluate(args):
                         "Top-rank ties are counted against the observed label."],
     }
 
+    if prompt_audit is not None:
+        result["promptDisjointDiagnostic"] = {
+            "diagnosticOnly": True, "contextCorpusManifestSha256": prompt_audit["contextCorpusManifestSha256"],
+            "auditToolSha256": prompt_audit["toolSha256"], "normalization": prompt_audit["normalization"],
+            "excludedScoredIds": sorted(prompt_excluded), "excludedRowsSeen": excluded_rows_seen,
+            "metrics": metric_report(prompt_counts),
+            "limitations": prompt_audit["limitations"],
+        }
+    return result
+
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--spec", type=pathlib.Path, default=context_model_contract.DEFAULT_SPEC)
     parser.add_argument("--export-report", type=pathlib.Path, default=export_context_model.DEFAULT_OUTPUT_ROOT / "export-report.json")
     parser.add_argument("--scored-root", type=pathlib.Path, default=train_context_model.DEFAULT_SCORED_ROOT)
     parser.add_argument("--distillation-manifest", type=pathlib.Path)
+    parser.add_argument("--prompt-audit-corpus-manifest", type=pathlib.Path)
+    parser.add_argument("--prompt-audit-data-root", type=pathlib.Path)
     parser.add_argument("--output", type=pathlib.Path, required=True)
     parser.add_argument("--split", choices=("validation", "test"), default="validation")
     parser.add_argument("--threads", type=int, choices=range(1, 65), default=1)

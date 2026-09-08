@@ -143,15 +143,14 @@ def load_spec(path: pathlib.Path = DEFAULT_SPEC) -> ContextModelSpec:
         "maximumCandidateTokens": 8,
         "vocabularySize": 16_384,
         "fieldClasses": 5,
-        "width": 512,
-        "heads": 8,
-        "layers": 8,
-        "feedForwardWidth": 1_536,
         "scoring": "shifted-tied-embedding-mean-v1",
     }
     for field, expected in expected_architecture.items():
         if architecture.get(field) != expected:
             raise ContextModelContractError(f"context architecture {field} must be {expected}")
+    profile = tuple(architecture[field] for field in ("width", "heads", "layers", "feedForwardWidth"))
+    if profile not in ((512, 8, 8, 1536), (256, 4, 4, 768)):
+        raise ContextModelContractError("context architecture must match an approved candidate profile")
     if architecture["width"] % architecture["heads"] != 0:
         raise ContextModelContractError("context attention width must divide evenly across heads")
     _finite_float(architecture["dropout"], "context dropout", 0, 0.5)

@@ -339,7 +339,7 @@ def export(args: argparse.Namespace) -> dict[str, Any]:
         }
         if custom_counts != {
             "com.microsoft::GatherBlockQuantized": 4,
-            "com.microsoft::MatMulNBits": 56,
+            "com.microsoft::MatMulNBits": 7 * spec.architecture["layers"],
         }:
             raise ContextExportError(f"quantized context operator counts drifted: {custom_counts}")
 

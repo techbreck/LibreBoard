@@ -16,11 +16,12 @@ import model_sources
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--spec", type=pathlib.Path, default=context_model_contract.DEFAULT_SPEC)
     parser.add_argument("--export-report", type=pathlib.Path, required=True)
     parser.add_argument("--output-root", type=pathlib.Path, required=True)
     parser.add_argument("--development", action="store_true")
     args = parser.parse_args()
-    spec = context_model_contract.load_spec()
+    spec = context_model_contract.load_spec(args.spec)
     report, model, _, export_hash = evaluate_context_model.load_export(args.export_report, spec, args.development)
     torch, np, onnx, ort, *rest = export_context_model._dependencies()
     if report["toolchain"] != rest[-1]:
