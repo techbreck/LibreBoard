@@ -70,5 +70,26 @@ python tools/export_context_model.py --development \
 
 The retained comparison is `build/linux-exports/context-smoke-reproducibility.json`, SHA-256
 `781b174af9a6f982d3e4b2d7d4c4bb680eac2213e11984b9afe17ba74327af51`. It binds all output files,
-the pinned lock, image identity, training report and runtime smoke report. The completed full
-training candidate still requires its own export and evaluation.
+the pinned lock, image identity, training report and runtime smoke report. Full-candidate evidence
+is recorded separately below.
+
+## Full context candidate
+
+The completed four-epoch student has two byte-identical Linux exports across all eight files. Use
+the same context environment with the full report and omit `--development`:
+
+```sh
+python tools/export_context_model.py \
+  --training-report build/model-training/context-en-de-v1/training-report.json \
+  --output-root /output/export
+```
+
+The canonical model SHA-256 is
+`53e1a1d29566efaa4ca3fe1b396206c10d211cdb2394d231dc0413b146dc17a2`. The retained comparison is
+`build/linux-exports/context-full-reproducibility.json`, SHA-256
+`525aba62ad5bd6725f3b32f5264a525f38ce611adf6795808a0f85685822ca04`.
+The macOS export differs slightly in quantized and constant tensor bytes, so validation, test and
+Android kernel parity were repeated against the canonical Linux artifact. Their metrics and the
+remaining acceptance gates are in the [context model card](../../models/context/MODEL_CARD.md).
+This closes repeatable export of this checkpoint; it is not deterministic retraining or release
+qualification.

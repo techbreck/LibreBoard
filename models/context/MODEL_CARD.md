@@ -134,7 +134,7 @@ rankings, not real tap-error or fused-keyboard acceptance results.
 
 The full weights SHA-256 is
 `95384df3d674f2022c84f0b56528e735db9505295732f6421d90618adefaff14`.
-The checked INT4 ONNX graph is 19,809,100 bytes with SHA-256
+The macOS INT4 export is 19,809,100 bytes with SHA-256
 `b6dde70259d75790d8685884a50b9939f88befd55405fa3e78f6d8edebc033df`.
 The local training report is `build/model-training/context-en-de-v1/training-report.json`, SHA-256
 `0b2bf05e1f8b0916580eff9e032138fb7765ffa693c6073f822a7dec779663e8`.
@@ -148,3 +148,34 @@ sample of 155,094 KiB (57.7 MiB higher); snapshots are not a measurement of isol
 and do not include a combined swipe/context live workload. Neither the 35 ms context budget nor the
 64 MiB combined memory gate is established by this diagnostic. The retained device report is
 `build/device-evidence/context-full-runtime/android-report.json` and binds the model, fixture and APK.
+
+### Canonical Linux export and quantized evaluation
+
+Two fresh x86-64 Linux containers produced all eight full-candidate export files byte-identically.
+The canonical Linux ONNX SHA-256 is
+`53e1a1d29566efaa4ca3fe1b396206c10d211cdb2394d231dc0413b146dc17a2` (19,809,100 bytes).
+It differs from the macOS export in two packed INT4 bytes and 60 float constants whose maximum
+absolute difference is 5.96e-8; the structure excluding tensor data matches. Cross-OS byte identity
+is not claimed. Both full validation/test diagnostics were rerun against the canonical Linux artifact,
+and all aggregate ranking counts match the macOS artifact's counts.
+
+| Split / language | Slates | Observed top-1 | Observed top-3 |
+|---|---:|---:|---:|
+| Validation, all | 3,364 | 67.39% | 83.92% |
+| Validation, English | 2,518 | 60.76% | 78.59% |
+| Validation, German | 846 | 87.12% | 99.76% |
+| Test, all | 3,764 | 70.06% | 85.89% |
+| Test, English | 2,650 | 63.58% | 80.15% |
+| Test, German | 1,114 | 85.46% | 99.55% |
+
+No top-rank ties occurred. The German template source and English public source have different
+coverage; their combined number must not be presented as natural multilingual typing accuracy.
+The canonical artifact also independently passes Android synthetic score parity. Its single-run
+batch timings were 38.4/48.0/145.1 ms, with a maximum sampled PSS increase of 57.3 MiB. The same
+latency, memory and full-fusion limitations above apply.
+
+The hash-bound local evidence is `build/linux-exports/context-full-reproducibility.json`, SHA-256
+`525aba62ad5bd6725f3b32f5264a525f38ce611adf6795808a0f85685822ca04`. It includes the image ID,
+all eight export hashes, the toolchain lock, training report, canonical validation/test diagnostics,
+and canonical Android report. Both evaluation reports retain `satisfiesPhase0: false`. Neither
+candidate is accepted for signing or model-pack distribution.

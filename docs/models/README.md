@@ -210,6 +210,7 @@ context student has completed all four epochs and checked INT4 export, with Andr
 parity for batch sizes 1, 8 and 32. Both models still await acceptance against the independent quality,
 performance and physical-device gates; see the context model card for the full candidate hashes.
 
-The fixed swipe checkpoint now has [two identical clean Linux exports](linux-export.md). This
-closes the model-export reproducibility slice only; APK reproduction and all quality/device gates
+The fixed swipe and full context checkpoints now each have [two identical clean Linux exports](linux-export.md).
+The canonical context export also has full validation/test diagnostics and Android kernel-parity
+evidence. These close export/diagnostic slices only; APK reproduction and all quality/device gates
 remain separate.
