@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from typing import Any, BinaryIO, Iterator
 
 import model_sources
+import prepare_swipe_dataset
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -33,7 +34,7 @@ POLICY_KEYS = {
     "splitBasisPoints", "sentenceSampleBasisPoints", "maximumLineBytes",
     "maximumSentenceCodePoints", "maximumSentenceTokens", "minimumSentenceTokens",
     "maximumAuthoredExpansionsPerTemplate", "minimumAcceptedSentences",
-    "minimumGermanSentences", "maximumRejectedFraction",
+    "minimumGermanSentences", "maximumRejectedFraction", "sharedSwipePolicySha256",
 }
 PROJECT_KEYS = {
     "schemaVersion", "id", "locale", "license", "slots", "templates",
@@ -58,6 +59,8 @@ class Policy:
     project_authored_data: str
     split_salt: str
     split_basis_points: dict[str, int]
+    shared_source_id: str
+    shared_split_salt: str
     sentence_sample_basis_points: int
     maximum_line_bytes: int
     maximum_sentence_codepoints: int
@@ -112,8 +115,11 @@ def _bounded_int(raw: dict[str, Any], field: str, minimum: int, maximum: int) ->
 def load_policy(path: pathlib.Path = DEFAULT_POLICY) -> Policy:
     path = path.resolve()
     raw, payload = _load_json(path, MAXIMUM_POLICY_BYTES, "context data policy")
-    if set(raw) != POLICY_KEYS or raw.get("schemaVersion") != 1:
+    if set(raw) != POLICY_KEYS or raw.get("schemaVersion") != 2:
         raise ContextDataError("context data policy has an unexpected schema")
+    shared_policy = prepare_swipe_dataset.load_policy()
+    if raw["sharedSwipePolicySha256"] != shared_policy.sha256:
+        raise ContextDataError("context data policy must bind the exact shared swipe policy")
     source_id = raw["sourceId"]
     if not isinstance(source_id, str) or not model_sources.SOURCE_ID.fullmatch(source_id):
         raise ContextDataError("context data policy has an invalid sourceId")
@@ -140,6 +146,8 @@ def load_policy(path: pathlib.Path = DEFAULT_POLICY) -> Policy:
         raise ContextDataError("context split sizes must be positive integers")
     if sum(split_points.values()) != 10_000:
         raise ContextDataError("context split basis points must total 10000")
+    if source_id == shared_policy.source_id and split_points != shared_policy.split_basis_points:
+        raise ContextDataError("shared source sessions must use the same context/swipe split boundaries")
 
     integers = {
         "sentenceSampleBasisPoints": _bounded_int(raw, "sentenceSampleBasisPoints", 1, 10_000),
@@ -170,6 +178,8 @@ def load_policy(path: pathlib.Path = DEFAULT_POLICY) -> Policy:
         project_authored_data=project_data,
         split_salt=split_salt,
         split_basis_points=dict(split_points),
+        shared_source_id=shared_policy.source_id,
+        shared_split_salt=shared_policy.split_salt,
         sentence_sample_basis_points=integers["sentenceSampleBasisPoints"],
         maximum_line_bytes=integers["maximumLineBytes"],
         maximum_sentence_codepoints=integers["maximumSentenceCodePoints"],
@@ -200,6 +210,10 @@ def _normalize_sentence(value: str, policy: Policy) -> tuple[str | None, str | N
 
 
 def session_hash(namespace: str, session: str, policy: Policy) -> str:
+    if namespace == policy.shared_source_id:
+        # A shared public collection session must not train one model while testing the other.
+        # Match the CTC session identity exactly; project-authored namespaces remain separate.
+        return hashlib.sha256((policy.shared_split_salt + "\0" + session).encode()).hexdigest()
     return hashlib.sha256((policy.split_salt + "\0" + namespace + "\0" + session).encode()).hexdigest()
 
 

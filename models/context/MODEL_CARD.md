@@ -2,6 +2,13 @@
 
 ## Status
 
+The shared-session correction is being prepared in an isolated candidate checkout. Its schema-2
+data policy binds the swipe policy hash and assigns shared FUTO sessions to exactly the same split
+in both pipelines, while retaining separate project-authored namespaces. It has 68,494 sentences:
+61,604 train, 3,253 validation and 3,637 test. The previous teacher manifest must not be used with
+this changed corpus; fresh teacher scoring, training and evaluation are required. Measurements
+below describe the earlier independent-split candidate until replacement evidence is recorded.
+
 No release weights are accepted yet. This card defines the fixed architecture, tokenizer and export
 contracts that a trained `context-en-de-v1.onnx` candidate must satisfy before it can enter the
 official data-only model pack.

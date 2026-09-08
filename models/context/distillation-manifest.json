@@ -1,49 +1,49 @@
 {
-  "appCommit": "6603670af21c630f38aa63e3566526ae684cb8a8",
-  "dataManifestSha256": "63bfb424dcf7cdc2c113b8bf0dd3bf26fb4f569c0fadd9d5659d0a38746081df",
-  "distillationPolicySha256": "1c936ed0de0e70fd7d780e9fa5bb6be9b488038db2347dfebd83b49a9bbd87ad",
+  "appCommit": "8e9ac4549e299f07de74273710b1928ebb635cbe",
+  "dataManifestSha256": "2c49ca71d9e9ef4832eefba5f3d58a7cebae8a916e78b372764c12ea1892bf12",
+  "distillationPolicySha256": "5873c6195ed8506e1517f839e208c58da42c30c6b2e7b390207ff9d70fe0e48d",
   "generationCounts": {
     "language:test:de": 1114,
-    "language:test:en-US": 2650,
+    "language:test:en-US": 2523,
     "language:train:de": 16916,
-    "language:train:en-US": 44704,
+    "language:train:en-US": 44688,
     "language:validation:de": 846,
-    "language:validation:en-US": 2518,
-    "scored:test": 3764,
-    "scored:train": 61620,
-    "scored:validation": 3364,
-    "source:test": 3764,
-    "source:train": 61620,
-    "source:validation": 3364
+    "language:validation:en-US": 2407,
+    "scored:test": 3637,
+    "scored:train": 61604,
+    "scored:validation": 3253,
+    "source:test": 3637,
+    "source:train": 61604,
+    "source:validation": 3253
   },
   "modelId": "context-en-de-v1",
   "outputs": {
     "test.scored.jsonl": {
-      "bytes": 4866004,
+      "bytes": 4691633,
       "languages": {
         "de": 1114,
-        "en-US": 2650
+        "en-US": 2523
       },
-      "records": 3764,
-      "sha256": "601af0241da189a25247e810a1d293c738e2f5f9338dde365f95142243e3a848"
+      "records": 3637,
+      "sha256": "ad05c58e8dcdc4e03d2cbfd0e68606fa725b57dc963374a893df47023eb8bcbf"
     },
     "train.scored.jsonl": {
-      "bytes": 79597816,
+      "bytes": 79594914,
       "languages": {
         "de": 16916,
-        "en-US": 44704
+        "en-US": 44688
       },
-      "records": 61620,
-      "sha256": "80d96c0750a82b6de664bf07d697809cf313c561b3ed399b12e39d924fe0fb98"
+      "records": 61604,
+      "sha256": "d8b29012658f59161ee10bba192f42230cc452205980b40be791f35c9e442899"
     },
     "validation.scored.jsonl": {
-      "bytes": 4371371,
+      "bytes": 4226706,
       "languages": {
         "de": 846,
-        "en-US": 2518
+        "en-US": 2407
       },
-      "records": 3364,
-      "sha256": "f6750a9d822a3390e1c09cb2290e5c545ded186ab2f855ec6e8c0da55566223a"
+      "records": 3253,
+      "sha256": "e3f7e45fe1fe9ce636b6eba79b61d9f7d39eaac4293c3b1c1fddc3aa21a909d1"
     }
   },
   "releaseEligible": true,
@@ -57,37 +57,36 @@
   },
   "teacherMetrics": {
     "test": {
-      "candidateRows": 30112,
-      "observedTop1": 2651,
-      "observedTop1Rate": 0.7043039319872476,
-      "records": 3764,
+      "candidateRows": 29096,
+      "observedTop1": 2488,
+      "observedTop1Rate": 0.6840802859499587,
+      "records": 3637,
       "slateSizes": {
-        "8": 3764
+        "8": 3637
       }
     },
     "train": {
-      "candidateRows": 492953,
-      "observedTop1": 43525,
-      "observedTop1Rate": 0.7063453424212918,
-      "records": 61620,
+      "candidateRows": 492824,
+      "observedTop1": 43734,
+      "observedTop1Rate": 0.7099214336731381,
+      "records": 61604,
       "slateSizes": {
-        "6": 3,
-        "7": 1,
-        "8": 61616
+        "6": 4,
+        "8": 61600
       }
     },
     "validation": {
-      "candidateRows": 26912,
-      "observedTop1": 2375,
-      "observedTop1Rate": 0.7060047562425684,
-      "records": 3364,
+      "candidateRows": 26024,
+      "observedTop1": 2250,
+      "observedTop1Rate": 0.6916692284045497,
+      "records": 3253,
       "slateSizes": {
-        "8": 3364
+        "8": 3253
       }
     }
   },
   "tokenizerContractToolSha256": "f0fd863c4c174ab9190df23f3307ab5799db3f463bd21fc979788a2965c4d9a6",
-  "tokenizerSha256": "1395e285927bfbfa5888dc7c83e4f57dfcfbfeb54f29a3cf2437f5db3d71d6a2",
+  "tokenizerSha256": "e2089ddfa01ff69eba73195cb3623c86703a812a712ec356ec5fe837297a8cc9",
   "toolSha256": "04127609664ffaf46d1be47f758705d156586bb1f7d46025a82fd8ebb45b6b17",
   "toolchain": {
     "torch": "2.8.0",

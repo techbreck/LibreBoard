@@ -145,6 +145,35 @@ class PreparedFixture:
 
 
 class PrepareContextDatasetTest(unittest.TestCase):
+    def test_shared_collection_sessions_match_swipe_identity_and_split(self):
+        policy = context_data.load_policy()
+        swipe = context_data.prepare_swipe_dataset.load_policy()
+        for index in range(1000):
+            session = f"shared-session-{index}"
+            self.assertEqual(context_data.prepare_swipe_dataset.session_hash(session, swipe),
+                             context_data.session_hash(swipe.source_id, session, policy))
+            self.assertEqual(context_data.prepare_swipe_dataset.split_for_session(session, swipe),
+                             context_data.split_for_session(swipe.source_id, session, policy))
+
+    def test_project_authored_sessions_keep_their_namespace(self):
+        policy = context_data.load_policy()
+        self.assertNotEqual(context_data.session_hash(policy.shared_source_id, "same-session", policy),
+                            context_data.session_hash("project-authored", "same-session", policy))
+
+    def test_shared_policy_hash_and_boundaries_cannot_drift(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "policy.json"
+            for update in (
+                {"sharedSwipePolicySha256": "0" * 64},
+                {"splitBasisPoints": {"train": 8000, "validation": 1000, "test": 1000}},
+            ):
+                with self.subTest(update=update):
+                    policy = json.loads(context_data.DEFAULT_POLICY.read_text())
+                    policy.update(update)
+                    path.write_bytes(canonical(policy))
+                    with self.assertRaises(context_data.ContextDataError):
+                        context_data.load_policy(path)
+
     def setUp(self):
         self.fixture = PreparedFixture()
 
