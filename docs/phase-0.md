@@ -37,3 +37,28 @@ added peak memory, reproducibility, licensing, and the physical GrapheneOS matri
 
 The repository may ship core keyboard improvements before then, but releases must describe the neural
 components as unavailable and must keep the classic/geometric fallback fully usable.
+
+## Current evidence and remaining gates, 2026-09-08
+
+The completed context training/export/diagnostic work is recorded in the
+[context model card](../models/context/MODEL_CARD.md). Its two Linux exports are byte-identical,
+and the exact Linux artifact has full distillation validation/test results and Android kernel
+parity. Those results do not establish correction gains on human tap errors.
+
+| Required evidence | Current state |
+|---|---|
+| 3,000 held-out human spatial tap errors | 2,113; another 887 required |
+| Valid-word correction and keep coverage | 6,132 corrections and 4,635 keeps; count minimums met, quality not measured |
+| 500 split/join cases | None in the combined corpus |
+| Contraction/personal/compound coverage | 3,244 contraction cases; personal and compound coverage missing |
+| Swipe absolute quality and difficult strata | Offline native-lexicon union remains below absolute top-1/top-3 gates; full live fusion is not qualified |
+| End-to-end latency and combined added peak memory | Not qualified; diagnostic snapshots and generous-deadline replays are insufficient |
+| Required device matrix | Forced-low-RAM emulator checks exist; stock physical Android and physical GrapheneOS evidence are absent |
+| Model/runtime release reproducibility | Both fixed model exports repeat on Linux; two clean Linux runtime AARs and signed model-pack builds are not established |
+| Signing and publication | No accepted production key or model-qualified release; artifacts remain local and unsigned/unaccepted |
+
+The [tap corpus report](phase-0-tap-corpus.md), [swipe evaluation](swipe-ctc-evaluation.md),
+[device tests](testing.md), and [APK build evidence](release/abi-packaging.md) retain exact scope
+and limitations. Missing human cases cannot be supplied by duplicating examples, manufacturing
+touches, or changing session splits to increase test counts. Physical-device checks cannot be
+replaced by emulator fingerprints. Phase 0 remains open.
