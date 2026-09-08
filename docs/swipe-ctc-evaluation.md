@@ -295,3 +295,24 @@ to both CTC and geometry lowered combined top-1/top-3 from 86.6%/92.7% to 85.0%/
 only supplemented CTC with the original geometric candidates yielded 84.8%/92.3%. Both scoring
 variants were rejected; coverage gains did not translate to ranking gains. The frequency prior was
 experimental and uncalibrated. See `docs/models/evidence/swipe-supplement-ranking-comparison.json`.
+
+### Reference-prefix context validation
+
+`tools/evaluate_swipe_context.py` scores the frozen merged slates with a checked context export.
+It verifies slate hashes/counts, joins publisher reference prefixes by row/session/target/language
+and strata, and requires a corpus-bound joint-split audit with zero context-training overlap in the
+validation pool. Missing aligned reference rows are counted rather than silently invented.
+The script compares neural coefficients 0, 0.35, 0.7, 0.95 and 1.2 (the existing 0/25/50/75/100
+strength mapping). It cannot evaluate the final test split or claim release qualification.
+
+Supply `--slates-report`, `--slates`, `--prefix-manifest`, `--prefix-root`, `--joint-split-audit`,
+`--distillation-manifest`, `--spec`, `--export-report` and a new `--output` path. Each manifest must
+refer to the same prepared corpus/model chain; the smaller student requires its explicit candidate
+specification. A bounded wiring smoke additionally uses `--development --maximum-examples 16`.
+
+This measures only static/spatial/context ranking over existing candidates. Reference prefixes are
+publisher prompts, not captured editor input; exact prompt overlap remains possible despite session
+separation. The script omits retained AOSP suggestions, personalization, language locks, deadline
+fallback, and full-IME latency. It does not change candidate recall or production fusion settings.
+The small partial-training smoke passed, and an independent replay reproduced its zero-context
+baseline exactly. No coefficient selection or quality claim follows from that smoke.
