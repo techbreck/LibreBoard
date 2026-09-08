@@ -1,0 +1,68 @@
+{
+  "auditToolSha256": "272e2a83e22f749272cac6bafb91593d8e70909f1ca63875da8dfee1163ac953",
+  "contextCorpusManifestSha256": "63bfb424dcf7cdc2c113b8bf0dd3bf26fb4f569c0fadd9d5659d0a38746081df",
+  "counts": {
+    "test": {
+      "contextSplitRows": {
+        "absent": 1123,
+        "test": 2556,
+        "train": 47931,
+        "validation": 2226
+      },
+      "contextSplitSessions": {
+        "absent": 86,
+        "test": 27,
+        "train": 447,
+        "validation": 22
+      },
+      "contextUnseenRows": 3679,
+      "contextUnseenStrata": {
+        "clean": 3013,
+        "double_letter": 357,
+        "long": 425,
+        "medium": 1933,
+        "return_trip": 1088,
+        "short": 1321,
+        "sloppy": 666,
+        "very_sloppy": 151
+      }
+    },
+    "validation": {
+      "contextSplitRows": {
+        "absent": 1345,
+        "test": 1653,
+        "train": 42628,
+        "validation": 1729
+      },
+      "contextSplitSessions": {
+        "absent": 97,
+        "test": 30,
+        "train": 450,
+        "validation": 26
+      },
+      "contextUnseenRows": 2998,
+      "contextUnseenStrata": {
+        "clean": 2441,
+        "double_letter": 289,
+        "long": 346,
+        "medium": 1547,
+        "return_trip": 871,
+        "short": 1105,
+        "sloppy": 557,
+        "very_sloppy": 138
+      }
+    }
+  },
+  "diagnosticOnly": true,
+  "jointTestPoolMeetsCountMinimums": false,
+  "limitations": [
+    "Absent means no accepted context sentence from that source session.",
+    "Session separation does not prove prompt/text separation across sessions.",
+    "Component-only diagnostics do not invoke the other model."
+  ],
+  "releaseEligible": false,
+  "schemaVersion": 1,
+  "scope": "Source-session overlap only; no inference or quality qualification",
+  "sourceManifestSha256": "22d5de1bd8937bb6052c6bc04afd178d0d9037b3c8642cf78492b01cf2b4d213",
+  "swipeCorpusManifestSha256": "c56b13c5895a0037df4599753963fb16ba2b43bd60ff7f2ea7074959dca715cd"
+}

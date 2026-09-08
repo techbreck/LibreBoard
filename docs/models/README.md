@@ -214,3 +214,7 @@ The fixed swipe and full context checkpoints now each have [two identical clean 
 The canonical context export also has full validation/test diagnostics and Android kernel-parity
 evidence. These close export/diagnostic slices only; APK reproduction and all quality/device gates
 remain separate.
+
+See [shared context/swipe session splits](joint-session-splits.md) before interpreting combined-model
+quality. The original independent context split is unsuitable for the full CTC test pool; a corrected
+shared-session candidate is being regenerated.

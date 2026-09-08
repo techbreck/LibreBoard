@@ -1,0 +1,68 @@
+{
+  "auditToolSha256": "272e2a83e22f749272cac6bafb91593d8e70909f1ca63875da8dfee1163ac953",
+  "contextCorpusManifestSha256": "2c49ca71d9e9ef4832eefba5f3d58a7cebae8a916e78b372764c12ea1892bf12",
+  "counts": {
+    "test": {
+      "contextSplitRows": {
+        "absent": 1441,
+        "test": 52395,
+        "train": 0,
+        "validation": 0
+      },
+      "contextSplitSessions": {
+        "absent": 104,
+        "test": 478,
+        "train": 0,
+        "validation": 0
+      },
+      "contextUnseenRows": 53836,
+      "contextUnseenStrata": {
+        "clean": 43328,
+        "double_letter": 5301,
+        "long": 6216,
+        "medium": 28272,
+        "return_trip": 15909,
+        "short": 19348,
+        "sloppy": 10508,
+        "very_sloppy": 2287
+      }
+    },
+    "validation": {
+      "contextSplitRows": {
+        "absent": 1293,
+        "test": 0,
+        "train": 0,
+        "validation": 46062
+      },
+      "contextSplitSessions": {
+        "absent": 87,
+        "test": 0,
+        "train": 0,
+        "validation": 516
+      },
+      "contextUnseenRows": 1293,
+      "contextUnseenStrata": {
+        "clean": 1085,
+        "double_letter": 104,
+        "long": 133,
+        "medium": 676,
+        "return_trip": 385,
+        "short": 484,
+        "sloppy": 208,
+        "very_sloppy": 50
+      }
+    }
+  },
+  "diagnosticOnly": true,
+  "jointTestPoolMeetsCountMinimums": true,
+  "limitations": [
+    "Absent means no accepted context sentence from that source session.",
+    "Session separation does not prove prompt/text separation across sessions.",
+    "Component-only diagnostics do not invoke the other model."
+  ],
+  "releaseEligible": false,
+  "schemaVersion": 1,
+  "scope": "Source-session overlap only; no inference or quality qualification",
+  "sourceManifestSha256": "22d5de1bd8937bb6052c6bc04afd178d0d9037b3c8642cf78492b01cf2b4d213",
+  "swipeCorpusManifestSha256": "c56b13c5895a0037df4599753963fb16ba2b43bd60ff7f2ea7074959dca715cd"
+}
