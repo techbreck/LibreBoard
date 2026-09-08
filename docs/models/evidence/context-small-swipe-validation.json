@@ -1,0 +1,260 @@
+{
+  "bindings": {
+    "distillation_manifest": "72c090461e1d4be2c9c28902f029633a9ba8f77a69ab6834ec21a32d756481c7",
+    "joint_split_audit": "2a23818e61918c9464440548f5e01a4d020e39b7b55241eed8dd148b0abe4fdf",
+    "prefix_manifest": "7eca2aeddd94e8a9a4f7455a59efc860bf2b597f491f25d58fe203fcd6ec4ad1",
+    "slates": "fbbbcd0ef004f651a2e6c698ce6d834d4d2ca8d5f8195a6c9996e5ff2c61776e",
+    "slates_report": "f639587e23f73d927113d0955a13bd63a6f616ddd9e65fa9314a9daf2275f27f",
+    "spec": "3ee694fad2f51c616dc0a977c17d68babcee4ad9bc0b167a76f674ea09c31283"
+  },
+  "development": false,
+  "diagnosticOnly": true,
+  "exportReportSha256": "168b7399b27b7e972688f7af0abaf98416de960d32da33e6455e4900c055ac6c",
+  "hostInferenceOnlyLatencyMs": {
+    "p50": 25.169333,
+    "p95": 29.55175,
+    "p99": 32.123666
+  },
+  "limitations": [
+    "Validation-only exploratory coefficient comparison, not final test evidence.",
+    "Publisher reference prefixes are not captured prior editor input.",
+    "Session separation is checked; prompt overlap is not excluded.",
+    "Retained AOSP, personal, language-lock, deadline fallback and full IME behavior are not measured.",
+    "No vocabulary additions; candidate recall ceiling remains unchanged."
+  ],
+  "maximumExamples": null,
+  "metrics": {
+    "0.35/clean": {
+      "examples": 4562,
+      "top1": 4017,
+      "top3": 4265
+    },
+    "0.35/double_letter": {
+      "examples": 626,
+      "top1": 451,
+      "top3": 523
+    },
+    "0.35/long": {
+      "examples": 710,
+      "top1": 559,
+      "top3": 593
+    },
+    "0.35/medium": {
+      "examples": 3032,
+      "top1": 2482,
+      "top3": 2728
+    },
+    "0.35/overall": {
+      "examples": 5997,
+      "top1": 5189,
+      "top3": 5537
+    },
+    "0.35/return_trip": {
+      "examples": 1708,
+      "top1": 1387,
+      "top3": 1488
+    },
+    "0.35/short": {
+      "examples": 2255,
+      "top1": 2148,
+      "top3": 2216
+    },
+    "0.35/sloppy": {
+      "examples": 1435,
+      "top1": 1172,
+      "top3": 1272
+    },
+    "0.35/very_sloppy": {
+      "examples": 600,
+      "top1": 467,
+      "top3": 512
+    },
+    "0.7/clean": {
+      "examples": 4562,
+      "top1": 3845,
+      "top3": 4217
+    },
+    "0.7/double_letter": {
+      "examples": 626,
+      "top1": 421,
+      "top3": 511
+    },
+    "0.7/long": {
+      "examples": 710,
+      "top1": 526,
+      "top3": 591
+    },
+    "0.7/medium": {
+      "examples": 3032,
+      "top1": 2332,
+      "top3": 2677
+    },
+    "0.7/overall": {
+      "examples": 5997,
+      "top1": 4983,
+      "top3": 5481
+    },
+    "0.7/return_trip": {
+      "examples": 1708,
+      "top1": 1317,
+      "top3": 1478
+    },
+    "0.7/short": {
+      "examples": 2255,
+      "top1": 2125,
+      "top3": 2213
+    },
+    "0.7/sloppy": {
+      "examples": 1435,
+      "top1": 1138,
+      "top3": 1264
+    },
+    "0.7/very_sloppy": {
+      "examples": 600,
+      "top1": 456,
+      "top3": 513
+    },
+    "0.95/clean": {
+      "examples": 4562,
+      "top1": 3667,
+      "top3": 4156
+    },
+    "0.95/double_letter": {
+      "examples": 626,
+      "top1": 374,
+      "top3": 489
+    },
+    "0.95/long": {
+      "examples": 710,
+      "top1": 493,
+      "top3": 575
+    },
+    "0.95/medium": {
+      "examples": 3032,
+      "top1": 2172,
+      "top3": 2622
+    },
+    "0.95/overall": {
+      "examples": 5997,
+      "top1": 4776,
+      "top3": 5407
+    },
+    "0.95/return_trip": {
+      "examples": 1708,
+      "top1": 1222,
+      "top3": 1440
+    },
+    "0.95/short": {
+      "examples": 2255,
+      "top1": 2111,
+      "top3": 2210
+    },
+    "0.95/sloppy": {
+      "examples": 1435,
+      "top1": 1109,
+      "top3": 1251
+    },
+    "0.95/very_sloppy": {
+      "examples": 600,
+      "top1": 453,
+      "top3": 512
+    },
+    "0/clean": {
+      "examples": 4562,
+      "top1": 4048,
+      "top3": 4281
+    },
+    "0/double_letter": {
+      "examples": 626,
+      "top1": 449,
+      "top3": 524
+    },
+    "0/long": {
+      "examples": 710,
+      "top1": 562,
+      "top3": 599
+    },
+    "0/medium": {
+      "examples": 3032,
+      "top1": 2505,
+      "top3": 2738
+    },
+    "0/overall": {
+      "examples": 5997,
+      "top1": 5198,
+      "top3": 5549
+    },
+    "0/return_trip": {
+      "examples": 1708,
+      "top1": 1397,
+      "top3": 1497
+    },
+    "0/short": {
+      "examples": 2255,
+      "top1": 2131,
+      "top3": 2212
+    },
+    "0/sloppy": {
+      "examples": 1435,
+      "top1": 1150,
+      "top3": 1268
+    },
+    "0/very_sloppy": {
+      "examples": 600,
+      "top1": 457,
+      "top3": 506
+    },
+    "1.2/clean": {
+      "examples": 4562,
+      "top1": 3486,
+      "top3": 4083
+    },
+    "1.2/double_letter": {
+      "examples": 626,
+      "top1": 338,
+      "top3": 467
+    },
+    "1.2/long": {
+      "examples": 710,
+      "top1": 453,
+      "top3": 563
+    },
+    "1.2/medium": {
+      "examples": 3032,
+      "top1": 2016,
+      "top3": 2551
+    },
+    "1.2/overall": {
+      "examples": 5997,
+      "top1": 4556,
+      "top3": 5321
+    },
+    "1.2/return_trip": {
+      "examples": 1708,
+      "top1": 1116,
+      "top3": 1408
+    },
+    "1.2/short": {
+      "examples": 2255,
+      "top1": 2087,
+      "top3": 2207
+    },
+    "1.2/sloppy": {
+      "examples": 1435,
+      "top1": 1070,
+      "top3": 1238
+    },
+    "1.2/very_sloppy": {
+      "examples": 600,
+      "top1": 442,
+      "top3": 510
+    }
+  },
+  "modelSha256": "faa30394b789d1c3161f836783a520468bc5664626a9af8fd8ca1bd5c1157f32",
+  "releaseEligible": false,
+  "rows": 5997,
+  "schemaVersion": 1,
+  "skippedCandidateTokenizations": 0,
+  "toolSha256": "4d0cb9a925537d548b301c23d7bc476b73c2341d72e5ab459ed43acd8770abfd",
+  "unalignedRows": 3
+}

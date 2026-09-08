@@ -1,0 +1,155 @@
+{
+  "appCommit": "f3d6220f1065ccddfe8bfe19fbea4d0943dbebc9",
+  "dataManifestSha256": "72c090461e1d4be2c9c28902f029633a9ba8f77a69ab6834ec21a32d756481c7",
+  "epochs": [
+    {
+      "epoch": 1,
+      "examples": 61604,
+      "meanLosses": {
+        "combined": 2.3102371298363513,
+        "observedCrossEntropy": 1.245355166933628,
+        "ranking": 0.46899477413043783,
+        "teacherCrossEntropy": 1.5703108546857856
+      },
+      "optimizerSteps": 3851,
+      "validation": {
+        "candidateRows": 26024,
+        "examples": 3253,
+        "meanLosses": {
+          "combined": 2.158472436558383,
+          "observedCrossEntropy": 1.1485690610649912,
+          "ranking": 0.3596300064802829,
+          "teacherCrossEntropy": 1.494280405312804
+        },
+        "observedTop1Accuracy": 0.6406394097755918,
+        "teacherPairwiseAgreement": 0.6341069781739932,
+        "teacherTop1Agreement": 0.5315093759606517
+      }
+    },
+    {
+      "epoch": 2,
+      "examples": 61604,
+      "meanLosses": {
+        "combined": 1.985526646424343,
+        "observedCrossEntropy": 1.0345612670003528,
+        "ranking": 0.2942229564873791,
+        "teacherCrossEntropy": 1.3946902720574148
+      },
+      "optimizerSteps": 3851,
+      "validation": {
+        "candidateRows": 26024,
+        "examples": 3253,
+        "meanLosses": {
+          "combined": 2.0531041814919586,
+          "observedCrossEntropy": 1.0693142360223464,
+          "ranking": 0.3187454895279864,
+          "teacherCrossEntropy": 1.4387606903475467
+        },
+        "observedTop1Accuracy": 0.6735321241930525,
+        "teacherPairwiseAgreement": 0.647127925870625,
+        "teacherTop1Agreement": 0.5628650476483246
+      }
+    },
+    {
+      "epoch": 3,
+      "examples": 61604,
+      "meanLosses": {
+        "combined": 1.8692552393484825,
+        "observedCrossEntropy": 0.9552633089451393,
+        "ranking": 0.23879249513020578,
+        "teacherCrossEntropy": 1.3319254602970114
+      },
+      "optimizerSteps": 3851,
+      "validation": {
+        "candidateRows": 26024,
+        "examples": 3253,
+        "meanLosses": {
+          "combined": 2.029192734087133,
+          "observedCrossEntropy": 1.0510920628818263,
+          "ranking": 0.32321129091109196,
+          "teacherCrossEntropy": 1.4228438786495805
+        },
+        "observedTop1Accuracy": 0.6867506916692284,
+        "teacherPairwiseAgreement": 0.6565587809055378,
+        "teacherTop1Agreement": 0.5687058100215185
+      }
+    },
+    {
+      "epoch": 4,
+      "examples": 61604,
+      "meanLosses": {
+        "combined": 1.7811812889141725,
+        "observedCrossEntropy": 0.8956946196915864,
+        "ranking": 0.20322258613493763,
+        "teacherCrossEntropy": 1.2825283298135757
+      },
+      "optimizerSteps": 3851,
+      "validation": {
+        "candidateRows": 26024,
+        "examples": 3253,
+        "meanLosses": {
+          "combined": 2.0125150292827794,
+          "observedCrossEntropy": 1.0349257226141277,
+          "ranking": 0.3331817153267519,
+          "teacherCrossEntropy": 1.411756753738279
+        },
+        "observedTop1Accuracy": 0.6879803258530587,
+        "teacherPairwiseAgreement": 0.6639036493785956,
+        "teacherTop1Agreement": 0.576391023670458
+      }
+    }
+  ],
+  "modelId": "context-en-de-v1",
+  "modelSpecSha256": "3ee694fad2f51c616dc0a977c17d68babcee4ad9bc0b167a76f674ea09c31283",
+  "parameterCount": 7605760,
+  "provenance": [
+    {
+      "license": "MIT",
+      "name": "FUTO swipe sentence corpus",
+      "revision": "d71bf5fd7f45b3e7c2ed2d76a21b0dbd3b4ba566",
+      "source_url": "https://huggingface.co/datasets/futo-org/swipe.futo.org"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "Hanse2-100M-Base teacher",
+      "revision": "0a834967424be0ec471f2846646d1c75906a9a9c",
+      "source_url": "https://huggingface.co/Evicka/Hanse2-100M-Base"
+    }
+  ],
+  "releaseEligible": true,
+  "schemaVersion": 1,
+  "teacher": {
+    "modelSha256": "e53fe4ee925f53dac5b0aae468843d76469df35c2c9c79bee1dd70cf7752ce2c"
+  },
+  "test": {
+    "candidateRows": 29096,
+    "examples": 3637,
+    "meanLosses": {
+      "combined": 2.003486218280703,
+      "observedCrossEntropy": 1.0320721327160491,
+      "ranking": 0.34810690469333094,
+      "teacherCrossEntropy": 1.4004234176826635
+    },
+    "observedTop1Accuracy": 0.6755567775639263,
+    "teacherPairwiseAgreement": 0.6736419340901056,
+    "teacherTop1Agreement": 0.5757492438823206
+  },
+  "tokenizer": {
+    "bytes": 530717,
+    "file": "tokenizer.json",
+    "sha256": "e2089ddfa01ff69eba73195cb3623c86703a812a712ec356ec5fe837297a8cc9"
+  },
+  "toolchain": {
+    "deterministicAlgorithms": true,
+    "deviceType": "cpu",
+    "python": "3.11.15",
+    "safetensors": "0.6.2",
+    "threads": 2,
+    "torch": "2.8.0"
+  },
+  "weights": {
+    "bytes": 30427368,
+    "file": "context-en-de-v1.weights.safetensors",
+    "sha256": "b8681e1b5f74a1e015c1812e3c2b4416d876e86983d20fbe7f4ca8be2a634b9f"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "appCommit": "f3d6220f1065ccddfe8bfe19fbea4d0943dbebc9",
+  "customOperatorCounts": {
+    "com.microsoft::GatherBlockQuantized": 4,
+    "com.microsoft::MatMulNBits": 28
+  },
+  "dataManifestSha256": "72c090461e1d4be2c9c28902f029633a9ba8f77a69ab6834ec21a32d756481c7",
+  "manifest": "manifest.json",
+  "model": {
+    "bytes": 4436097,
+    "file": "context-en-de-v1.onnx",
+    "sha256": "faa30394b789d1c3161f836783a520468bc5664626a9af8fd8ca1bd5c1157f32"
+  },
+  "modelId": "context-en-de-v1",
+  "modelSpecSha256": "3ee694fad2f51c616dc0a977c17d68babcee4ad9bc0b167a76f674ea09c31283",
+  "releaseEligible": true,
+  "requiredOperators": "required_operators.config",
+  "schemaVersion": 1,
+  "tokenizer": {
+    "bytes": 530717,
+    "file": "tokenizer.json",
+    "sha256": "e2089ddfa01ff69eba73195cb3623c86703a812a712ec356ec5fe837297a8cc9"
+  },
+  "toolchain": {
+    "numpy": "2.2.6",
+    "onnx": "1.19.0",
+    "onnxIr": "1.0.0",
+    "onnxruntime": "1.26.0",
+    "safetensors": "0.6.2",
+    "torch": "2.8.0"
+  },
+  "trainingReportSha256": "68a8bf4f422aefa2bc08aa5f409b16261b24316481b4f4a48ba201c8da3352e3",
+  "weightsSha256": "b8681e1b5f74a1e015c1812e3c2b4416d876e86983d20fbe7f4ca8be2a634b9f"
+}

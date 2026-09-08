@@ -1,0 +1,13 @@
+{
+  "baseline": {
+    "examples": 5997,
+    "top1": 5198,
+    "top3": 5549
+  },
+  "contextReportSha256": "e38bd89ab2d8b3edb0ef54944768c48917b5e2b26b8384c1f09e1f8955a5c504",
+  "decision": "No tested nonzero context coefficient improves the frozen candidate baseline. Do not adopt this scoring setup.",
+  "releaseEligible": false,
+  "schemaVersion": 1,
+  "slatesSha256": "fbbbcd0ef004f651a2e6c698ce6d834d4d2ca8d5f8195a6c9996e5ff2c61776e",
+  "zeroContextMetricsReplayedForAllStrata": true
+}

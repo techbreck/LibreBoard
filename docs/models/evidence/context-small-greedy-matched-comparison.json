@@ -1,0 +1,236 @@
+{
+  "releaseEligible": false,
+  "scope": "Matched-row baseline replay for the existing greedy-context validation comparison",
+  "originalBoundedBaseline": {
+    "examples": 999,
+    "top1": 866,
+    "top3": 927
+  },
+  "greedyContextMetrics": {
+    "0.35/clean": {
+      "examples": 755,
+      "top1": 662,
+      "top3": 704
+    },
+    "0.35/double_letter": {
+      "examples": 103,
+      "top1": 73,
+      "top3": 82
+    },
+    "0.35/long": {
+      "examples": 122,
+      "top1": 94,
+      "top3": 102
+    },
+    "0.35/medium": {
+      "examples": 489,
+      "top1": 388,
+      "top3": 435
+    },
+    "0.35/overall": {
+      "examples": 999,
+      "top1": 855,
+      "top3": 919
+    },
+    "0.35/return_trip": {
+      "examples": 286,
+      "top1": 226,
+      "top3": 251
+    },
+    "0.35/short": {
+      "examples": 388,
+      "top1": 373,
+      "top3": 382
+    },
+    "0.35/sloppy": {
+      "examples": 244,
+      "top1": 193,
+      "top3": 215
+    },
+    "0.35/very_sloppy": {
+      "examples": 100,
+      "top1": 75,
+      "top3": 84
+    },
+    "0.7/clean": {
+      "examples": 755,
+      "top1": 632,
+      "top3": 694
+    },
+    "0.7/double_letter": {
+      "examples": 103,
+      "top1": 65,
+      "top3": 80
+    },
+    "0.7/long": {
+      "examples": 122,
+      "top1": 88,
+      "top3": 99
+    },
+    "0.7/medium": {
+      "examples": 489,
+      "top1": 369,
+      "top3": 426
+    },
+    "0.7/overall": {
+      "examples": 999,
+      "top1": 825,
+      "top3": 908
+    },
+    "0.7/return_trip": {
+      "examples": 286,
+      "top1": 216,
+      "top3": 245
+    },
+    "0.7/short": {
+      "examples": 388,
+      "top1": 368,
+      "top3": 383
+    },
+    "0.7/sloppy": {
+      "examples": 244,
+      "top1": 193,
+      "top3": 214
+    },
+    "0.7/very_sloppy": {
+      "examples": 100,
+      "top1": 74,
+      "top3": 85
+    },
+    "0.95/clean": {
+      "examples": 755,
+      "top1": 612,
+      "top3": 685
+    },
+    "0.95/double_letter": {
+      "examples": 103,
+      "top1": 60,
+      "top3": 77
+    },
+    "0.95/long": {
+      "examples": 122,
+      "top1": 80,
+      "top3": 96
+    },
+    "0.95/medium": {
+      "examples": 489,
+      "top1": 352,
+      "top3": 416
+    },
+    "0.95/overall": {
+      "examples": 999,
+      "top1": 798,
+      "top3": 895
+    },
+    "0.95/return_trip": {
+      "examples": 286,
+      "top1": 205,
+      "top3": 241
+    },
+    "0.95/short": {
+      "examples": 388,
+      "top1": 366,
+      "top3": 383
+    },
+    "0.95/sloppy": {
+      "examples": 244,
+      "top1": 186,
+      "top3": 210
+    },
+    "0.95/very_sloppy": {
+      "examples": 100,
+      "top1": 73,
+      "top3": 84
+    },
+    "0/clean": {
+      "examples": 755,
+      "top1": 650,
+      "top3": 702
+    },
+    "0/double_letter": {
+      "examples": 103,
+      "top1": 69,
+      "top3": 82
+    },
+    "0/long": {
+      "examples": 122,
+      "top1": 95,
+      "top3": 102
+    },
+    "0/medium": {
+      "examples": 489,
+      "top1": 379,
+      "top3": 430
+    },
+    "0/overall": {
+      "examples": 999,
+      "top1": 842,
+      "top3": 915
+    },
+    "0/return_trip": {
+      "examples": 286,
+      "top1": 221,
+      "top3": 249
+    },
+    "0/short": {
+      "examples": 388,
+      "top1": 368,
+      "top3": 383
+    },
+    "0/sloppy": {
+      "examples": 244,
+      "top1": 192,
+      "top3": 213
+    },
+    "0/very_sloppy": {
+      "examples": 100,
+      "top1": 75,
+      "top3": 83
+    },
+    "1.2/clean": {
+      "examples": 755,
+      "top1": 585,
+      "top3": 666
+    },
+    "1.2/double_letter": {
+      "examples": 103,
+      "top1": 52,
+      "top3": 73
+    },
+    "1.2/long": {
+      "examples": 122,
+      "top1": 72,
+      "top3": 90
+    },
+    "1.2/medium": {
+      "examples": 489,
+      "top1": 328,
+      "top3": 400
+    },
+    "1.2/overall": {
+      "examples": 999,
+      "top1": 761,
+      "top3": 874
+    },
+    "1.2/return_trip": {
+      "examples": 286,
+      "top1": 187,
+      "top3": 232
+    },
+    "1.2/short": {
+      "examples": 388,
+      "top1": 361,
+      "top3": 384
+    },
+    "1.2/sloppy": {
+      "examples": 244,
+      "top1": 176,
+      "top3": 208
+    },
+    "1.2/very_sloppy": {
+      "examples": 100,
+      "top1": 72,
+      "top3": 84
+    }
+  }
+}
