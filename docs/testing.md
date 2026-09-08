@@ -349,3 +349,13 @@ baseline and experiment reports, APKs, instrumentation APKs and source hashes ar
 `build/device-evidence/combined-sampled-default` and `combined-sampled-no-arena`; the rejected source
 patch is `build/reports/rejected-no-arena-runtime.patch`. These measurements still use the preserved
 independent-split context candidate and do not qualify the corrected candidate or complete workload.
+
+Two further local runtime experiments also failed to improve the sampled combined-model memory
+footprint. A fresh default run observed 64.13 MiB added PSS; enabling
+`session.use_device_allocator_for_initializers` observed 64.55 MiB, and disabling prepacking observed
+67.60 MiB. All three passed synthetic kernel parity. Both experimental settings were rejected and
+the default runtime factory restored. The restored APK has identical ZIP payload entries to the
+saved default APK, although the APK container hashes differ; this is restoration evidence, not
+byte-for-byte reproducibility. Hash-bound measurements are in
+[`runtime-initializer-experiments.json`](models/evidence/runtime-initializer-experiments.json).
+These emulator samples use the original context model and do not qualify release memory or latency.

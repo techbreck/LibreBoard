@@ -1,0 +1,108 @@
+{
+  "decision": "Reject device allocator for initializers and disabled prepacking; restore default runtime settings.",
+  "limitations": [
+    "Synthetic combined-kernel diagnostic on emulator, not full-IME or physical-device release evidence.",
+    "Uses preserved original context model, not the shared-session candidate.",
+    "Sampled PSS is not an isolated model peak; timings under host load are not a controlled latency comparison."
+  ],
+  "releaseEligible": false,
+  "restoration": {
+    "baselineSha256": "47382625995bd4122f1e75624814c59450f648dafbe2659159c2032f159874cc",
+    "containerBytesIdentical": false,
+    "payloadEntriesIdentical": true,
+    "restoredSha256": "358f86dfef9f32c78afdbc1513f1165ddaff09d4e7f3486b5a42bbf4e7419ca8"
+  },
+  "runs": [
+    {
+      "androidReportSha256": "113d58669f122d81dae83fedc6b9efd5ef99e620e27373afaa29ee6f7cd8d945",
+      "label": "initializer-allocation-default-v1",
+      "maximumObservedAddedPssMiB": 64.1337890625,
+      "memoryBeforeOpen": {
+        "javaHeapUsedBytes": 4627808,
+        "nativeHeapAllocatedBytes": 5888432,
+        "processPssKiB": 96338
+      },
+      "provenance": {
+        "androidReportSha256": "113d58669f122d81dae83fedc6b9efd5ef99e620e27373afaa29ee6f7cd8d945",
+        "contextFixtureRoot": "/Users/breck/Projects/LibreBoard/build/device-evidence/context-linux-full-runtime",
+        "coreApkSha256": "47382625995bd4122f1e75624814c59450f648dafbe2659159c2032f159874cc",
+        "instrumentationApkSha256": "4baff48586bf06df52f541817852adb8fe2596f2f9ab9ba5dc22fdf35b786924",
+        "instrumentationSourceSha256": "b1b14d69cb8ae5ae76f16d8bdb7ab0b806c5ec555f58d36651bbd17fc715f3c5",
+        "releaseEligible": false,
+        "runnerSha256": "727277ea2c9ec281e24abe5176a126b8a94d5f0a4169a5afae5566f4bbc533b6",
+        "runtimeSourceSha256": "06dd0523684ebbe9b997a50891ce201def19d86c2551a7ed9c9d58cebe316911",
+        "sourceCommit": "7fe25e118a30eff30ca70e06da9d27cea8ade017",
+        "swipeModelPath": "/Users/breck/Projects/LibreBoard/build/device-evidence/swipe-android-diagnostic/swipe.onnx"
+      },
+      "sampledMemory": {
+        "maximumJavaHeapUsedBytes": 5060400,
+        "maximumNativeHeapAllocatedBytes": 70729344,
+        "maximumProcessPssKiB": 162011,
+        "requestedDelayBetweenSamplesMs": 5,
+        "samples": 101,
+        "scope": "Observed whole-process maxima at different times; do not sum heap maxima or infer a release peak pass"
+      }
+    },
+    {
+      "androidReportSha256": "ceae44ea142e5f19517c4dcc9eebe859404ae17071025ee885813fdef76ae951",
+      "label": "initializer-allocation-direct-v1",
+      "maximumObservedAddedPssMiB": 64.5458984375,
+      "memoryBeforeOpen": {
+        "javaHeapUsedBytes": 4627808,
+        "nativeHeapAllocatedBytes": 5906720,
+        "processPssKiB": 96064
+      },
+      "provenance": {
+        "androidReportSha256": "ceae44ea142e5f19517c4dcc9eebe859404ae17071025ee885813fdef76ae951",
+        "contextFixtureRoot": "/Users/breck/Projects/LibreBoard/build/device-evidence/context-linux-full-runtime",
+        "coreApkSha256": "0b2e7ad0ee62cceed26f84fad40a26d248843f603551acc2afa605e2569baffe",
+        "instrumentationApkSha256": "4baff48586bf06df52f541817852adb8fe2596f2f9ab9ba5dc22fdf35b786924",
+        "instrumentationSourceSha256": "b1b14d69cb8ae5ae76f16d8bdb7ab0b806c5ec555f58d36651bbd17fc715f3c5",
+        "releaseEligible": false,
+        "runnerSha256": "727277ea2c9ec281e24abe5176a126b8a94d5f0a4169a5afae5566f4bbc533b6",
+        "runtimeSourceSha256": "97014d4b9d8bcb1664a9966036b46f512ec192dd548eb804463e8e67da62ec9f",
+        "sourceCommit": "7fe25e118a30eff30ca70e06da9d27cea8ade017",
+        "swipeModelPath": "/Users/breck/Projects/LibreBoard/build/device-evidence/swipe-android-diagnostic/swipe.onnx"
+      },
+      "sampledMemory": {
+        "maximumJavaHeapUsedBytes": 5060400,
+        "maximumNativeHeapAllocatedBytes": 70745360,
+        "maximumProcessPssKiB": 162159,
+        "requestedDelayBetweenSamplesMs": 5,
+        "samples": 104,
+        "scope": "Observed whole-process maxima at different times; do not sum heap maxima or infer a release peak pass"
+      }
+    },
+    {
+      "androidReportSha256": "be2610f3cf9c7ac99b7d6d27af7634a6453f438886c0f05d2486cd5fd2327dde",
+      "label": "no-prepacking-v1",
+      "maximumObservedAddedPssMiB": 67.595703125,
+      "memoryBeforeOpen": {
+        "javaHeapUsedBytes": 4627808,
+        "nativeHeapAllocatedBytes": 5897584,
+        "processPssKiB": 96441
+      },
+      "provenance": {
+        "androidReportSha256": "be2610f3cf9c7ac99b7d6d27af7634a6453f438886c0f05d2486cd5fd2327dde",
+        "contextFixtureRoot": "/Users/breck/Projects/LibreBoard/build/device-evidence/context-linux-full-runtime",
+        "coreApkSha256": "03cde9de5c0dc288beca5b01aeb0181b4900d9a44dd9714a3f88c46fb2689a2a",
+        "instrumentationApkSha256": "4baff48586bf06df52f541817852adb8fe2596f2f9ab9ba5dc22fdf35b786924",
+        "instrumentationSourceSha256": "b1b14d69cb8ae5ae76f16d8bdb7ab0b806c5ec555f58d36651bbd17fc715f3c5",
+        "releaseEligible": false,
+        "runnerSha256": "727277ea2c9ec281e24abe5176a126b8a94d5f0a4169a5afae5566f4bbc533b6",
+        "runtimeSourceSha256": "ed99aff67660ee319313f884a98dddef97695b6ad71868e367ea35df3d6a601a",
+        "sourceCommit": "7fe25e118a30eff30ca70e06da9d27cea8ade017",
+        "swipeModelPath": "/Users/breck/Projects/LibreBoard/build/device-evidence/swipe-android-diagnostic/swipe.onnx"
+      },
+      "sampledMemory": {
+        "maximumJavaHeapUsedBytes": 5093168,
+        "maximumNativeHeapAllocatedBytes": 95970192,
+        "maximumProcessPssKiB": 165659,
+        "requestedDelayBetweenSamplesMs": 5,
+        "samples": 126,
+        "scope": "Observed whole-process maxima at different times; do not sum heap maxima or infer a release peak pass"
+      }
+    }
+  ],
+  "schemaVersion": 1
+}
