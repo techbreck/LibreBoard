@@ -289,3 +289,9 @@ The report is `docs/models/evidence/swipe-greedy-candidate-recall.json`.
 These are coverage bounds, not improved ranking results. The earlier greedy-ranking experiment
 regressed and remains rejected. Production vocabulary, scoring, and policy are unchanged; any
 candidate expansion still needs actual ranking, latency, memory, and full-runtime validation.
+
+The 1,000-row ranking follow-up assigned frequency 1 to the 4,089 supplemental words. Adding them
+to both CTC and geometry lowered combined top-1/top-3 from 86.6%/92.7% to 85.0%/91.9%. Replaying
+only supplemented CTC with the original geometric candidates yielded 84.8%/92.3%. Both scoring
+variants were rejected; coverage gains did not translate to ranking gains. The frequency prior was
+experimental and uncalibrated. See `docs/models/evidence/swipe-supplement-ranking-comparison.json`.

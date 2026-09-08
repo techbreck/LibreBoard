@@ -1,0 +1,30 @@
+{
+  "combinedRanking": {
+    "baseline": {
+      "top1": 866,
+      "top3": 927
+    },
+    "bothLexiconsSupplemented": {
+      "top1": 850,
+      "top3": 919
+    },
+    "ctcOnlySupplemented": {
+      "top1": 848,
+      "top3": 923
+    }
+  },
+  "decision": "Both constant-frequency supplement variants rejected; production remains unchanged.",
+  "diagnosticOnly": true,
+  "limitations": [
+    "Fixed frequency 1 is an experimental prior, not a calibrated native dictionary frequency.",
+    "Coverage improvements did not establish ranking improvements; full policy/runtime validation is absent."
+  ],
+  "releaseEligible": false,
+  "reportHashes": {
+    "baseline": "67fc72be541a1d79392d250df8d1de829ad2b5301ff50a7eb13b43f01a0a1ae9",
+    "bothLexiconsSupplemented": "b45d1a8276ef3ab0621ae5a19dab508e7ad0de0b73450765eb40ed5ed0fc9448",
+    "ctcOnlySupplemented": "d29b0d6b78145dfcc192575bf4fa2274558f71c45ebbaab710523f34f3aee614"
+  },
+  "rows": 1000,
+  "schemaVersion": 1
+}
