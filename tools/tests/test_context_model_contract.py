@@ -32,13 +32,21 @@ class ContextModelContractTest(unittest.TestCase):
         )
         self.assertEqual(4096, spec.training["checkpointEveryExamples"])
 
+    def test_small_candidate_preserves_tensor_abi_and_exact_parameter_count(self):
+        large = contract.load_spec()
+        small = contract.load_spec(contract.DEFAULT_SPEC.with_name("model-spec-small-candidate.json"))
+        self.assertEqual(7_605_760, small.raw["parameterCount"])
+        self.assertEqual(small.raw["parameterCount"], contract.expected_parameter_count(small.architecture))
+        self.assertEqual(large.export, small.export)
+        self.assertEqual(large.training, small.training)
+
     def test_spec_rejects_architecture_and_tensor_drift(self):
         with tempfile.TemporaryDirectory() as temporary:
             path = pathlib.Path(temporary) / "model-spec.json"
             raw = json.loads(contract.DEFAULT_SPEC.read_text())
             raw["architecture"]["width"] = 256
             path.write_text(json.dumps(raw))
-            with self.assertRaisesRegex(contract.ContextModelContractError, "width must be 512"):
+            with self.assertRaisesRegex(contract.ContextModelContractError, "approved candidate profile"):
                 contract.load_spec(path)
 
             raw = json.loads(contract.DEFAULT_SPEC.read_text())

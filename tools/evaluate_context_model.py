@@ -124,7 +124,7 @@ def metric_report(counts):
 def evaluate(args):
     if args.maximum_examples is not None and (not args.development or args.maximum_examples < 1):
         raise ContextEvaluationError("a positive --maximum-examples requires --development")
-    spec = context_model_contract.load_spec()
+    spec = context_model_contract.load_spec(args.spec)
     report, model_path, tokenizer_path, report_hash = load_export(args.export_report, spec, args.development)
     root = args.scored_root
     manifest_path = args.distillation_manifest or root / (
@@ -172,7 +172,7 @@ def evaluate(args):
         name: sum(f"{node.domain}::{node.op_type}" == name for node in graph.graph.node)
         for name in export_context_model.EXPECTED_CUSTOM_OPERATORS
     }
-    if (custom_counts != {"com.microsoft::GatherBlockQuantized": 4, "com.microsoft::MatMulNBits": 56}
+    if (custom_counts != {"com.microsoft::GatherBlockQuantized": 4, "com.microsoft::MatMulNBits": 7 * spec.architecture["layers"]}
             or custom_counts != report.get("customOperatorCounts")):
         raise ContextEvaluationError("context custom operator counts differ from the export contract")
     del graph
@@ -253,6 +253,7 @@ def evaluate(args):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--spec", type=pathlib.Path, default=context_model_contract.DEFAULT_SPEC)
     parser.add_argument("--export-report", type=pathlib.Path, default=export_context_model.DEFAULT_OUTPUT_ROOT / "export-report.json")
     parser.add_argument("--scored-root", type=pathlib.Path, default=train_context_model.DEFAULT_SCORED_ROOT)
     parser.add_argument("--distillation-manifest", type=pathlib.Path)
