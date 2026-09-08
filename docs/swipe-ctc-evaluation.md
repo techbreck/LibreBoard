@@ -176,3 +176,17 @@ needed, while lowercase ASCII words bypass unnecessary Unicode normalization. Al
 again matched exactly; observed p50/p95 was 224/315 ms in
 `android-report-sparse-trie.json`. The full host suite still passes 357 tests. This further reduces
 temporary allocation, but does not establish the release latency or added-memory budgets.
+
+The next pass materializes candidates only for the final or timed-out beam, computes each completed
+frame's ranking score once before sorting, and inserts already-normalized lowercase ASCII words
+without temporary spelling lists/emission arrays. A missing-key spelling is fully validated before
+any trie node is added. Timeout and missing-key partial-branch regressions pass, as do all 359 tests
+in the documented `runTests` variant. The broader debug variant still exposes the inherited,
+explicitly named `insertLetterIntoWordHangulFails` case; no Hangul behavior was changed.
+
+All 100 complete ranked slates again match the sparse-trie baseline. The final observed decoder
+p50/p95 is 207/292 ms; intermediate passes measured 234/321 and 194/274 ms. Concurrent teacher
+scoring and Linux builds changed host load, so these are diagnostics, not a controlled speed claim.
+The final result still exceeds 200 ms. Reports are retained as `android-report-final-slate.json`,
+`android-report-frame-score.json`, `android-report-ascii-trie.json` and the hash-bound
+`decoder-allocation-comparison.json` in the same local evidence directory.

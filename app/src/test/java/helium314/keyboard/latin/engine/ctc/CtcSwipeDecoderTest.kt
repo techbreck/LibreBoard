@@ -214,6 +214,46 @@ class CtcSwipeDecoderTest {
         )
     }
 
+    @Test
+    fun timeoutPublishesTheLastCompletedBeam() {
+        var decoding = false
+        var frameChecks = 0
+        val deadline = Deadline.afterMillis(1) {
+            if (decoding && ++frameChecks > 3) 1_000_000L else 0L
+        }
+        val decoder = CtcSwipeDecoder(
+            fixedSession(listOf(classFor("a"), 0, classFor("l"), 0, classFor("l"))),
+            SwipeLexicon { _, _ -> sequence {
+                yield(LexiconWord("a", "en-US", 100))
+                yield(LexiconWord("al", "en-US", 100))
+                yield(LexiconWord("all", "en-US", 100))
+                decoding = true
+            } },
+        )
+
+        val result = decoder.decode(request(), deadline)
+
+        assertEquals(EngineAvailability.TIMEOUT, result.availability)
+        assertEquals("al", result.candidates.first().surface)
+        assertTrue(result.candidates.none { it.surface == "all" })
+    }
+
+    @Test
+    fun missingAsciiKeyDoesNotIntroduceAnUnfinishedTrieBranch() {
+        val emissions = listOf(classFor("a"), classFor("t"), 0, classFor("l"), 0, classFor("l"))
+        fun decode(words: List<String>) = CtcSwipeDecoder(
+            fixedSession(emissions),
+            SwipeLexicon { _, _ -> words.asSequence().map { LexiconWord(it, "en-US", 100) } },
+            beamWidth = 1,
+        ).decode(request(), Deadline.afterMillis(500))
+
+        val baseline = decode(listOf("all"))
+        val withUndecodableWord = decode(listOf("all", "atx"))
+
+        assertEquals("all", baseline.candidates.first().surface)
+        assertEquals(baseline.candidates, withUndecodableWord.candidates)
+    }
+
     private fun decoder(emissions: List<Int>, words: List<String>) = CtcSwipeDecoder(
         fixedSession(emissions),
         SwipeLexicon { languageTags, _ ->

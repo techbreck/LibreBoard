@@ -107,11 +107,12 @@ class CtcSwipeDecoder(
     ): SwipeDecodeResult {
         val logits = requireNotNull(inference.logits)
         var beam = mapOf(IntArrayKey.EMPTY to BeamProbability(blank = 0.0))
-        var terminalCandidates = emptyList<Candidate>()
 
         for (frame in 0 until inference.frameCount) {
             if (deadline.expired) {
-                return SwipeDecodeResult(EngineAvailability.TIMEOUT, terminalCandidates)
+                return SwipeDecodeResult(
+                    EngineAvailability.TIMEOUT, candidatesForBeam(beam, trie, inference.frameCount),
+                )
             }
             val frameOffset = frame * inference.classCount
             val logProbabilities = logSoftmax(logits, frameOffset, inference.classCount)
@@ -147,13 +148,19 @@ class CtcSwipeDecoder(
                     check(child.depth == extended.values.size)
                 }
             }
+            // These probabilities are now final for this frame. Avoid recalculating the
+            // logarithmic sum twice per comparison while sorting the expanded beam.
+            next.values.forEach { it.rankingScore = logAdd(it.blank, it.nonBlank) }
             beam = next.entries
-                .sortedByDescending { logAdd(it.value.blank, it.value.nonBlank) }
+                .sortedByDescending { it.value.rankingScore }
                 .take(beamWidth)
                 .associateTo(LinkedHashMap()) { it.key to it.value }
-            terminalCandidates = candidatesForBeam(beam, trie, inference.frameCount)
         }
-        return SwipeDecodeResult(EngineAvailability.AVAILABLE, terminalCandidates)
+        // Intermediate slates are never published. Materialize only the final (or timed-out)
+        // beam, retaining the same scores and ordering without sorting 32 candidate lists.
+        return SwipeDecodeResult(
+            EngineAvailability.AVAILABLE, candidatesForBeam(beam, trie, inference.frameCount),
+        )
     }
 
     private fun candidatesForBeam(
@@ -206,6 +213,13 @@ class CtcSwipeDecoder(
             inspected++
             val word = iterator.next()
             if (word.languageTag !in allowedLanguageTags) continue
+            if (word.word.length in 1..MAX_EMISSION_LENGTH && word.word.all { it in 'a'..'z' }) {
+                // This is the single unchanged variant from SwipeWordGesture. Validate the
+                // entire spelling before adding nodes: unreachable partial words would alter
+                // the beam. Avoid allocating variant lists and emission arrays per word.
+                if (word.word.all { asciiClasses[it.code] != 0 }) trie.addAscii(word, asciiClasses)
+                continue
+            }
             val emissions = emissionClasses(word, classByLabel, asciiClasses)
             emissions.forEach { trie.add(it, word) }
         }
@@ -382,6 +396,16 @@ class CtcSwipeDecoder(
             classes.forEach { outputClass ->
                 node = node.getOrCreateChild(outputClass)
             }
+            addTerminal(node, word)
+        }
+
+        fun addAscii(word: LexiconWord, asciiClasses: IntArray) {
+            var node = root
+            word.word.forEach { node = node.getOrCreateChild(asciiClasses[it.code]) }
+            addTerminal(node, word)
+        }
+
+        private fun addTerminal(node: TrieNode, word: LexiconWord) {
             if (node.words.none { it.word == word.word && it.languageTag == word.languageTag }) {
                 node.words = if (node.words.isEmpty()) listOf(word) else node.words + word
                 wordCount++
@@ -423,7 +447,9 @@ class CtcSwipeDecoder(
     private class BeamProbability(
         var blank: Double = LOG_ZERO,
         var nonBlank: Double = LOG_ZERO,
-    )
+    ) {
+        var rankingScore: Double = LOG_ZERO
+    }
 
     private class IntArrayKey private constructor(val values: IntArray) {
         private val hash = values.contentHashCode()
