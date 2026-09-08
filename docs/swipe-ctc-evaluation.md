@@ -247,3 +247,21 @@ Even its untrimmed CTC/geometric union contains only 5,690 targets (94.83%). A p
 cannot attain 95% top-3 on these fixed slates. Further candidate-generation coverage work is needed;
 context reranking alone cannot close that gate. This bound applies to the isolated diagnostic,
 not the unmeasured complete IME path with retained AOSP and personal suggestions.
+
+## Full dictionary coverage check
+
+The opt-in `StaticDictionaryInstrumentedTest` argument `exportFullStaticLexicon=true` writes
+`static-swipe-lexicon-full-diagnostic.json` with a separate 200,000-word bound and `diagnosticOnly`.
+The ordinary production-bound export remains unchanged. The Android test passed, visited 160,715
+native entries, retained 157,966 usable normalized entries, and reproduced the original 100,000
+selected words exactly. The full export is deliberately rejected by the normal production-bound
+host evaluator; it is for coverage analysis only.
+
+Of the 330 target misses in the frozen 6,000-row merged slate, 268 are outside the bounded
+vocabulary, 42 are in vocabulary but absent from both decoder slates, and 20 are lost at union
+truncation. Applying the existing safety and emission rules to the full dictionary recovers only
+10 of the 268 vocabulary misses: 253 targets are absent from the full dictionary and five remain
+excluded by policy or emission constraints. Increasing usable vocabulary from 99,222 to 156,350
+would raise membership coverage only from 5,732 to 5,742 of 6,000 rows. Production limits therefore
+remain unchanged. Evidence is in `docs/models/evidence/full-dictionary-validation-coverage.json`;
+APK and instrumented export provenance is in `full-static-vocabulary-provenance.json` there.

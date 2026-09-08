@@ -1,0 +1,21 @@
+{
+  "artifacts": {
+    "static-swipe-lexicon-full-diagnostic.json": "e23644662586f6bcb76f4bc0d9e01e7f38efd89afb823fc2b2a4530177a97525",
+    "static-swipe-lexicon.json": "f5cdb6f98e0b627f7bcd6ffd7f69784ca114d470240cfa601a7fe3e66aaced5f"
+  },
+  "coreApkSha256": "a2c697ff431b7b5dbf8a9552158adfdd201dc45a1c83e36e1de36a81afd76115",
+  "diagnosticOnly": true,
+  "dictionarySha256": "bd950ef4b57655120eee65cee62a5d216a63f721d9a8bb759ce2022437840443",
+  "fullUsableWords": 157966,
+  "instrumentationApkSha256": "fd43f0a9eea6bd7964faf42b40a6c7fc5e5870880566f0d31ef0a0adbca39e58",
+  "limitations": [
+    "Opt-in dictionary coverage export only; production vocabulary bound is unchanged."
+  ],
+  "releaseEligible": false,
+  "runnerSha256": "c7eb73f3e3f0cbc1b041eacbfd92dac9ac0ccb27cd4d4fdeb6306468dd0ee94e",
+  "schemaVersion": 1,
+  "sourceCommit": "52c7827120ebb0511ae0f61d54c74c32fc1cf8fd",
+  "standardWordsUnchanged": true,
+  "testSourceSha256": "8bd40b4d018a48a44aec03df04364b2955f8b05ec1718bc7a7f62b4151912114",
+  "visited": 160715
+}

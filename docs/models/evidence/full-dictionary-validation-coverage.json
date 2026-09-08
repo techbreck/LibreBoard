@@ -1,0 +1,23 @@
+{
+  "counts": {
+    "absentFromFullDictionary": 253,
+    "currentVocabularyCovered": 5732,
+    "excludedByPolicyOrEmissionContract": 5,
+    "fullUsableVocabularyCovered": 5742,
+    "outsideCurrentButInFullUsable": 10,
+    "rows": 6000
+  },
+  "currentUsableWords": 99222,
+  "diagnosticOnly": true,
+  "fullLexiconSha256": "e23644662586f6bcb76f4bc0d9e01e7f38efd89afb823fc2b2a4530177a97525",
+  "fullUsableDecodableWords": 156350,
+  "limitations": [
+    "Vocabulary membership is not candidate retrieval or ranking accuracy.",
+    "No production vocabulary limit or safety filter was changed.",
+    "Larger vocabulary needs latency and memory validation before adoption."
+  ],
+  "releaseEligible": false,
+  "schemaVersion": 1,
+  "slatesSha256": "fbbbcd0ef004f651a2e6c698ce6d834d4d2ca8d5f8195a6c9996e5ff2c61776e",
+  "toolSha256": "0f746e4ca95435256bee3a0ad444bb31009aad1be242d528a8f8a138960dd45f"
+}

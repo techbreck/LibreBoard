@@ -32,10 +32,16 @@ class StaticDictionaryInstrumentedTest {
                 var tailMaximum = -1
                 var firstMinimum = 256
                 val frequentTail = mutableListOf<String>()
+                val exportFull = InstrumentationRegistry.getArguments().getString("exportFullStaticLexicon") == "true"
+                val fullCollector = if (exportFull) StaticSwipeLexiconCollector(200_000) else null
                 val collector = StaticSwipeLexiconCollector(100_000)
                 dictionary.visitUnigrams(1_000_000) { word, frequency, notWord, offensive ->
                     visited++
-                    if (!notWord) collector.add(LexiconWord(word, "en-US", frequency, possiblyOffensive = offensive))
+                    if (!notWord) {
+                        val entry = LexiconWord(word, "en-US", frequency, possiblyOffensive = offensive)
+                        collector.add(entry)
+                        fullCollector?.add(entry)
+                    }
                     if (!notWord && frequency >= 0 && word.all { it.isLetter() }) {
                         if (visited <= 100_000) {
                             firstMaximum = maxOf(firstMaximum, frequency)
@@ -50,12 +56,7 @@ class StaticDictionaryInstrumentedTest {
                 assertTrue("fixture must exercise the original traversal cutoff", visited > 100_000)
                 val selected = collector.words()
                 assertEquals(100_000, selected.size)
-                if (InstrumentationRegistry.getArguments().getString("exportStaticLexicon") == "true") {
-                    val output = File(context.filesDir, "static-swipe-lexicon.json")
-                    val words = org.json.JSONArray()
-                    selected.forEach { word -> words.put(JSONObject()
-                        .put("word", word.word).put("languageTag", word.languageTag)
-                        .put("frequency", word.frequency).put("possiblyOffensive", word.possiblyOffensive)) }
+                if (InstrumentationRegistry.getArguments().getString("exportStaticLexicon") == "true" || exportFull) {
                     fun sha256(source: File): String {
                         val digest = MessageDigest.getInstance("SHA-256")
                         source.inputStream().use { input ->
@@ -68,13 +69,25 @@ class StaticDictionaryInstrumentedTest {
                         }
                         return digest.digest().joinToString("") { "%02x".format(it) }
                     }
-                    output.writeText(JSONObject().put("schemaVersion", 1)
-                        .put("source", "bundled-static-dictionary")
-                        .put("dictionaryAsset", "dicts/main_en-US.dict")
-                        .put("dictionarySha256", sha256(file))
-                        .put("apkSha256", sha256(File(context.applicationInfo.sourceDir)))
-                        .put("visited", visited).put("maximumWords", 100_000)
-                        .put("words", words).toString() + "\n")
+                    fun export(wordsToExport: List<LexiconWord>, filename: String, maximum: Int, diagnostic: Boolean) {
+                        val words = org.json.JSONArray()
+                        wordsToExport.forEach { word -> words.put(JSONObject()
+                            .put("word", word.word).put("languageTag", word.languageTag)
+                            .put("frequency", word.frequency).put("possiblyOffensive", word.possiblyOffensive)) }
+                        val document = JSONObject().put("schemaVersion", 1)
+                            .put("source", "bundled-static-dictionary")
+                            .put("dictionaryAsset", "dicts/main_en-US.dict")
+                            .put("dictionarySha256", sha256(file))
+                            .put("apkSha256", sha256(File(context.applicationInfo.sourceDir)))
+                            .put("visited", visited).put("maximumWords", maximum).put("words", words)
+                        if (diagnostic) document.put("diagnosticOnly", true)
+                        File(context.filesDir, filename).writeText(document.toString() + "\n")
+                    }
+                    export(selected, "static-swipe-lexicon.json", 100_000, false)
+                    fullCollector?.let {
+                        assertTrue("diagnostic bound must retain the complete visited dictionary", visited < 200_000)
+                        export(it.words(), "static-swipe-lexicon-full-diagnostic.json", 200_000, true)
+                    }
                 }
                 val indexed = SwipeLexiconIndex.from(selected).words(listOf("en-US"), 0, 100_000, false)
                     .map { normalizeCandidate(it.word) }.toSet()
