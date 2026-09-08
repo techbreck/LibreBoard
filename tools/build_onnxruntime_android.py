@@ -247,6 +247,26 @@ def validate_source(settings: dict) -> None:
         raise BuildConfigurationError("initialize every pinned ONNX Runtime nested submodule")
 
 
+def validate_java_outputs_writable(java_dir: pathlib.Path | None = None) -> None:
+    """Fail closed when Gradle cannot write ONNX Runtime's in-tree Java outputs."""
+    root = java_dir or (SOURCE / "java")
+    if not root.is_dir():
+        raise BuildConfigurationError("ONNX Runtime Java project is missing")
+    for relative in (".gradle", "build"):
+        path = root / relative
+        try:
+            path.mkdir(exist_ok=True)
+            probe = path / ".libreboard-write-probe"
+            probe.write_text("ok\n", encoding="utf-8")
+            probe.unlink()
+        except OSError as exc:
+            raise BuildConfigurationError(
+                f"{path} is not writable; when source is mounted read-only, provide a writable "
+                "tmpfs or bind mount at third_party/onnxruntime/java/.gradle and "
+                "third_party/onnxruntime/java/build"
+            ) from exc
+
+
 def validate_ndk(ndk: pathlib.Path) -> pathlib.Path:
     source_properties = ndk / "source.properties"
     if not source_properties.is_file():
@@ -537,6 +557,7 @@ def main() -> int:
         if args.check_only:
             print("LibreBoard ONNX Runtime source and build inputs are valid")
             return 0
+        validate_java_outputs_writable()
         build_root = args.build_root.resolve()
         build_root.mkdir(parents=True, exist_ok=True)
         aar = build_aar(settings, sdk, ndk, ops_config, build_root, args.jobs)

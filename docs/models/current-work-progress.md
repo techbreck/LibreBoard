@@ -19,7 +19,7 @@ Follow-up diagnosis reproduced that stamp command shape (`cmake -E echo_append &
 
 The Linux runtime image recipe now uses Debian bookworm-backports CMake 3.31.6 and Debian ninja-build as PATH host tools, while keeping Android SDK `cmake;3.31.6` installed for AGP. The rebuilt image is `sha256:34c6bfa469b1afb637cbe9e95c3a5ec2a5c5e4ad011953cce70d0d83073a1fe7`. Unprivileged smoke passed `--check-only`, 15/15 FetchContent stamp-command reproductions, and an empty-command ExternalProject no-test stamp.
 
-Native A (`libreboard-runtime-repro-debian-a`) is running on that image with source read-only, UID/GID `501:20`, 2 CPUs, 5 GiB, and output at `build/linux-runtime-debian-a`. It completed the Abseil and ONNX FetchContent stamps that SIGSEGV'd on SDK CMake, wrote `CMakeCache.txt`, and is compiling `armeabi-v7a` with NDK clang through Debian ninja. Independent B, AAR byte-comparison, and canonical-model Android checks have not run. This is not a model-qualified release runtime.
+Native A on that image completed CMake configure and began `armeabi-v7a` compilation (49/903) using `/usr/bin/cmake` and `/usr/bin/ninja`. It then failed because upstream `gradlew clean jar` could not delete read-only `/source/third_party/onnxruntime/java/build`. The SDK-CMake SIGSEGV did not recur. Evidence: [Java output-path failure](evidence/linux-runtime-debian-a-java-readonly.json). Independent B has not started. This is not a model-qualified release runtime.
 
 Raw logs remain under `build/reports/linux-runtime-a-initial-failure.log` and `build/reports/linux-runtime-a.log`. Earlier Android timing results used a partially trained small model and an older large model; they do not qualify either newly completed canonical model.
 

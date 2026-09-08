@@ -117,10 +117,13 @@ and serialize heavy builds on memory-constrained hosts.
 Run native compilation as an unprivileged container user: the pinned upstream build script rejects
 root execution. Match the output directory owner's UID/GID, set a writable `HOME` and
 `GRADLE_USER_HOME`, and grant that user access only to its output and Gradle cache. When mounting
-source read-only, provide a writable temporary mount at
-`/source/third_party/onnxruntime/java/.gradle` for the upstream project cache. Keep the source,
-operator configuration, and build scripts read-only. The input-only check does not exercise the
-upstream root-user guard; verify this execution setup before starting the full native compile.
+source read-only, provide writable temporary mounts at
+`/source/third_party/onnxruntime/java/.gradle` and
+`/source/third_party/onnxruntime/java/build`. Upstream `--build_java` runs `gradlew clean jar`
+in that tree; a read-only `java/build` fails after native compilation has already started. Keep
+the source, operator configuration, and build scripts read-only. The input-only check does not
+exercise the upstream root-user guard or these Gradle output paths; the builder probes both
+directories for writability before compiling.
 
 The first packaging dry run passed after upstream Gradle installed Platform-Tools 37.0.1 into
 its container. The recipe now installs `platform-tools` when building the image, so an unprivileged
