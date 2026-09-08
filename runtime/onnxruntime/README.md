@@ -89,10 +89,21 @@ docker build --platform linux/amd64 -f runtime/onnxruntime/Dockerfile.linux \
 docker image inspect libreboard-core-release:local libreboard-runtime-build:local --format '{{.Id}}'
 ```
 
-The image adds CMake 3.31.6, native compiler utilities, and the API 34 / Build Tools 30.0.3
-inputs required by the pinned upstream Android library project. It reuses the core image's
-previously accepted Android SDK licenses. Record both resolved image IDs: a local tag alone does
-not pin the environment, and package repository contents can change between image builds.
+The image installs Debian bookworm-backports CMake 3.31.6 and Debian `ninja-build` as the PATH
+host tools, plus native compiler utilities and the API 34 / Build Tools 30.0.3 inputs required by
+the pinned upstream Android library project. Android SDK `cmake;3.31.6` remains in the SDK tree
+so AGP can locate that package; `cmake` and `ninja` on PATH must resolve to `/usr/bin`. It reuses
+the core image's previously accepted Android SDK licenses. Record both resolved image IDs: a local
+tag alone does not pin the environment, and package repository contents can change between image
+builds.
+
+The SDK CMake 3.31.6 linux-x86_64 binary is a 21 MiB non-PIE `ET_EXEC` with control-flow and
+stack-clash hardening. On this Apple Silicon host it runs through Colima qemu-user 7.0.0. That
+binary intermittently SIGSEGVs during FetchContent `cmake -E` stamp steps such as
+`cmake -E echo_append && cmake -E touch`. Isolated download/extract probes and `OOMKilled=false`
+do not contradict this: the archives were intact, and Docker did not report memory killing.
+Diagnosis is recorded in [`docs/models/evidence/linux-runtime-cmake-qemu-diagnosis.json`](../../docs/models/evidence/linux-runtime-cmake-qemu-diagnosis.json).
+Do not prepend the SDK `cmake/3.31.6/bin` directory to `PATH`.
 
 The first prepared runtime image resolved to
 `sha256:f6e9c2f240620458f548daca3dfc759974c5fad51edd6ba2ce50f8d7ba6518ce`, based on core image
@@ -123,3 +134,11 @@ UID/GID `501:20`, source mounted read-only, and writable output/cache mounts. Up
 reported an analytics home-directory warning for the numeric UID, but configuration completed.
 This confirms the packaging configuration needs no further SDK downloads; native compilation and
 AAR comparison remain separate checks.
+
+The Debian-CMake host-tool image resolved to
+`sha256:34c6bfa469b1afb637cbe9e95c3a5ec2a5c5e4ad011953cce70d0d83073a1fe7`, still based on core
+`sha256:425b1a57386654a8124fab1d5c02c182a4e9aa26fe0f4d15ed1c84f461c0187e`. Image build verified
+`cmake`/`ninja` resolve to `/usr/bin` (CMake 3.31.6, ninja 1.11.1). An unprivileged smoke then
+passed `--check-only`, 15/15 reproductions of the FetchContent `echo_append && touch` stamp
+command, and an empty-command ExternalProject including its no-test stamp. That is not a native
+AAR pair. The previous SDK-CMake image remains tagged `libreboard-runtime-build:sdk-cmake-57d61051`.

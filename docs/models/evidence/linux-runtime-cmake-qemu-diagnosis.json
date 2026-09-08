@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "status": "diagnosed",
+  "nativePairCompleted": false,
+  "releaseEligible": false,
+  "subject": "Linux ONNX Runtime A/B configuration SIGSEGV",
+  "priorFailureEvidence": "docs/models/evidence/linux-runtime-pair-failure.json",
+  "environment": {
+    "host": "macOS aarch64",
+    "colimaArch": "aarch64",
+    "colimaRuntime": "docker",
+    "colimaCpus": 4,
+    "colimaMemoryGiB": 8,
+    "qemuUser": "qemu-x86_64 version 7.0.0 (v7.0.0)",
+    "containerPlatform": "linux/amd64",
+    "runtimeImageId": "sha256:57d61051fc53c6b8d9b21ca2d370a4408dbcb8e86836d3ffa66a81c154e90622",
+    "coreImageId": "sha256:425b1a57386654a8124fab1d5c02c182a4e9aa26fe0f4d15ed1c84f461c0187e"
+  },
+  "ruledOut": [
+    "Docker OOMKill: both failed containers reported OOMKilled=false and exit 1.",
+    "Corrupt Abseil/ONNX archive: isolated CMake download and extract probes succeeded, and the retry completed ONNX extract before crashing.",
+    "ONNX source-tree defect: the crashing commands were cmake -E echo_append and cmake -E touch after a successful extract and patch."
+  ],
+  "observed": {
+    "initialFailure": "FetchContent abseil_cpp-populate download/verify/extract chain SIGSEGV after Downloading... done.",
+    "retryFailure": "FetchContent onnx-populate no-test stamp: cmake -E echo_append && cmake -E touch .../onnx-populate-test SIGSEGV.",
+    "cpuinfoLeak": "uname -m is x86_64 inside the amd64 container while /proc/cpuinfo reports ARM Features (fp asimd aes ...).",
+    "sdkCmake": {
+      "path": "/opt/android-sdk/cmake/3.31.6/bin/cmake",
+      "bytes": 21227136,
+      "file": "ELF 64-bit LSB executable, x86-64, version 1 (GNU/Linux), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, for GNU/Linux 3.2.0, stripped",
+      "interp": "/lib64/ld-linux-x86-64.so.2",
+      "pie": false,
+      "gnuAttributes": ["cf_protection", "stack_clash"],
+      "lddExit": 139
+    },
+    "sdkNinja": {
+      "path": "/opt/android-sdk/cmake/3.31.6/bin/ninja",
+      "bytes": 1127408,
+      "file": "ELF 64-bit LSB executable, x86-64, version 1 (GNU/Linux), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, for GNU/Linux 3.2.0, stripped",
+      "pie": false,
+      "lddExit": 139,
+      "version": "1.12.1"
+    },
+    "reproduction": [
+      "Isolated cmake --version, cmake -E echo_append, and cmake -E touch succeeded, including 20 sequential echo_append invocations from Python.",
+      "The exact ninja CUSTOM_COMMAND `cd $build && cmake -E echo_append && cmake -E touch $build/loop.stamp` SIGSEGV'd once on a virtiofs bind mount with Android SDK ninja 1.12.1. That is the same command shape as the ONNX populate no-test stamp.",
+      "The same two-command ninja rule later succeeded on tmpfs and bind mounts with both Android SDK ninja and Debian ninja 1.11.1, so the crash is intermittent rather than a deterministic archive or CMakeLists defect.",
+      "ExternalProject steps that invoke a single cmake -E command completed in the same diagnostic container that later crashed on the concatenated echo_append && touch rule."
+    ]
+  },
+  "conclusion": "The configuration failure is an intermittent SIGSEGV of Android SDK CMake 3.31.6 when qemu-user 7.0.0 runs its non-PIE linux-x86_64 binary as ninja-spawned FetchContent helper commands. It is not established as OOM, a corrupt dependency archive, or an ONNX source defect.",
+  "fix": {
+    "hostCmake": "Debian bookworm-backports cmake 3.31.6-2~bpo12+1 on PATH as /usr/bin/cmake (PIE, distro-linked).",
+    "hostNinja": "Debian ninja-build 1.11.1 on PATH as /usr/bin/ninja.",
+    "sdkCmake": "Keep Android SDK cmake;3.31.6 installed for AGP package discovery. Do not prepend its bin directory to PATH.",
+    "constraintsPreserved": [
+      "unprivileged UID/GID 501:20",
+      "source mount read-only",
+      "dedicated output roots",
+      "tmpfs for /source/third_party/onnxruntime/java/.gradle"
+    ],
+    "debianCmakeImageId": "sha256:34c6bfa469b1afb637cbe9e95c3a5ec2a5c5e4ad011953cce70d0d83073a1fe7",
+    "smoke": {
+      "unprivilegedUidGid": "501:20",
+      "cmakePath": "/usr/bin/cmake",
+      "ninjaPath": "/usr/bin/ninja",
+      "debianCmakeElfType": "ET_DYN",
+      "debianCmakeBytes": 12722160,
+      "sdkCmakeElfType": "ET_EXEC",
+      "twoCommandStampFailures": "0/15",
+      "emptyExternalProjectNoTestStamp": "passed",
+      "checkOnly": "passed"
+    }
+  },
+  "limitations": [
+    "qemu-user 7.0.0 remains the amd64 execution path on this aarch64 Colima VM; Debian CMake is a host-tool substitution, not a qemu upgrade.",
+    "Diagnosis does not prove a successful native AAR pair. Independent A/B compilation remains required.",
+    "A development operator inventory AAR is not a model-qualified release runtime."
+  ]
+}
