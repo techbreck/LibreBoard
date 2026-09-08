@@ -1,0 +1,13 @@
+{
+  "allValidationMetricsIdentical": true,
+  "hostModelSha256": "faa30394b789d1c3161f836783a520468bc5664626a9af8fd8ca1bd5c1157f32",
+  "hostReportSha256": "cd1178f28b5ab4cd53eb0639d67b21762c9ae3814fdb3949cdd3fbf606d75e85",
+  "limitations": [
+    "Host and Linux artifact bytes differ; matching validation results do not imply cross-platform byte reproducibility or release qualification."
+  ],
+  "linuxModelSha256": "9f09d7b37ff4c7f1bc0a7c7e5918ea860eb26e1a809c9758207ade52f22ed0f5",
+  "linuxReportSha256": "45851a918e01b3bcafdd666aabbedb6d314c36b297660e168ddeca433ca70aa8",
+  "promptDisjointMetricsAndExclusionsIdentical": true,
+  "releaseEligible": false,
+  "schemaVersion": 1
+}

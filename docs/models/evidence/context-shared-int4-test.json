@@ -1,0 +1,70 @@
+{
+  "artifacts": {
+    "distillationManifestSha256": "72c090461e1d4be2c9c28902f029633a9ba8f77a69ab6834ec21a32d756481c7",
+    "evaluationDataSha256": "ad05c58e8dcdc4e03d2cbfd0e68606fa725b57dc963374a893df47023eb8bcbf",
+    "evaluationToolSha256": "4a29d632871d439ebab6f8e885498663b0cc0ba49ec273f01c507a542814c287",
+    "exportReportSha256": "b528cc61dc956fc3d0be59c37719f41b7e85169875369ca5b0c12837e4f187e6",
+    "inputBuilderToolSha256": "f0e11d67d0c7c1a6ae56ace119306b8e961208455c58b645ce252eca451fcd13",
+    "modelSha256": "8566382e57ea5a9af76ddf600e189572d62fcc8b227de8415ce88ad0e172022b",
+    "tokenizerSha256": "e2089ddfa01ff69eba73195cb3623c86703a812a712ec356ec5fe837297a8cc9"
+  },
+  "development": false,
+  "diagnosticOnly": true,
+  "latencyMs": {
+    "hostInferenceOnly": true,
+    "p50": 59.8805,
+    "p95": 60.476125,
+    "p99": 61.203667
+  },
+  "limitations": [
+    "Distillation slates are not human tap-error evidence.",
+    "Static, spatial, personal, commit policy and full fusion are not measured.",
+    "Host inference timing is not Android latency or memory evidence.",
+    "Top-rank ties are counted against the observed label."
+  ],
+  "maximumExamples": null,
+  "metrics": {
+    "de": {
+      "examples": 1114,
+      "observedTop1": 964,
+      "observedTop1Rate": 0.8653500897666068,
+      "observedTop3": 1108,
+      "observedTop3Rate": 0.9946140035906643,
+      "teacherTop1Agreement": 702,
+      "teacherTop1AgreementRate": 0.63016157989228,
+      "tiedTop1": 0
+    },
+    "en-US": {
+      "examples": 2523,
+      "observedTop1": 1544,
+      "observedTop1Rate": 0.6119698771304003,
+      "observedTop3": 2013,
+      "observedTop3Rate": 0.797859690844233,
+      "teacherTop1Agreement": 1383,
+      "teacherTop1AgreementRate": 0.5481569560047562,
+      "tiedTop1": 0
+    },
+    "overall": {
+      "examples": 3637,
+      "observedTop1": 2508,
+      "observedTop1Rate": 0.6895793236183668,
+      "observedTop3": 3121,
+      "observedTop3Rate": 0.8581248281550728,
+      "teacherTop1Agreement": 2085,
+      "teacherTop1AgreementRate": 0.573274676931537,
+      "tiedTop1": 0
+    }
+  },
+  "satisfiesPhase0": false,
+  "schemaVersion": 1,
+  "split": "test",
+  "threads": 1,
+  "toolchain": {
+    "numpy": "2.2.6",
+    "onnx": "1.19.0",
+    "onnxIr": "1.0.0",
+    "onnxruntime": "1.26.0",
+    "safetensors": "0.6.2",
+    "torch": "2.8.0"
+  }
+}

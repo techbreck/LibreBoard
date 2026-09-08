@@ -1156,7 +1156,7 @@ def source_checks(errors: list[str]) -> None:
         if (
             context_distillation_policy.teacher_source_id != teacher_source.identifier
             or context_distillation_policy.tokenizer_sha256
-            != "1395e285927bfbfa5888dc7c83e4f57dfcfbfeb54f29a3cf2437f5db3d71d6a2"
+            != "e2089ddfa01ff69eba73195cb3623c86703a812a712ec356ec5fe837297a8cc9"
             or context_distillation_policy.maximum_prefix_student_tokens != 22
             or context_distillation_policy.maximum_candidate_student_tokens != 8
             or context_distillation_policy.maximum_candidates > 32

@@ -1,0 +1,16 @@
+{
+  "pythonTests": {
+    "run": 232,
+    "skipped": 13,
+    "status": "passed"
+  },
+  "sourceReleaseCheck": "passed",
+  "modelExportFilesHashVerified": 32,
+  "releaseQualified": false,
+  "activeTaskJobs": 0,
+  "emulatorRunning": false,
+  "logs": {
+    "build/reports/final-stop-python-tests.log": "f82681cf258e3750c506449dddddfa522dc4f1f0578087494e7972c26049b803",
+    "build/reports/final-stop-source-check.log": "77838a860d3ad07769b66ee5c8a10790671d01c2114213574cb329f8d8917f09"
+  }
+}

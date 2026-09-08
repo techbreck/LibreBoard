@@ -1,0 +1,44 @@
+{
+  "status": "failed",
+  "nativePairCompleted": false,
+  "attempts": [
+    {
+      "container": "libreboard-runtime-repro-a",
+      "state": {
+        "Status": "exited",
+        "Running": false,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "Dead": false,
+        "Pid": 0,
+        "ExitCode": 1,
+        "Error": "",
+        "StartedAt": "2026-09-08T04:45:13.619567646Z",
+        "FinishedAt": "2026-09-08T04:46:03.993297399Z"
+      },
+      "log": "build/reports/linux-runtime-a-initial-failure.log",
+      "logSha256": "c38d22692b55e5df1254328c7c9e4a5e5cfc7992d2cd993233c3b17ba0bc565d"
+    },
+    {
+      "container": "libreboard-runtime-repro-a-retry",
+      "state": {
+        "Status": "exited",
+        "Running": false,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "Dead": false,
+        "Pid": 0,
+        "ExitCode": 1,
+        "Error": "",
+        "StartedAt": "2026-09-08T04:49:42.872325609Z",
+        "FinishedAt": "2026-09-08T04:51:26.801897863Z"
+      },
+      "log": "build/reports/linux-runtime-a.log",
+      "logSha256": "d3b71ec5de230b06a8feda79f0c6aeaf4fd2203f39bf7adcc24417b7b3f2e56c"
+    }
+  ],
+  "failure": "CMake SIGSEGV during dependency configuration: first abseil population, retry ONNX population no-test stamp. Both containers exited 1; neither was OOMKilled. Root cause remains unconfirmed.",
+  "consequence": "No Linux AAR pair or canonical-model Android verification with that runtime. No further retries under user stopping instruction."
+}

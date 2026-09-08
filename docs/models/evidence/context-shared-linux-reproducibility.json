@@ -1,0 +1,19 @@
+{
+  "files": {
+    "LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "context-en-de-v1.onnx": "8566382e57ea5a9af76ddf600e189572d62fcc8b227de8415ce88ad0e172022b",
+    "export-report.json": "b528cc61dc956fc3d0be59c37719f41b7e85169875369ca5b0c12837e4f187e6",
+    "manifest.json": "e2783cf87797c13e9af190c63a0b005de52d8d40b418d7b95bfa7bc609482e30",
+    "model.json": "85086a308bf83ec351ca6733f65eefd137a0bbfb3f96e936d7e6a5beab7e943f",
+    "required_operators.config": "9f17331bb9cdf3cac69670af285f23282ac66663b8e9b2554a6362b6e0c45d82",
+    "tokenizer.json": "e2089ddfa01ff69eba73195cb3623c86703a812a712ec356ec5fe837297a8cc9",
+    "training-report.json": "df174d415bbedbbc5424d66f8f598bad84621cb1a114df081d5671fcb1a09860"
+  },
+  "imageId": "sha256:762a8eb3ed9a4252df95cbd4bca31fd58e80e76d0f50c73567896157c0092300",
+  "releaseEligible": false,
+  "schemaVersion": 1,
+  "scope": "Two fresh Linux exports of the shared-session candidate, not release qualification",
+  "testReportSha256": "089189fb810aa4e7604d65fc2283bae1fb3907c626c3afed20649095a6ae13da",
+  "trainingReportSha256": "df174d415bbedbbc5424d66f8f598bad84621cb1a114df081d5671fcb1a09860",
+  "validationReportSha256": "6e27c6b518266864b2f7a1f3c8f900d22a2347f87b9ac5001db6b6f21754a0e6"
+}

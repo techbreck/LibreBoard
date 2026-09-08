@@ -1,0 +1,21 @@
+{
+  "byteIdentical": true,
+  "files": {
+    "LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "context-en-de-v1.onnx": "9f09d7b37ff4c7f1bc0a7c7e5918ea860eb26e1a809c9758207ade52f22ed0f5",
+    "export-report.json": "8bdaa301673bf4d873b0ad31bc599ce0d7bcad2c2b68acb8cccdb1a562c2c03c",
+    "manifest.json": "31812215f25447e42c85beb39b41690ae3c756a7ccd0e926bcc9e93d32b9a1ad",
+    "model.json": "3ee694fad2f51c616dc0a977c17d68babcee4ad9bc0b167a76f674ea09c31283",
+    "required_operators.config": "9f17331bb9cdf3cac69670af285f23282ac66663b8e9b2554a6362b6e0c45d82",
+    "tokenizer.json": "e2089ddfa01ff69eba73195cb3623c86703a812a712ec356ec5fe837297a8cc9",
+    "training-report.json": "68a8bf4f422aefa2bc08aa5f409b16261b24316481b4f4a48ba201c8da3352e3"
+  },
+  "imageId": "sha256:762a8eb3ed9a4252df95cbd4bca31fd58e80e76d0f50c73567896157c0092300",
+  "limitations": [
+    "Two fresh Linux exports of the same small student checkpoint; model quality, Android qualification and signing remain separate."
+  ],
+  "releaseEligible": false,
+  "schemaVersion": 1,
+  "sourceCommit": "f3d6220f1065ccddfe8bfe19fbea4d0943dbebc9",
+  "trainingReportSha256": "68a8bf4f422aefa2bc08aa5f409b16261b24316481b4f4a48ba201c8da3352e3"
+}
