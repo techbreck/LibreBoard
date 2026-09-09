@@ -19,7 +19,7 @@ Follow-up diagnosis reproduced that stamp command shape (`cmake -E echo_append &
 
 The Linux runtime image recipe now uses Debian bookworm-backports CMake 3.31.6 and Debian ninja-build as PATH host tools, while keeping Android SDK `cmake;3.31.6` installed for AGP. The rebuilt image is `sha256:34c6bfa469b1afb637cbe9e95c3a5ec2a5c5e4ad011953cce70d0d83073a1fe7`. Unprivileged smoke passed `--check-only`, 15/15 FetchContent stamp-command reproductions, and an empty-command ExternalProject no-test stamp.
 
-Native A3 linked `armeabi-v7a` and `arm64-v8a` `.so` files, then hung for ~10 h on `x86` with ninja at 0% CPU and a zombie `/bin/sh` child (qemu-user spawn/wait). SIGTERM was ignored; SIGKILL plus `docker stop` ended the container 137. Object files were kept. Evidence: [read-only Java](evidence/linux-runtime-debian-a-java-readonly.json), [tmpfs Java](evidence/linux-runtime-debian-a2-java-tmpfs.json), [ninja zombie](evidence/linux-runtime-debian-a3-ninja-zombie.json). Independent B has not started. This is not a model-qualified release runtime.
+Native A completed on the Debian-CMake image after the ninja-zombie resume: container `libreboard-runtime-repro-debian-a4` exited 0. The development AAR is 12,352,564 bytes, SHA-256 `54118ac8e37bc4833d32e2cb197ef6bd251f56e5aa9e4e51c3899fb616210d88`, with all four ABI `.so` pairs. Evidence: [A AAR](evidence/linux-runtime-debian-a-aar.json). Independent B has not started. This is not a model-qualified release runtime.
 
 Raw logs remain under `build/reports/linux-runtime-a-initial-failure.log` and `build/reports/linux-runtime-a.log`. Earlier Android timing results used a partially trained small model and an older large model; they do not qualify either newly completed canonical model.
 
