@@ -125,6 +125,11 @@ operator configuration, and build scripts read-only. The input-only check does n
 upstream root-user guard or these Gradle output paths; the builder probes `.gradle` and `build`
 for writability before compiling.
 
+On Apple Silicon, `linux/amd64` ninja under qemu-user 7.0 has hung after losing a `/bin/sh`
+compile wrapper (`pipe_w`, zombie child, 0% CPU for hours). Prefer `--jobs 1` on that path so
+ninja does not posix_spawn a second compile while one is in flight. This is an emulation
+workaround, not an ONNX source or archive defect.
+
 The first packaging dry run passed after upstream Gradle installed Platform-Tools 37.0.1 into
 its container. The recipe now installs `platform-tools` when building the image, so an unprivileged
 native build does not need to modify the SDK during configuration. That updated image resolved to

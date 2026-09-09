@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "status": "hung-then-killed",
+  "nativePairCompleted": false,
+  "releaseEligible": false,
+  "container": "libreboard-runtime-repro-debian-a3",
+  "imageId": "sha256:34c6bfa469b1afb637cbe9e95c3a5ec2a5c5e4ad011953cce70d0d83073a1fe7",
+  "observedAt": "2026-09-09T04:33:00Z",
+  "progressBeforeHang": {
+    "armeabi-v7a": {
+      "libonnxruntime.so": 4877264,
+      "jni": 79904
+    },
+    "arm64-v8a": {
+      "libonnxruntime.so": 7501400,
+      "jni": 127000
+    },
+    "x86": {
+      "ninjaEntries": 868,
+      "so": false,
+      "lastFilesystemWrite": "2026-09-08T21:38:05"
+    },
+    "x86_64": "not started"
+  },
+  "hang": {
+    "ninjaWchan": "pipe_w",
+    "ninjaCpu": "0.0",
+    "zombieChild": "[sh] <defunct> ~9h55m",
+    "interpretation": "qemu-user ninja lost a /bin/sh compile wrapper; ninja blocked waiting on that job. Not OOM, not SIGSEGV, not compiling."
+  },
+  "unstick": {
+    "SIGTERM_ninja": "ignored",
+    "SIGKILL_ninja": "ninja died; cmake gone; build.py became zombie; PID 1 python did not reap (qemu wait)",
+    "dockerStop": "exited 137",
+    "FinishedAt": "2026-09-09T04:35:25.556795263Z"
+  }
+}
