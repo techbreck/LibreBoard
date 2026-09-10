@@ -345,25 +345,23 @@ greedy-41 31/32 existence proof. Slots fill greedy, then best-spatial 2nd/3rd-be
 25th-percentile spatial (a score fix after pure OLS dropped 6k top-3 by 1 and 1k top-3 by 3).
 They are not pinned below top-3. In-lexicon reserved use real `log1p(frequency)`.
 
-Frozen targets in the published 31 all sit in ranks 1–23, so eleven reserved slots can
-replace the tail without dropping a frozen membership hit. Reserved spatials are mapped
-onto the merged lexicon scale so in-lexicon neighbors use real frequency. Unique-best
-unconstrained OOV (CTC margin ≥ 0.08) use the full OLS map; other OOV stay at a 50/50
-blend. n-best 16, budget 11:
+Stratum-adaptive merge (short stays 32/32; long/very_sloppy geometry down to 8) frees
+published slots for CTC and reserved winners. Unique-best unconstrained OOV is scored
+against greedy/alts only (n-best no longer suppresses the OLS map). n-best 16, budget 11:
 
 | Quantity | Frozen 32-slot | Published-31 diagnostic | Gate |
 | --- | ---: | ---: | ---: |
-| Target in ranked[:31] | 5,670 | 5,777 | 5,822 at 97.9% conversion |
-| Static-fusion top-3 | 5,551 (92.52%) | 5,555 (92.58%) | 5,700 (95%) |
-| return_trip published-31 | 1,529 | 1,577 | 1,572 |
-| return_trip top-3 | 1,498 | 1,500 | 1,539 (90%) |
-| Host reserved-decode p95 | — | 44.3 ms | < 91 ms |
+| Target in ranked[:31] | 5,670 | 5,782 | 5,822 at 97.9% conversion |
+| Static-fusion top-1 / top-3 | 5,200 / 5,551 | 5,238 / 5,560 | do not regress 5,200 / 5,551 |
+| return_trip published-31 | 1,529 | 1,579 | 1,572 |
+| return_trip top-3 | 1,498 | 1,505 | 1,539 (90%) |
+| Host reserved-decode p95 | — | 43.6 ms | < 91 ms |
 
-New hits: 93 frequency-free / 14 in-lexicon; 6 + 1 entered top-3, net +4 after 3 lexicon
-steals. return_trip membership clears 1,572. Gap to 5,822 is 45; even 100% conversion of
-the 107 new rows would reach 5,658 top-3. Matched 1,000-path union ranking twice was
-86.6%/92.8%. `diagnosticOnly` / `releaseEligible` false. Production vocabulary, scoring,
-beam 64, and `CtcSwipeDecoder.kt` are unchanged.
+New hits 112 (93 frequency-free / 25 in-lexicon after adaptive merge vs frozen 32).
+Net top-3 +9. Gap to 5,822 is 40. Matched 1,000-path union ranking twice was
+87.9%/92.7%. n-best 32 and truncated-first mixes lost neighbor slots and are
+rejected. `diagnosticOnly` / `releaseEligible` false. Production vocabulary,
+scoring, beam 64, and `CtcSwipeDecoder.kt` are unchanged.
 Evidence: `docs/models/evidence/swipe-published-31-recall.json` and
 `docs/models/evidence/swipe-published-31-1000-{1,2}.json`.
 

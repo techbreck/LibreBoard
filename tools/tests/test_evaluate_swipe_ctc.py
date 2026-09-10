@@ -536,6 +536,11 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
         )
         tied = evaluator._oov_blend_by_margin([greedy, close], 0.5)
         self.assertEqual(0.5, tied[id(greedy)])
+        nbest_close = evaluator.ReservedCandidate(
+            evaluator.LexiconEntry("caa", "en", (4,), 0), "nbest", forward=-0.06,
+        )
+        vs_nbest = evaluator._oov_blend_by_margin([greedy, alt, nbest_close], 0.5)
+        self.assertEqual(0.0, vs_nbest[id(greedy)])
 
     def test_true_oov_use_the_train_fit_map_without_floor_clamp(self):
         calibration = evaluator.fit_oov_score_calibration([-0.40, -0.10], [-0.40, -0.10])

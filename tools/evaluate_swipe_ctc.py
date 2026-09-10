@@ -1692,7 +1692,10 @@ def _oov_blend_by_margin(
     ]
     if not oov:
         return weights
-    ranked = sorted(oov, key=lambda candidate: (-candidate.forward, _normalize(candidate.entry.word)))
+    primary = [
+        candidate for candidate in oov if candidate.source in {"greedy", "greedy_alts"}
+    ] or oov
+    ranked = sorted(primary, key=lambda candidate: (-candidate.forward, _normalize(candidate.entry.word)))
     gap = ranked[0].forward - ranked[1].forward if len(ranked) > 1 else 1.0
     if gap >= 0.08:
         weights[id(ranked[0])] = 0.0

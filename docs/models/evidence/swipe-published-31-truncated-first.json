@@ -113,93 +113,93 @@
   },
   "candidateRecall": {
     "clean": {
-      "recall": 0.9680175246440307,
+      "recall": 0.9677984665936473,
       "rows": 4565,
-      "targetPresent": 4419
+      "targetPresent": 4418
     },
     "double_letter": {
-      "recall": 0.9154704944178629,
+      "recall": 0.9074960127591707,
       "rows": 627,
-      "targetPresent": 574
+      "targetPresent": 569
     },
     "long": {
-      "recall": 0.8776371308016878,
+      "recall": 0.869198312236287,
       "rows": 711,
-      "targetPresent": 624
+      "targetPresent": 618
     },
     "medium": {
-      "recall": 0.9601186552406065,
+      "recall": 0.9574818721160184,
       "rows": 3034,
-      "targetPresent": 2913
+      "targetPresent": 2905
     },
     "overall": {
-      "recall": 0.9636666666666667,
+      "recall": 0.9608333333333333,
       "rows": 6000,
-      "targetPresent": 5782
+      "targetPresent": 5765
     },
     "return_trip": {
-      "recall": 0.9233918128654971,
+      "recall": 0.9187134502923977,
       "rows": 1710,
-      "targetPresent": 1579
+      "targetPresent": 1571
     },
     "short": {
-      "recall": 0.9955654101995566,
+      "recall": 0.9942350332594235,
       "rows": 2255,
-      "targetPresent": 2245
+      "targetPresent": 2242
     },
     "sloppy": {
-      "recall": 0.9498257839721255,
+      "recall": 0.9386759581881533,
       "rows": 1435,
-      "targetPresent": 1363
+      "targetPresent": 1347
     },
     "very_sloppy": {
-      "recall": 0.9383333333333334,
+      "recall": 0.92,
       "rows": 600,
-      "targetPresent": 563
+      "targetPresent": 552
     }
   },
   "conversionMath": {
     "historicalLexiconConversion": 0.979,
-    "measuredConversionOfPublished31": 0.961604980975441,
-    "measuredPublished31TargetPresent": 5782,
-    "measuredTop3": 5560,
-    "newMembershipHits": 112,
-    "newTop3Hits": 9,
+    "measuredConversionOfPublished31": 0.9639202081526452,
+    "measuredPublished31TargetPresent": 5765,
+    "measuredTop3": 5557,
+    "newMembershipHits": 95,
+    "newTop3Hits": 6,
     "note": "Historical 97.9% conversion applies to frozen lexicon membership, not new reserved recoveries.",
     "phase0Top3Gate": 5700,
     "published31NeededAtHistoricalConversion": 5822,
-    "returnTripMeasuredTop3": 1505,
+    "returnTripMeasuredTop3": 1501,
     "returnTripPublished31NeededAtHistoricalConversion": 1572,
-    "returnTripPublished31TargetPresent": 1579,
+    "returnTripPublished31TargetPresent": 1571,
     "returnTripTop3Gate": 1539
   },
   "counts": {
     "baselineTargetPresent": 5670,
     "knownOffensiveRejected": 219,
-    "newTargetsRecovered": 112,
-    "published31TargetPresent": 5782,
+    "newTargetsRecovered": 95,
+    "published31TargetPresent": 5765,
     "publishedRankingBound": 31,
     "publishedSlateBound": 32,
     "recallCountsPublished31Only": true,
     "reservedBudget": 11,
     "rows": 6000,
-    "targetsLostAtPublish": 2
+    "targetsLostAtPublish": 0
   },
   "diagnosticOnly": true,
-  "evaluatorSha256": "29e0c33155d61dc3c8fe4804a0d7d519e0f0eba1fdf96b18d5aaa92ee4eb0aff",
+  "evaluatorSha256": "783124b857652e38f3c1daa5fa17b296a9cc8b15d7c473a6b941d8e03b9fcb42",
   "exportReportSha256": "04a261eef7db4adf18b7342fe4421326321a6cb674076b4915ff50c817d6342b",
   "knownOffensiveSourceSha256": "e23644662586f6bcb76f4bc0d9e01e7f38efd89afb823fc2b2a4530177a97525",
   "latencyMs": {
     "hostDiagnosticOnly": true,
     "inference": {
-      "p50": 2.034625,
-      "p95": 2.363042,
-      "p99": 2.911292
+      "p50": 2.02225,
+      "p95": 2.349625,
+      "p99": 2.973209
     },
     "reservedOov": {
-      "p50": 28.605583,
-      "p95": 43.579166,
-      "p99": 81.423875
+      "p50": 28.056958,
+      "p95": 42.819833,
+      "p99": 78.935
     },
     "reservedOovP95BudgetMs": 91.0,
     "reservedOovP95WithinBudget": true
@@ -216,8 +216,8 @@
   "newHits": {
     "bySource": {
       "greedy": {
-        "present": 55,
-        "top3": 5
+        "present": 41,
+        "top3": 9
       },
       "greedy_alts": {
         "present": 39,
@@ -228,11 +228,11 @@
         "top3": 0
       },
       "neighbors": {
-        "present": 11,
-        "top3": 1
+        "present": 0,
+        "top3": 0
       },
       "truncated_ctc": {
-        "present": 0,
+        "present": 2,
         "top3": 0
       },
       "truncated_geometry": {
@@ -241,9 +241,9 @@
       }
     },
     "frequencyFree": 93,
-    "inLexicon": 25,
-    "top3FrequencyFree": 6,
-    "top3InLexicon": 1
+    "inLexicon": 2,
+    "top3FrequencyFree": 10,
+    "top3InLexicon": 0
   },
   "oovBeamWidth": 16,
   "oovCalibrationSha256": "9f295e5e6a09df38c51b55c0c199baf50954dd313498e395a4319f5a2bad496a",
@@ -254,45 +254,45 @@
   "ranking": {
     "clean": {
       "rows": 4565,
-      "top1": 4063,
-      "top1Accuracy": 0.8900328587075576,
-      "top3": 4286,
-      "top3Accuracy": 0.9388828039430449
+      "top1": 4050,
+      "top1Accuracy": 0.8871851040525739,
+      "top3": 4290,
+      "top3Accuracy": 0.9397590361445783
     },
     "double_letter": {
       "rows": 627,
-      "top1": 460,
-      "top1Accuracy": 0.733652312599681,
-      "top3": 525,
-      "top3Accuracy": 0.8373205741626795
+      "top1": 449,
+      "top1Accuracy": 0.7161084529505582,
+      "top3": 523,
+      "top3Accuracy": 0.8341307814992025
     },
     "long": {
       "rows": 711,
-      "top1": 568,
-      "top1Accuracy": 0.7988748241912799,
+      "top1": 562,
+      "top1Accuracy": 0.790436005625879,
       "top3": 600,
       "top3Accuracy": 0.8438818565400844
     },
     "medium": {
       "rows": 3034,
-      "top1": 2539,
-      "top1Accuracy": 0.8368490441661174,
-      "top3": 2747,
-      "top3Accuracy": 0.9054054054054054
+      "top1": 2506,
+      "top1Accuracy": 0.8259723137771918,
+      "top3": 2744,
+      "top3Accuracy": 0.9044166117336849
     },
     "overall": {
       "rows": 6000,
-      "top1": 5238,
-      "top1Accuracy": 0.873,
-      "top3": 5560,
-      "top3Accuracy": 0.9266666666666666
+      "top1": 5199,
+      "top1Accuracy": 0.8665,
+      "top3": 5557,
+      "top3Accuracy": 0.9261666666666667
     },
     "return_trip": {
       "rows": 1710,
-      "top1": 1414,
-      "top1Accuracy": 0.8269005847953217,
-      "top3": 1505,
-      "top3Accuracy": 0.8801169590643275
+      "top1": 1397,
+      "top1Accuracy": 0.8169590643274853,
+      "top3": 1501,
+      "top3Accuracy": 0.8777777777777778
     },
     "short": {
       "rows": 2255,
@@ -303,17 +303,17 @@
     },
     "sloppy": {
       "rows": 1435,
-      "top1": 1175,
-      "top1Accuracy": 0.818815331010453,
-      "top3": 1274,
-      "top3Accuracy": 0.8878048780487805
+      "top1": 1149,
+      "top1Accuracy": 0.8006968641114982,
+      "top3": 1267,
+      "top3Accuracy": 0.8829268292682927
     },
     "very_sloppy": {
       "rows": 600,
-      "top1": 469,
-      "top1Accuracy": 0.7816666666666666,
-      "top3": 512,
-      "top3Accuracy": 0.8533333333333334
+      "top1": 457,
+      "top1Accuracy": 0.7616666666666667,
+      "top3": 505,
+      "top3Accuracy": 0.8416666666666667
     }
   },
   "releaseEligible": false,
@@ -330,7 +330,7 @@
   "schemaVersion": 1,
   "slatesSha256": "fbbbcd0ef004f651a2e6c698ce6d834d4d2ca8d5f8195a6c9996e5ff2c61776e",
   "slatesSha256After": "fbbbcd0ef004f651a2e6c698ce6d834d4d2ca8d5f8195a6c9996e5ff2c61776e",
-  "stratumAdaptiveMerge": true,
+  "stratumAdaptiveMerge": false,
   "toolSha256": "677959122029a051bf6c49d320c708f1fe23ebb1847517691b6d08ddd9ebe6bd",
   "toolchain": {
     "numpy": "2.2.6",
