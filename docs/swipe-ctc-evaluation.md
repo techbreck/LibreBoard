@@ -339,28 +339,30 @@ Cumulative bag recoveries: greedy 41, greedy+alts 110, beam≤4 115, beam≤32 1
 +neighbors 179, +dropped 184. Construction never reads targets. Evidence:
 `docs/models/evidence/swipe-184-source-ablation.json`.
 
-Reserved merge now displaces into the 32-slot bound only when a reserved candidate beats the
-current worst published candidate (at most 4 reserved slots). In-lexicon reserved neighbors
-use real `log1p(frequency)`. True OOV stay frequency-free. Mapping unconstrained CTC forward
-through the train-fit OLS map without a top-3 clamp recovered 5,745 published-31 targets but
-regressed 6k top-3 from 5,551 to 5,527 and host reserved-decode p95 to 103 ms; that scoring is
-rejected. Conservative 25th-percentile OOV spatial keeps the floors.
+Reserved merge always replaces the worst of the ranked 31 (at most 4 slots), matching the
+greedy-41 31/32 existence proof: membership is that 31-list, so ranking cannot then drop the
+replacement. One slot is kept for a frequency-free OOV (greedy); the rest go to in-lexicon
+neighbors and truncated leftovers. True OOV stay frequency-free at the 25th-percentile lexicon
+spatial. In-lexicon reserved use real `log1p(frequency)` and, when present, decoder spatial.
+The unclamped OLS OOV map and calibrated neighbor spatial both steal rare-lexicon top-3 and
+are rejected.
 
 The official published-31 diagnostic (greedy + 2nd/3rd-best + neighbors + truncated leftovers,
 n-best 1, reserved budget 4, no stratum-adaptive merge, conservative OOV spatial) measured:
 
 | Quantity | Frozen 32-slot | Published-31 diagnostic | Gate |
 | --- | ---: | ---: | ---: |
-| Target in ranked[:31] | 5,670 | 5,691 | 5,822 at 97.9% conversion |
-| Static-fusion top-3 | 5,551 (92.52%) | 5,552 (92.53%) | 5,700 (95%) |
-| return_trip published-31 | 1,529 | 1,539 | 1,572 |
-| return_trip top-3 | 1,498 | 1,500 | 1,539 (90%) |
-| Host reserved-decode p95 | — | 20.9 ms | < 91 ms |
+| Target in ranked[:31] | 5,670 | 5,723 | 5,822 at 97.9% conversion |
+| Static-fusion top-3 | 5,551 (92.52%) | 5,551 (92.52%) | 5,700 (95%) |
+| return_trip published-31 | 1,529 | 1,557 | 1,572 |
+| return_trip top-3 | 1,498 | 1,498 | 1,539 (90%) |
+| Host reserved-decode p95 | — | 20.2 ms | < 91 ms |
 
-New membership hits convert at 1/21, not 97.9%. The 97.9% rate describes frozen lexicon
-candidates, not reserved recoveries. Matched 1,000-path union ranking twice was 86.9%/92.7%.
-`diagnosticOnly` / `releaseEligible` false; this is published-31 membership, not a Phase 0
-quality pass. Production vocabulary, scoring, beam 64, and `CtcSwipeDecoder.kt` are unchanged.
+Greedy-41 membership is recovered (5,711 on the 31-bound, 5,723 with alts/neighbors). New
+reserved hits convert at 0/53 into top-3: a score high enough to put greedy OOV in top-3 also
+steals on the ~1,800 paths where greedy is wrong. Matched 1,000-path union ranking twice was
+86.6%/92.7%. `diagnosticOnly` / `releaseEligible` false. Production vocabulary, scoring,
+beam 64, and `CtcSwipeDecoder.kt` are unchanged.
 Evidence: `docs/models/evidence/swipe-published-31-recall.json` and
 `docs/models/evidence/swipe-published-31-1000-{1,2}.json`.
 

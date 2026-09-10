@@ -113,34 +113,34 @@
   },
   "candidateRecall": {
     "clean": {
-      "recall": 0.9581599123767799,
+      "recall": 0.9577217962760132,
       "rows": 4565,
-      "targetPresent": 4374
+      "targetPresent": 4372
     },
     "double_letter": {
-      "recall": 0.8947368421052632,
+      "recall": 0.8915470494417863,
       "rows": 627,
-      "targetPresent": 561
+      "targetPresent": 559
     },
     "long": {
-      "recall": 0.8720112517580872,
+      "recall": 0.8649789029535865,
       "rows": 711,
-      "targetPresent": 620
+      "targetPresent": 615
     },
     "medium": {
-      "recall": 0.9433091628213579,
+      "recall": 0.9419907712590639,
       "rows": 3034,
-      "targetPresent": 2862
+      "targetPresent": 2858
     },
     "overall": {
-      "recall": 0.9538333333333333,
+      "recall": 0.9523333333333334,
       "rows": 6000,
-      "targetPresent": 5723
+      "targetPresent": 5714
     },
     "return_trip": {
-      "recall": 0.9105263157894737,
+      "recall": 0.9058479532163742,
       "rows": 1710,
-      "targetPresent": 1557
+      "targetPresent": 1549
     },
     "short": {
       "recall": 0.9937915742793791,
@@ -148,36 +148,36 @@
       "targetPresent": 2241
     },
     "sloppy": {
-      "recall": 0.9400696864111499,
+      "recall": 0.935191637630662,
       "rows": 1435,
-      "targetPresent": 1349
+      "targetPresent": 1342
     },
     "very_sloppy": {
-      "recall": 0.9233333333333333,
+      "recall": 0.9166666666666666,
       "rows": 600,
-      "targetPresent": 554
+      "targetPresent": 550
     }
   },
   "conversionMath": {
     "historicalLexiconConversion": 0.979,
-    "measuredConversionOfPublished31": 0.969945832605277,
-    "measuredPublished31TargetPresent": 5723,
+    "measuredConversionOfPublished31": 0.9714735736786839,
+    "measuredPublished31TargetPresent": 5714,
     "measuredTop3": 5551,
-    "newMembershipHits": 53,
+    "newMembershipHits": 44,
     "newTop3Hits": 0,
     "note": "Historical 97.9% conversion applies to frozen lexicon membership, not new reserved recoveries.",
     "phase0Top3Gate": 5700,
     "published31NeededAtHistoricalConversion": 5822,
     "returnTripMeasuredTop3": 1498,
     "returnTripPublished31NeededAtHistoricalConversion": 1572,
-    "returnTripPublished31TargetPresent": 1557,
+    "returnTripPublished31TargetPresent": 1549,
     "returnTripTop3Gate": 1539
   },
   "counts": {
     "baselineTargetPresent": 5670,
     "knownOffensiveRejected": 73,
-    "newTargetsRecovered": 53,
-    "published31TargetPresent": 5723,
+    "newTargetsRecovered": 44,
+    "published31TargetPresent": 5714,
     "publishedRankingBound": 31,
     "publishedSlateBound": 32,
     "recallCountsPublished31Only": true,
@@ -186,20 +186,20 @@
     "targetsLostAtPublish": 0
   },
   "diagnosticOnly": true,
-  "evaluatorSha256": "c684137ccc419fd778c72d21cf429595c18b89ef86827a88fa09e35b666a6633",
+  "evaluatorSha256": "7c6077a6bc48b87f2a86a32c76922e38926d3a4bdef670517ff6b6328ca8b86a",
   "exportReportSha256": "04a261eef7db4adf18b7342fe4421326321a6cb674076b4915ff50c817d6342b",
   "knownOffensiveSourceSha256": "e23644662586f6bcb76f4bc0d9e01e7f38efd89afb823fc2b2a4530177a97525",
   "latencyMs": {
     "hostDiagnosticOnly": true,
     "inference": {
-      "p50": 1.80175,
-      "p95": 2.034417,
-      "p99": 2.143083
+      "p50": 1.843833,
+      "p95": 2.1535,
+      "p99": 2.394
     },
     "reservedOov": {
-      "p50": 8.921417,
-      "p95": 20.245583,
-      "p99": 24.9795
+      "p50": 9.0655,
+      "p95": 20.777041,
+      "p99": 25.882875
     },
     "reservedOovP95BudgetMs": 91.0,
     "reservedOovP95WithinBudget": true

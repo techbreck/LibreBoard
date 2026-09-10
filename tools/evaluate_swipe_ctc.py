@@ -1477,6 +1477,15 @@ def collect_reserved_sources(
                 language=language, skip_keys=empty_skip, nbest_rank=rank,
             )
             accept(candidate, offensive)
+    decoder_spatial_by_key: dict[tuple[str, str], float] = {}
+    for slate in (ctc, geometric):
+        if not slate:
+            continue
+        for candidate, score in zip(slate, _z_normalize([item.spatial for item in slate]), strict=True):
+            key = (_normalize(candidate.word), candidate.entry.language)
+            previous = decoder_spatial_by_key.get(key)
+            if previous is None or score > previous:
+                decoder_spatial_by_key[key] = score
     if include_lexicon_neighbors:
         for spelling in dict.fromkeys(spellings):
             for entry in lexicon_neighbors(spelling, lexicon_by_word):
@@ -1487,7 +1496,11 @@ def collect_reserved_sources(
                 if key in per_source_keys["neighbors"]:
                     continue
                 per_source_keys["neighbors"].add(key)
-                sources["neighbors"].append(ReservedCandidate(entry, "neighbors"))
+                sources["neighbors"].append(
+                    ReservedCandidate(
+                        entry, "neighbors", decoder_spatial=decoder_spatial_by_key.get(key),
+                    )
+                )
     if include_truncated:
         leftover_skip = {
             (_normalize(candidate.word), candidate.entry.language)
@@ -1733,69 +1746,69 @@ def reserved_fusion_values(
     return values
 
 
+def prioritize_reserved_candidates(
+    reserved: Sequence[ScoredLexiconEntry],
+) -> list[ScoredLexiconEntry]:
+    """Keep one frequency-free OOV (greedy-41) then in-lexicon reserved, then extra OOV."""
+    oov = [candidate for candidate in reserved if candidate.frequency_free]
+    in_lexicon = [candidate for candidate in reserved if not candidate.frequency_free]
+    return [*oov[:1], *in_lexicon, *oov[1:]]
+
+
 def publish_reserved_slots(
     base: Sequence[ScoredLexiconEntry],
     reserved: Sequence[ScoredLexiconEntry],
     *,
     reserved_budget: int,
-    bound: int = PUBLISHED_SLATE_BOUND,
+    bound: int = PUBLISHED_RANKING_BOUND,
 ) -> list[ScoredLexiconEntry]:
-    """Keep at most ``reserved_budget`` reserved items in a ``bound``-slot slate.
+    """Replace the worst ``reserved_budget`` of the ranked 31 with reserved spellings.
 
-    Reserved candidates enter only when they beat the current worst published
-    candidate. The slate never grows past ``bound``.
+    Production keeps 32 scorer slots including the empty swipe placeholder and
+    publishes 31 words. Membership is this 31-list. Extra spellings always
+    replace the lowest-fusion baseline candidates, matching the greedy-41 31/32
+    proof; ranking of these 31 items cannot then drop the replacement.
     """
     if reserved_budget < 0:
         raise SwipeEvaluationError("reserved budget must not be negative")
     budget = min(reserved_budget, bound)
+    ordered_base = [
+        candidate for candidate, _fusion in sorted(
+            zip(base, static_fusion_values(base), strict=True),
+            key=lambda item: (
+                -item[1],
+                _normalize(item[0].word),
+                item[0].entry.language,
+            ),
+        )
+    ] if base else []
     published: list[ScoredLexiconEntry] = []
     seen: set[tuple[str, str]] = set()
-    for candidate in base:
+
+    def take(candidate: ScoredLexiconEntry) -> bool:
         key = (_normalize(candidate.word), candidate.entry.language)
-        if key in seen:
-            continue
-        if len(published) >= bound:
-            break
+        if key in seen or len(published) >= bound:
+            return False
         published.append(candidate)
         seen.add(key)
-    if budget == 0 or not reserved:
-        return published[:bound]
-    lexicon_ref = published or list(base)
-    reserved_scores = reserved_fusion_values(lexicon_ref, reserved)
-    ranked_reserved = sorted(
-        zip(reserved, reserved_scores, strict=True),
-        key=lambda item: (-item[1], _normalize(item[0].word), item[0].entry.language),
-    )
-    values = static_fusion_values(published) if published else []
-    origin = ["lexicon"] * len(published)
+        return True
+
+    keep = bound - budget
+    for candidate in ordered_base:
+        if len(published) >= keep:
+            break
+        take(candidate)
     added = 0
-    for candidate, fusion in ranked_reserved:
+    for candidate in prioritize_reserved_candidates(reserved):
         if added >= budget:
             break
-        key = (_normalize(candidate.word), candidate.entry.language)
-        if key in seen:
-            continue
-        if len(published) < bound:
-            published.append(candidate)
-            values.append(fusion)
-            origin.append("reserved")
-            seen.add(key)
+        if take(candidate):
             added += 1
-            continue
-        worst_index = min(
-            range(len(published)),
-            key=lambda index: (values[index], origin[index] != "lexicon", _normalize(published[index].word)),
-        )
-        if fusion <= values[worst_index]:
-            continue
-        old_key = (_normalize(published[worst_index].word), published[worst_index].entry.language)
-        seen.remove(old_key)
-        published[worst_index] = candidate
-        values[worst_index] = fusion
-        origin[worst_index] = "reserved"
-        seen.add(key)
-        added += 1
-    return published[:bound]
+    for candidate in ordered_base:
+        if len(published) >= bound:
+            break
+        take(candidate)
+    return published
 
 
 def competing_slate(
@@ -1891,10 +1904,49 @@ def rank_static_fusion_with_reserved(
 def published_ranking(
     published: Sequence[ScoredLexiconEntry],
     reserved: Sequence[ScoredLexiconEntry],
+    lexicon_reference: Sequence[ScoredLexiconEntry] | None = None,
 ) -> list[LexiconEntry]:
-    """Rank the bounded published slate. The counted list is this [:31] result."""
-    lexicon_part, reserved_part = split_published_slate(published, reserved)
-    return rank_static_fusion_with_reserved(lexicon_part, reserved_part)
+    """Reorder the published 31. Lexicon fusions stay those of ``lexicon_reference``.
+
+    The counted list is this result (length of ``published``, at most 31).
+    """
+    reserved_keys = {(_normalize(candidate.word), candidate.entry.language) for candidate in reserved}
+    if not published:
+        return []
+    reference = list(lexicon_reference) if lexicon_reference is not None else [
+        candidate for candidate in published
+        if (_normalize(candidate.word), candidate.entry.language) not in reserved_keys
+    ]
+    if not reference:
+        return rank_static_fusion(published)[:PUBLISHED_RANKING_BOUND]
+    spatials = [candidate.spatial for candidate in reference]
+    log_freq = [math.log1p(candidate.entry.frequency) for candidate in reference]
+    reference_fusion = {
+        (_normalize(candidate.word), candidate.entry.language): fusion
+        for candidate, fusion in zip(reference, static_fusion_values(reference), strict=True)
+    }
+    scored: list[tuple[ScoredLexiconEntry, float]] = []
+    for candidate in published:
+        key = (_normalize(candidate.word), candidate.entry.language)
+        if key in reference_fusion and key not in reserved_keys:
+            fusion = reference_fusion[key]
+        elif candidate.frequency_free:
+            fusion = _z_score_against(candidate.spatial, spatials)
+        else:
+            fusion = (
+                _z_score_against(candidate.spatial, spatials)
+                + 0.65 * _z_score_against(math.log1p(candidate.entry.frequency), log_freq)
+            )
+        scored.append((candidate, fusion))
+    ranked = sorted(
+        scored,
+        key=lambda item: (
+            -item[1],
+            _normalize(item[0].entry.word),
+            item[0].entry.language,
+        ),
+    )
+    return [item[0].entry for item in ranked]
 
 
 def collect_oov_calibration_observations(
@@ -2159,7 +2211,7 @@ def _evaluate(args: argparse.Namespace, slate_stream=None) -> dict[str, Any]:
             reserved_added += len(reserved)
         if reserved_budget > 0:
             published = publish_reserved_slots(merged, reserved, reserved_budget=reserved_budget)
-            ctc_geometric_fusion = published_ranking(published, reserved)
+            ctc_geometric_fusion = published_ranking(published, reserved, lexicon_reference=merged)
             competing = published
         else:
             competing = competing_slate(merged, reserved)

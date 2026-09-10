@@ -376,7 +376,12 @@ def ablate_184(args: argparse.Namespace) -> dict[str, Any]:
                 published = evaluator.publish_reserved_slots(
                     merged, scored_reserved, reserved_budget=budget,
                 )
-                ranked = [entry.word for entry in evaluator.published_ranking(published, scored_reserved)]
+                ranked = [
+                    entry.word
+                    for entry in evaluator.published_ranking(
+                        published, scored_reserved, lexicon_reference=merged,
+                    )
+                ]
                 key = f"{prefix_name}:b{budget}"
                 present = row.target in ranked
                 add_present(grid[key]["membership"], slate["strata"], present)
@@ -547,10 +552,10 @@ def recall_6000(args: argparse.Namespace) -> dict[str, Any]:
         )
         rejected += offensive
         published = evaluator.publish_reserved_slots(merged, reserved, reserved_budget=reserved_budget)
-        if len(published) > evaluator.PUBLISHED_SLATE_BOUND:
+        if len(published) > evaluator.PUBLISHED_RANKING_BOUND:
             over_bound += 1
         added += min(reserved_budget, len(published))
-        ranked = evaluator.published_ranking(published, reserved)
+        ranked = evaluator.published_ranking(published, reserved, lexicon_reference=merged)
         ranked_list = [entry.word for entry in ranked]
         if row.target in {item.word for item in merged} and row.target not in ranked_list:
             lost_at_publish += 1

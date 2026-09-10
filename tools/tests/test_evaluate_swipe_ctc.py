@@ -331,6 +331,7 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
             evaluator.score_reserved_candidate,
             evaluator.score_reserved_sources,
             evaluator.publish_reserved_slots,
+            evaluator.prioritize_reserved_candidates,
             evaluator.split_published_slate,
             evaluator.published_ranking,
             evaluator.static_fusion_values,
@@ -396,14 +397,13 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
             for index in range(32)
         ]
         reserved = [evaluator.ScoredLexiconEntry(
-            evaluator.LexiconEntry("cax", "en", (2,), 0), 4.0, frequency_free=True,
+            evaluator.LexiconEntry("cax", "en", (2,), 0), -9.0, frequency_free=True,
         )]
         published = evaluator.publish_reserved_slots(merged, reserved, reserved_budget=1)
-        self.assertEqual(32, len(published))
+        self.assertEqual(31, len(published))
         self.assertIn("cax", {item.word for item in published})
         ranked = evaluator.published_ranking(published, reserved)
-        self.assertLessEqual(len(ranked), 31)
-        self.assertEqual({"cax"}, {item.word for item in published} - {item.word for item in merged})
+        self.assertEqual(31, len(ranked))
         self.assertIn("cax", [entry.word for entry in ranked])
 
     def test_conservative_oov_spatial_is_below_the_lexicon_median(self):
@@ -485,27 +485,116 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
         self.assertEqual(128, len(rows[0][2]))
         self.assertTrue(all("secret-target" not in str(item) for item in rows[0]))
 
-    def test_publish_reserved_slots_displaces_inside_the_32_slot_bound(self):
+    def test_publish_reserved_slots_displaces_inside_the_31_ranking_bound(self):
         base = [
             evaluator.ScoredLexiconEntry(evaluator.LexiconEntry(f"w{index}", "en", (1,), 10), -0.1 * index)
             for index in range(32)
         ]
         reserved = [
             evaluator.ScoredLexiconEntry(
-                evaluator.LexiconEntry("oovword", "en", (2, 3), 0), 2.0, frequency_free=True,
+                evaluator.LexiconEntry("oovword", "en", (2, 3), 0), -9.0, frequency_free=True,
             ),
             evaluator.ScoredLexiconEntry(base[0].entry, 9.0, frequency_free=True),
         ]
         published = evaluator.publish_reserved_slots(base, reserved, reserved_budget=1)
-        self.assertEqual(32, len(published))
-        self.assertIn("oovword", {candidate.word for candidate in published})
-        self.assertIn(base[0].word, {candidate.word for candidate in published})
-        weak = evaluator.ScoredLexiconEntry(
-            evaluator.LexiconEntry("zzzz", "en", (9,), 0), -9.0, frequency_free=True,
-        )
-        unchanged = evaluator.publish_reserved_slots(base, [weak], reserved_budget=1)
-        self.assertEqual([candidate.word for candidate in base], [candidate.word for candidate in unchanged])
+        self.assertEqual(31, len(published))
+        self.assertEqual([candidate.word for candidate in base[:30]], [candidate.word for candidate in published[:30]])
+        self.assertEqual("oovword", published[30].word)
         self.assertNotIn("target", inspect.signature(evaluator.publish_reserved_slots).parameters)
+
+    def test_greedy_oov_occupies_a_published_31_slot(self):
+        layout = {"keyLabels": list("caxyz") + [None] * 59}
+        output = logits([1, 2, 3], classes=8, frames=8)
+        calibration = evaluator.fit_oov_score_calibration([-0.2, -0.1], [-0.2, -0.1])
+        existing = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry(f"w{index}", "en", (4,), 10), 1.0 - 0.01 * index)
+            for index in range(32)
+        ]
+        reserved, rejected = evaluator.reserved_oov_from_logits(
+            output,
+            layout,
+            calibration=calibration,
+            n_best=1,
+            beam_width=4,
+            existing=existing,
+            known_offensive=set(),
+            lexicon_by_word={},
+            language="en",
+            ctc_spatials=[1.0 - 0.01 * index for index in range(32)],
+            oov_conservative=True,
+        )
+        self.assertEqual(0, rejected)
+        self.assertIn("cax", {item.word for item in reserved})
+        published = evaluator.publish_reserved_slots(existing, reserved, reserved_budget=1)
+        ranked = evaluator.published_ranking(published, reserved)
+        self.assertEqual(31, len(ranked))
+        self.assertIn("cax", [entry.word for entry in ranked])
+
+    def test_publish_reserves_one_oov_slot_and_in_lexicon_neighbors(self):
+        base = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry(f"w{index}", "en", (1,), 10), 1.0 - 0.01 * index)
+            for index in range(32)
+        ]
+        oov = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (2,), 0), -9.0, frequency_free=True,
+        )
+        extras = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"zz{index}", "en", (3,), 0), -9.0, frequency_free=True,
+            )
+            for index in range(3)
+        ]
+        neighbor = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cat", "en", (1, 2, 3), 77), 0.2, frequency_free=False,
+        )
+        published = evaluator.publish_reserved_slots(
+            base, [oov, *extras, neighbor], reserved_budget=4,
+        )
+        words = {item.word for item in published}
+        self.assertIn("cax", words)
+        self.assertIn("cat", words)
+        ranked = evaluator.published_ranking(
+            published, [oov, *extras, neighbor], lexicon_reference=base,
+        )
+        self.assertIn("cax", [entry.word for entry in ranked])
+        self.assertIn("cat", [entry.word for entry in ranked])
+
+    def test_displacing_ranked_tail_keeps_lexicon_top3(self):
+        base = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"w{index}", "en", (1,), 10 + (32 - index)),
+                1.0 - 0.01 * index,
+            )
+            for index in range(32)
+        ]
+        before = [entry.word for entry in evaluator.rank_static_fusion(base)[:3]]
+        weak = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("oovword", "en", (2,), 0), -9.0, frequency_free=True,
+        )
+        published = evaluator.publish_reserved_slots(base, [weak], reserved_budget=1)
+        ranked = [
+            entry.word
+            for entry in evaluator.published_ranking(published, [weak], lexicon_reference=base)
+        ]
+        self.assertEqual(before, ranked[:3])
+        self.assertIn("oovword", ranked)
+
+    def test_weak_reserved_stays_in_the_published_31(self):
+        """Greedy-41 proof: replacing the last of 31 keeps the extra in ranked[:31]."""
+        base = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry(f"w{index}", "en", (1,), 10), 1.0 - 0.01 * index)
+            for index in range(32)
+        ]
+        weak = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("oovword", "en", (2,), 0), -9.0, frequency_free=True,
+        )
+        published = evaluator.publish_reserved_slots(base, [weak], reserved_budget=1)
+        ranked = evaluator.published_ranking(published, [weak])
+        self.assertEqual(31, len(published))
+        self.assertEqual(31, len(ranked))
+        self.assertIn("oovword", {item.word for item in published})
+        self.assertIn("oovword", [entry.word for entry in ranked])
+        self.assertNotIn(base[30].word, {item.word for item in published})
 
     def test_in_lexicon_reserved_neighbors_use_real_frequency(self):
         layout = {"keyLabels": list("catd") + [None] * 60}

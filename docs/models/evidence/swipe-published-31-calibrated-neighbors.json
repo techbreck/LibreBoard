@@ -160,15 +160,15 @@
   },
   "conversionMath": {
     "historicalLexiconConversion": 0.979,
-    "measuredConversionOfPublished31": 0.969945832605277,
+    "measuredConversionOfPublished31": 0.968373230822995,
     "measuredPublished31TargetPresent": 5723,
-    "measuredTop3": 5551,
+    "measuredTop3": 5542,
     "newMembershipHits": 53,
-    "newTop3Hits": 0,
+    "newTop3Hits": -9,
     "note": "Historical 97.9% conversion applies to frozen lexicon membership, not new reserved recoveries.",
     "phase0Top3Gate": 5700,
     "published31NeededAtHistoricalConversion": 5822,
-    "returnTripMeasuredTop3": 1498,
+    "returnTripMeasuredTop3": 1499,
     "returnTripPublished31NeededAtHistoricalConversion": 1572,
     "returnTripPublished31TargetPresent": 1557,
     "returnTripTop3Gate": 1539
@@ -186,20 +186,20 @@
     "targetsLostAtPublish": 0
   },
   "diagnosticOnly": true,
-  "evaluatorSha256": "c684137ccc419fd778c72d21cf429595c18b89ef86827a88fa09e35b666a6633",
+  "evaluatorSha256": "a44be751d3cb9c75ef88c5d68b236bbeea68ec55c1befa40db8a222da9aedca8",
   "exportReportSha256": "04a261eef7db4adf18b7342fe4421326321a6cb674076b4915ff50c817d6342b",
   "knownOffensiveSourceSha256": "e23644662586f6bcb76f4bc0d9e01e7f38efd89afb823fc2b2a4530177a97525",
   "latencyMs": {
     "hostDiagnosticOnly": true,
     "inference": {
-      "p50": 1.80175,
-      "p95": 2.034417,
-      "p99": 2.143083
+      "p50": 1.8815,
+      "p95": 2.168167,
+      "p99": 2.261834
     },
     "reservedOov": {
-      "p50": 8.921417,
-      "p95": 20.245583,
-      "p99": 24.9795
+      "p50": 9.263791,
+      "p95": 21.3195,
+      "p99": 26.582209
     },
     "reservedOovP95BudgetMs": 91.0,
     "reservedOovP95WithinBudget": true
@@ -220,66 +220,66 @@
   "ranking": {
     "clean": {
       "rows": 4565,
-      "top1": 4050,
-      "top1Accuracy": 0.8871851040525739,
-      "top3": 4283,
-      "top3Accuracy": 0.9382256297918948
+      "top1": 4037,
+      "top1Accuracy": 0.8843373493975903,
+      "top3": 4276,
+      "top3Accuracy": 0.9366922234392114
     },
     "double_letter": {
       "rows": 627,
-      "top1": 449,
-      "top1Accuracy": 0.7161084529505582,
-      "top3": 524,
-      "top3Accuracy": 0.835725677830941
+      "top1": 443,
+      "top1Accuracy": 0.7065390749601276,
+      "top3": 523,
+      "top3Accuracy": 0.8341307814992025
     },
     "long": {
       "rows": 711,
-      "top1": 562,
-      "top1Accuracy": 0.790436005625879,
-      "top3": 599,
-      "top3Accuracy": 0.8424753867791842
+      "top1": 561,
+      "top1Accuracy": 0.7890295358649789,
+      "top3": 601,
+      "top3Accuracy": 0.8452883263009845
     },
     "medium": {
       "rows": 3034,
-      "top1": 2507,
-      "top1Accuracy": 0.8263019116677653,
-      "top3": 2740,
-      "top3Accuracy": 0.9030982201713909
+      "top1": 2494,
+      "top1Accuracy": 0.8220171390903098,
+      "top3": 2731,
+      "top3Accuracy": 0.9001318391562294
     },
     "overall": {
       "rows": 6000,
-      "top1": 5200,
-      "top1Accuracy": 0.8666666666666667,
-      "top3": 5551,
-      "top3Accuracy": 0.9251666666666667
+      "top1": 5186,
+      "top1Accuracy": 0.8643333333333333,
+      "top3": 5542,
+      "top3Accuracy": 0.9236666666666666
     },
     "return_trip": {
       "rows": 1710,
-      "top1": 1398,
-      "top1Accuracy": 0.8175438596491228,
-      "top3": 1498,
-      "top3Accuracy": 0.8760233918128655
+      "top1": 1392,
+      "top1Accuracy": 0.8140350877192982,
+      "top3": 1499,
+      "top3Accuracy": 0.876608187134503
     },
     "short": {
       "rows": 2255,
       "top1": 2131,
       "top1Accuracy": 0.9450110864745012,
-      "top3": 2212,
-      "top3Accuracy": 0.9809312638580931
+      "top3": 2210,
+      "top3Accuracy": 0.9800443458980045
     },
     "sloppy": {
       "rows": 1435,
-      "top1": 1150,
-      "top1Accuracy": 0.8013937282229965,
-      "top3": 1268,
-      "top3Accuracy": 0.883623693379791
+      "top1": 1149,
+      "top1Accuracy": 0.8006968641114982,
+      "top3": 1266,
+      "top3Accuracy": 0.8822299651567944
     },
     "very_sloppy": {
       "rows": 600,
-      "top1": 457,
-      "top1Accuracy": 0.7616666666666667,
-      "top3": 506,
-      "top3Accuracy": 0.8433333333333334
+      "top1": 455,
+      "top1Accuracy": 0.7583333333333333,
+      "top3": 505,
+      "top3Accuracy": 0.8416666666666667
     }
   },
   "releaseEligible": false,

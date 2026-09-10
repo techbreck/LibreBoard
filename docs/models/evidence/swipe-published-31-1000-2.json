@@ -1,7 +1,7 @@
 {
   "artifacts": {
     "evaluationDataSha256": "bc11f707c849b9c9daec5a5ffef06108771887f1c9d019b4c123f4bf8714be6e",
-    "evaluatorSha256": "9de7d77579fd0a779ab5ff7ec889e256bb71585865029f50e5dda80c0904439a",
+    "evaluatorSha256": "c684137ccc419fd778c72d21cf429595c18b89ef86827a88fa09e35b666a6633",
     "exportReportSha256": "04a261eef7db4adf18b7342fe4421326321a6cb674076b4915ff50c817d6342b",
     "model": {
       "path": "swipe-latin-v1.onnx",
@@ -59,9 +59,9 @@
   },
   "candidateRecall": {
     "clean": {
-      "recall": 0.9457671957671958,
+      "recall": 0.9537037037037037,
       "rows": 756,
-      "targetPresent": 715
+      "targetPresent": 721
     },
     "double_letter": {
       "recall": 0.8557692307692307,
@@ -74,19 +74,19 @@
       "targetPresent": 106
     },
     "medium": {
-      "recall": 0.9325153374233128,
+      "recall": 0.9447852760736196,
       "rows": 489,
-      "targetPresent": 456
+      "targetPresent": 462
     },
     "overall": {
-      "recall": 0.948,
+      "recall": 0.954,
       "rows": 1000,
-      "targetPresent": 948
+      "targetPresent": 954
     },
     "return_trip": {
-      "recall": 0.8989547038327527,
+      "recall": 0.9128919860627178,
       "rows": 287,
-      "targetPresent": 258
+      "targetPresent": 262
     },
     "short": {
       "recall": 0.9948453608247423,
@@ -110,8 +110,8 @@
       "lengthWindowCoverage": 0.9986772486772487,
       "lengthWindowEligible": 755,
       "rows": 756,
-      "top1": 669,
-      "top1Accuracy": 0.8849206349206349,
+      "top1": 666,
+      "top1Accuracy": 0.8809523809523809,
       "top3": 711,
       "top3Accuracy": 0.9404761904761905,
       "vocabularyCoverage": 0.9484126984126984
@@ -132,8 +132,8 @@
       "lengthWindowCoverage": 0.991869918699187,
       "lengthWindowEligible": 122,
       "rows": 123,
-      "top1": 95,
-      "top1Accuracy": 0.7723577235772358,
+      "top1": 94,
+      "top1Accuracy": 0.7642276422764228,
       "top3": 106,
       "top3Accuracy": 0.8617886178861789,
       "vocabularyCoverage": 0.8617886178861789
@@ -154,8 +154,8 @@
       "lengthWindowCoverage": 0.999,
       "lengthWindowEligible": 999,
       "rows": 1000,
-      "top1": 869,
-      "top1Accuracy": 0.869,
+      "top1": 866,
+      "top1Accuracy": 0.866,
       "top3": 927,
       "top3Accuracy": 0.927,
       "vocabularyCoverage": 0.955
@@ -165,8 +165,8 @@
       "lengthWindowCoverage": 0.9965156794425087,
       "lengthWindowEligible": 286,
       "rows": 287,
-      "top1": 234,
-      "top1Accuracy": 0.8153310104529616,
+      "top1": 233,
+      "top1Accuracy": 0.8118466898954704,
       "top3": 254,
       "top3Accuracy": 0.8850174216027874,
       "vocabularyCoverage": 0.9024390243902439
@@ -176,8 +176,8 @@
       "lengthWindowCoverage": 1.0,
       "lengthWindowEligible": 388,
       "rows": 388,
-      "top1": 372,
-      "top1Accuracy": 0.9587628865979382,
+      "top1": 370,
+      "top1Accuracy": 0.9536082474226805,
       "top3": 383,
       "top3Accuracy": 0.9871134020618557,
       "vocabularyCoverage": 0.9974226804123711
@@ -327,30 +327,30 @@
   },
   "latencyMs": {
     "ctcGeometricFusionTotal": {
-      "p50": 142.74075,
-      "p95": 329.517375,
-      "p99": 398.882167
+      "p50": 156.688667,
+      "p95": 545.629625,
+      "p99": 1350.423333
     },
     "hostDiagnosticOnly": true,
     "inference": {
-      "p50": 1.936709,
-      "p95": 2.023417,
-      "p99": 2.326417
+      "p50": 1.978083,
+      "p95": 4.977791,
+      "p99": 39.934416
     },
     "prefixBeam": {
-      "p50": 8.48275,
-      "p95": 10.835375,
-      "p99": 76.658083
+      "p50": 9.647541,
+      "p95": 36.802333,
+      "p99": 115.499792
     },
     "total": {
-      "p50": 10.45175,
-      "p95": 12.820666,
-      "p99": 78.585125
+      "p50": 11.651125,
+      "p95": 48.689875,
+      "p99": 152.403667
     },
     "vectorizedGeometricAndFusion": {
-      "p50": 131.492417,
-      "p95": 319.015541,
-      "p99": 345.3285
+      "p50": 143.602834,
+      "p95": 450.487958,
+      "p99": 1230.826166
     }
   },
   "lexicon": {
@@ -485,7 +485,7 @@
   "published31Membership": true,
   "qualityClaim": false,
   "qualitySnapshot": {
-    "ctcGeometricTop1RelativeErrorReductionOverGeometric": 0.5718954248366014,
+    "ctcGeometricTop1RelativeErrorReductionOverGeometric": 0.5620915032679739,
     "doesNotSatisfyPhase0": true,
     "meetsPhase0SwipeThresholdsInCtcIsolation": false,
     "meetsPhase0SwipeThresholdsWithCtcGeometricFusion": false,
