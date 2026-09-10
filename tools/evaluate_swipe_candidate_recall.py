@@ -177,12 +177,294 @@ def ranking_1000(args: argparse.Namespace) -> dict[str, Any]:
         "--oov-calibration", str(args.oov_calibration),
         "--known-offensive-lexicon", str(args.known_offensive_lexicon),
         "--beam-width", str(args.beam_width),
+        "--reserved-budget", str(args.reserved_budget),
     ]
     if args.stratum_adaptive_merge:
         argv.append("--stratum-adaptive-merge")
+    if args.include_lexicon_neighbors:
+        argv.append("--include-lexicon-neighbors")
+    if args.include_truncated_leftovers:
+        argv.append("--include-truncated-leftovers")
+    if args.oov_conservative_spatial:
+        argv.append("--oov-conservative-spatial")
     parsed = evaluator.parse_args(argv)
     report = evaluator.evaluate(parsed)
+    report["diagnosticOnly"] = True
+    report["releaseEligible"] = False
+    report["qualityClaim"] = False
+    report["published31Membership"] = int(args.reserved_budget) > 0
     evaluator._write_report(args.output, report)
+    return report
+
+
+ABLATION_PREFIXES = (
+    ("greedyOnly", ("greedy",), None),
+    ("greedyAlts", ("greedy", "greedy_alts"), None),
+    ("beamLe2", ("greedy", "greedy_alts", "nbest"), 2),
+    ("beamLe4", ("greedy", "greedy_alts", "nbest"), 4),
+    ("beamLe8", ("greedy", "greedy_alts", "nbest"), 8),
+    ("beamLe16", ("greedy", "greedy_alts", "nbest"), 16),
+    ("beamLe32", ("greedy", "greedy_alts", "nbest"), 32),
+    ("plusNeighbors", ("greedy", "greedy_alts", "nbest", "neighbors"), 32),
+    ("plusDropped", evaluator.RESERVED_SOURCE_ORDER, 32),
+)
+PUBLISHED_BUDGETS = (1, 2, 4)
+
+
+def parse_reserved_sources(value: str | None) -> tuple[str, ...]:
+    if not value:
+        return evaluator.RESERVED_SOURCE_ORDER
+    names = tuple(item.strip() for item in value.split(",") if item.strip())
+    unknown = [name for name in names if name not in evaluator.RESERVED_SOURCE_ORDER]
+    if unknown:
+        raise evaluator.SwipeEvaluationError(f"unknown reserved sources: {unknown}")
+    return names
+
+
+def empty_stratum_counts() -> dict[str, dict[str, int]]:
+    names = ("overall",) + evaluator.REQUIRED_STRATA
+    return {name: {"rows": 0, "targetPresent": 0} for name in names}
+
+
+def add_present(table: dict[str, dict[str, int]], strata: list[str], hit: bool) -> None:
+    for name in ("overall", *strata):
+        table[name]["rows"] += 1
+        table[name]["targetPresent"] += bool(hit)
+
+
+def decorate_recall(table: dict[str, dict[str, int]]) -> dict[str, dict[str, int | float]]:
+    return {
+        name: {
+            **counts,
+            "recall": counts["targetPresent"] / counts["rows"] if counts["rows"] else 0.0,
+        }
+        for name, counts in table.items()
+    }
+
+
+def ablate_184(args: argparse.Namespace) -> dict[str, Any]:
+    slates_payload = verify_frozen_slates(args.slates)
+    slates = [json.loads(line) for line in slates_payload.splitlines()]
+    if len(slates) != 6000:
+        raise evaluator.SwipeEvaluationError("frozen slate count is not 6,000")
+    data_root = args.data_root.resolve()
+    layout = evaluator.load_layout(data_root / "layout.json")
+    rows = evaluator.select_rows(
+        evaluator.load_test_rows(data_root / "validation.jsonl", layout, "validation"),
+        sample_count=6000,
+        minimum_per_stratum=600,
+    )
+    by_id = {row.identifier: row for row in rows}
+    calibration = evaluator.load_oov_score_calibration(args.oov_calibration)
+    known_offensive = evaluator.load_known_offensive_words(args.known_offensive_lexicon)
+    lexicon, _provenance = evaluator.load_dictionary_lexicon(args.dictionary_lexicon, args.dictionary_apk, layout)
+    lexicon_by_language = {
+        language: {evaluator._normalize(entry.word): entry for entry in entries}
+        for language, entries in lexicon.items()
+    }
+    export, model_path, export_hash, numpy, versions, session = open_session(args.export_report)
+    key_centers = numpy.asarray(layout["keyCenters"], dtype=numpy.float32).reshape(1, 64, 2)
+    key_mask = numpy.asarray(layout["keyMask"], dtype=numpy.float32).reshape(1, 64)
+    first_source_counts = {name: 0 for name in evaluator.RESERVED_SOURCE_ORDER}
+    overlap_counts = {name: 0 for name in evaluator.RESERVED_SOURCE_ORDER}
+    cumulative_hits = {
+        "greedyOnly": 0,
+        "greedyAlts": 0,
+        "beamLe": {str(width): 0 for width in range(2, 33)},
+        "plusNeighbors": 0,
+        "plusDropped": 0,
+    }
+    recovered_rows: list[dict[str, Any]] = []
+    competing_present = 0
+    frozen_present = 0
+    rejected = 0
+    inference_ms = []
+    decode_ms = []
+    grid = {
+        f"{prefix_name}:b{budget}": {
+            "membership": empty_stratum_counts(),
+            "ranking": {name: {"rows": 0, "top1": 0, "top3": 0} for name in ("overall",) + evaluator.REQUIRED_STRATA},
+        }
+        for prefix_name, _sources, _limit in ABLATION_PREFIXES
+        for budget in PUBLISHED_BUDGETS
+    }
+    for index, slate in enumerate(slates, 1):
+        row = by_id[slate["id"]]
+        if slate["sessionId"] != row.session_id or slate["target"] != row.target:
+            raise evaluator.SwipeEvaluationError("frozen slate identity does not match selected validation row")
+        started = time.perf_counter_ns()
+        output = session.run(["logits"], {
+            "path_coordinates": numpy.asarray(row.path, dtype=numpy.float32).reshape(1, 64, 2),
+            "key_centers": key_centers,
+            "key_mask": key_mask,
+        })[0]
+        inferred = time.perf_counter_ns()
+        logits = output[0].tolist()
+        ctc_n, geo_n = evaluator.decoder_slate_budgets(row.strata)
+        merged = evaluator.merge_swipe_slates(scored(slate["ctc"][:ctc_n]), scored(slate["geometric"][:geo_n]))
+        frozen_merged = scored(slate["merged"])
+        sources, offensive, _spellings = evaluator.collect_reserved_sources(
+            logits,
+            layout,
+            n_best=32,
+            beam_width=32,
+            existing=merged,
+            known_offensive=known_offensive,
+            lexicon_by_word=lexicon_by_language.get(row.language, {}),
+            language=row.language,
+            ctc=scored(slate["ctc"]),
+            geometric=scored(slate["geometric"]),
+            baseline_merged=frozen_merged,
+            include_lexicon_neighbors=True,
+            include_truncated=True,
+        )
+        finished = time.perf_counter_ns()
+        rejected += offensive
+        inference_ms.append((inferred - started) / 1_000_000)
+        decode_ms.append((finished - inferred) / 1_000_000)
+        skip_keys = {(evaluator._normalize(item.word), item.entry.language) for item in merged}
+        reserved = evaluator.score_reserved_sources(
+            sources,
+            calibration=calibration,
+            ctc_spatials=[item["spatial"] for item in slate["ctc"]],
+            oov_conservative=False,
+            skip_keys=skip_keys,
+        )
+        competing = evaluator.competing_slate(merged, reserved)
+        in_frozen = row.target in {item.word for item in frozen_merged}
+        in_competing = row.target in {item.word for item in competing}
+        frozen_present += in_frozen
+        competing_present += in_competing
+        if not in_frozen and in_competing:
+            label = evaluator.first_recovered_source(
+                row.target, [item.word for item in frozen_merged], sources,
+            )
+            stage = evaluator.cumulative_recovery_stage(row.target, sources)
+            if label:
+                first_source_counts[label] += 1
+            for source in stage["sourcesPresent"]:
+                overlap_counts[source] += 1
+            if stage["greedyOnly"]:
+                cumulative_hits["greedyOnly"] += 1
+            if stage["greedyAlts"]:
+                cumulative_hits["greedyAlts"] += 1
+            for width, hit in stage["beamLe"].items():
+                cumulative_hits["beamLe"][width] += bool(hit)
+            if stage["plusNeighbors"]:
+                cumulative_hits["plusNeighbors"] += 1
+            if stage["plusDropped"]:
+                cumulative_hits["plusDropped"] += 1
+            recovered_rows.append({
+                "id": row.identifier,
+                "strata": sorted(row.strata),
+                "firstSource": label,
+                "sourcesPresent": stage["sourcesPresent"],
+                "nbestRank": stage["nbestRank"],
+            })
+        ctc_spatials = [item["spatial"] for item in slate["ctc"]]
+        for prefix_name, allowed, nbest_limit in ABLATION_PREFIXES:
+            scored_reserved = evaluator.score_reserved_sources(
+                sources,
+                calibration=calibration,
+                ctc_spatials=ctc_spatials,
+                oov_conservative=False,
+                allowed=allowed,
+                nbest_rank_limit=nbest_limit,
+                skip_keys=skip_keys,
+            )
+            for budget in PUBLISHED_BUDGETS:
+                published = evaluator.publish_reserved_slots(
+                    merged, scored_reserved, reserved_budget=budget,
+                )
+                ranked = [entry.word for entry in evaluator.published_ranking(published, scored_reserved)]
+                key = f"{prefix_name}:b{budget}"
+                present = row.target in ranked
+                add_present(grid[key]["membership"], slate["strata"], present)
+                for name in ("overall", *slate["strata"]):
+                    ranking = grid[key]["ranking"][name]
+                    ranking["rows"] += 1
+                    ranking["top1"] += bool(ranked and ranked[0] == row.target)
+                    ranking["top3"] += row.target in ranked[:3]
+        if index % 250 == 0:
+            print(f"ablate {index}/6000", file=sys.stderr, flush=True)
+    after = hashlib.sha256(args.slates.read_bytes()).hexdigest()
+    if after != FROZEN_SLATES_SHA256:
+        raise evaluator.SwipeEvaluationError("frozen slates hash changed during the diagnostic")
+    recovered = competing_present - frozen_present
+    grid_report = {}
+    for key, value in grid.items():
+        membership = decorate_recall(value["membership"])
+        ranking = {}
+        for name, counts in value["ranking"].items():
+            rows_n = counts["rows"]
+            ranking[name] = {
+                **counts,
+                "top1Accuracy": counts["top1"] / rows_n if rows_n else 0.0,
+                "top3Accuracy": counts["top3"] / rows_n if rows_n else 0.0,
+            }
+        grid_report[key] = {
+            "published31TargetPresent": membership["overall"]["targetPresent"],
+            "published31Recall": membership["overall"]["recall"],
+            "returnTripTargetPresent": membership["return_trip"]["targetPresent"],
+            "top1Accuracy": ranking["overall"]["top1Accuracy"],
+            "top3Accuracy": ranking["overall"]["top3Accuracy"],
+            "returnTripTop3": ranking["return_trip"]["top3"],
+            "candidateRecall": membership,
+            "ranking": ranking,
+        }
+    report = {
+        "schemaVersion": 1,
+        "diagnosticOnly": True,
+        "releaseEligible": False,
+        "qualityClaim": False,
+        "slatesSha256": FROZEN_SLATES_SHA256,
+        "slatesSha256After": after,
+        "modelSha256": export["model"]["sha256"],
+        "exportReportSha256": export_hash,
+        "toolSha256": sha256_file(pathlib.Path(__file__)),
+        "evaluatorSha256": sha256_file(pathlib.Path(evaluator.__file__)),
+        "knownOffensiveSourceSha256": sha256_file(args.known_offensive_lexicon),
+        "oovCalibrationSha256": sha256_file(args.oov_calibration),
+        "reservedOovNBest": args.reserved_oov_nbest,
+        "oovBeamWidth": args.oov_beam_width,
+        "stratumAdaptiveMerge": True,
+        "counts": {
+            "rows": 6000,
+            "frozenMerged32TargetPresent": frozen_present,
+            "competingTargetPresent": competing_present,
+            "newTargetsRecovered": recovered,
+            "knownOffensiveRejected": rejected,
+            "firstSourceLabeled": len(recovered_rows),
+            "constructionReadsTargets": False,
+        },
+        "firstSourceRecovered": first_source_counts,
+        "sourceOverlap": overlap_counts,
+        "cumulative": {
+            "greedyOnly": cumulative_hits["greedyOnly"],
+            "greedyAlts": cumulative_hits["greedyAlts"],
+            "beamLe": cumulative_hits["beamLe"],
+            "plusNeighbors": cumulative_hits["plusNeighbors"],
+            "plusDropped": cumulative_hits["plusDropped"],
+        },
+        "recoveredRows": recovered_rows,
+        "published31Grid": grid_report,
+        "latencyMs": {
+            "hostDiagnosticOnly": True,
+            "inference": evaluator._percentiles(inference_ms),
+            "reservedDecodeIncludingNBest32": evaluator._percentiles(decode_ms),
+            "limitations": [
+                "Ablation decode p95 includes n-best 32 and is not the published-31 path budget.",
+            ],
+        },
+        "toolchain": versions,
+        "limitations": [
+            "First-source labels apply only to rows with target absent from the frozen merged 32 and present in the competing bag.",
+            "Construction helpers never read evaluation targets; targets are labels only.",
+            "published31Grid membership is ranked[:31] after unparked scoring; it is not a quality claim.",
+            "Production vocabulary, scoring, beam, and safety policy were not changed.",
+        ],
+    }
+    write_json(args.output, report)
     return report
 
 
@@ -209,13 +491,21 @@ def recall_6000(args: argparse.Namespace) -> dict[str, Any]:
     export, model_path, export_hash, numpy, versions, session = open_session(args.export_report)
     key_centers = numpy.asarray(layout["keyCenters"], dtype=numpy.float32).reshape(1, 64, 2)
     key_mask = numpy.asarray(layout["keyMask"], dtype=numpy.float32).reshape(1, 64)
+    allowed_sources = parse_reserved_sources(args.reserved_sources)
+    reserved_budget = int(args.reserved_budget)
+    if reserved_budget <= 0:
+        raise evaluator.SwipeEvaluationError("recall-6000 requires a positive published reserved budget")
+    include_neighbors = "neighbors" in allowed_sources
+    include_truncated = any(name.startswith("truncated_") for name in allowed_sources)
+    nbest_limit = args.reserved_oov_nbest if "nbest" in allowed_sources else 1
     present = []
     ranked_words = []
     baseline_present = []
     baseline_ranked = []
     added = 0
     rejected = 0
-    lost_at_append = 0
+    lost_at_publish = 0
+    over_bound = 0
     inference_ms = []
     decode_ms = []
     for index, slate in enumerate(slates, 1):
@@ -239,29 +529,36 @@ def recall_6000(args: argparse.Namespace) -> dict[str, Any]:
             logits,
             layout,
             calibration=calibration,
-            n_best=args.reserved_oov_nbest,
-            beam_width=args.oov_beam_width,
+            n_best=nbest_limit,
+            beam_width=min(args.oov_beam_width, max(nbest_limit, 4)),
             existing=merged,
             known_offensive=known_offensive,
             lexicon_by_word=lexicon_by_language.get(row.language, {}),
             language=row.language,
             ctc_spatials=[item["spatial"] for item in slate["ctc"]],
-            include_lexicon_neighbors=True,
+            include_lexicon_neighbors=include_neighbors,
+            ctc=scored(slate["ctc"]),
+            geometric=scored(slate["geometric"]),
+            baseline_merged=scored(slate["merged"]),
+            include_truncated=include_truncated,
+            oov_conservative=bool(args.oov_conservative_spatial),
+            allowed_sources=allowed_sources,
+            nbest_rank_limit=nbest_limit if "nbest" in allowed_sources else None,
         )
         rejected += offensive
-        dropped = evaluator.reserved_from_decoder_slates(
-            scored(slate["ctc"]), scored(slate["geometric"]), merged,
-        )
-        reserved = evaluator.competing_slate(reserved, dropped)
-        added += len(reserved)
-        competing = evaluator.competing_slate(merged, reserved)
-        if row.target in {item.word for item in merged} and row.target not in {item.word for item in competing}:
-            lost_at_append += 1
+        published = evaluator.publish_reserved_slots(merged, reserved, reserved_budget=reserved_budget)
+        if len(published) > evaluator.PUBLISHED_SLATE_BOUND:
+            over_bound += 1
+        added += min(reserved_budget, len(published))
+        ranked = evaluator.published_ranking(published, reserved)
+        ranked_list = [entry.word for entry in ranked]
+        if row.target in {item.word for item in merged} and row.target not in ranked_list:
+            lost_at_publish += 1
         finished = time.perf_counter_ns()
         inference_ms.append((inferred - started) / 1_000_000)
         decode_ms.append((finished - inferred) / 1_000_000)
-        present.append(row.target in {item.word for item in competing})
-        ranked_words.append([entry.word for entry in evaluator.rank_static_fusion_with_reserved(merged, reserved)])
+        present.append(row.target in ranked_list)
+        ranked_words.append(ranked_list)
         baseline_present.append(row.target in {item["word"] for item in slate["merged"]})
         baseline_ranked.append(
             [entry.word for entry in evaluator.rank_static_fusion(scored(slate["merged"]))]
@@ -271,12 +568,16 @@ def recall_6000(args: argparse.Namespace) -> dict[str, Any]:
     after = hashlib.sha256(args.slates.read_bytes()).hexdigest()
     if after != FROZEN_SLATES_SHA256:
         raise evaluator.SwipeEvaluationError("frozen slates hash changed during the diagnostic")
+    if over_bound:
+        raise evaluator.SwipeEvaluationError("published slate grew past the 32-slot bound")
     membership, ranking = metric_tables(slates, present, ranked_words)
     baseline_membership, baseline_ranking = metric_tables(slates, baseline_present, baseline_ranked)
+    p95 = evaluator._percentiles(decode_ms)["p95"]
     report = {
         "schemaVersion": 1,
         "diagnosticOnly": True,
         "releaseEligible": False,
+        "qualityClaim": False,
         "slatesSha256": FROZEN_SLATES_SHA256,
         "slatesSha256After": after,
         "modelSha256": export["model"]["sha256"],
@@ -285,36 +586,60 @@ def recall_6000(args: argparse.Namespace) -> dict[str, Any]:
         "evaluatorSha256": sha256_file(pathlib.Path(evaluator.__file__)),
         "knownOffensiveSourceSha256": sha256_file(args.known_offensive_lexicon),
         "oovCalibrationSha256": sha256_file(args.oov_calibration),
-        "reservedOovNBest": args.reserved_oov_nbest,
-        "oovBeamWidth": args.oov_beam_width,
+        "reservedOovNBest": nbest_limit,
+        "oovBeamWidth": min(args.oov_beam_width, max(nbest_limit, 4)),
+        "reservedBudget": reserved_budget,
+        "reservedSources": list(allowed_sources),
         "stratumAdaptiveMerge": bool(args.stratum_adaptive_merge),
+        "published31Membership": True,
         "counts": {
             "rows": 6000,
             "baselineTargetPresent": baseline_membership["overall"]["targetPresent"],
-            "proposedTargetPresent": membership["overall"]["targetPresent"],
+            "published31TargetPresent": membership["overall"]["targetPresent"],
             "newTargetsRecovered": membership["overall"]["targetPresent"] - baseline_membership["overall"]["targetPresent"],
-            "targetsLostAtAppend": lost_at_append,
-            "reservedCandidatesAdded": added,
+            "targetsLostAtPublish": lost_at_publish,
+            "reservedBudget": reserved_budget,
             "knownOffensiveRejected": rejected,
-            "recallCountsCompetingSlateOnly": True,
+            "recallCountsPublished31Only": True,
+            "publishedSlateBound": evaluator.PUBLISHED_SLATE_BOUND,
+            "publishedRankingBound": evaluator.PUBLISHED_RANKING_BOUND,
         },
         "candidateRecall": membership,
         "baselineCandidateRecall": baseline_membership,
         "ranking": ranking,
         "baselineRanking": baseline_ranking,
+        "conversionMath": {
+            "phase0Top3Gate": 5700,
+            "historicalLexiconConversion": 0.979,
+            "published31NeededAtHistoricalConversion": 5822,
+            "measuredPublished31TargetPresent": membership["overall"]["targetPresent"],
+            "measuredTop3": ranking["overall"]["top3"],
+            "measuredConversionOfPublished31": (
+                ranking["overall"]["top3"] / membership["overall"]["targetPresent"]
+                if membership["overall"]["targetPresent"] else 0.0
+            ),
+            "newMembershipHits": membership["overall"]["targetPresent"] - baseline_membership["overall"]["targetPresent"],
+            "newTop3Hits": ranking["overall"]["top3"] - baseline_ranking["overall"]["top3"],
+            "returnTripPublished31NeededAtHistoricalConversion": 1572,
+            "returnTripPublished31TargetPresent": membership["return_trip"]["targetPresent"],
+            "returnTripTop3Gate": 1539,
+            "returnTripMeasuredTop3": ranking["return_trip"]["top3"],
+            "note": "Historical 97.9% conversion applies to frozen lexicon membership, not new reserved recoveries.",
+        },
         "latencyMs": {
             "hostDiagnosticOnly": True,
             "inference": evaluator._percentiles(inference_ms),
             "reservedOov": evaluator._percentiles(decode_ms),
             "reservedOovP95BudgetMs": 91.0,
-            "reservedOovP95WithinBudget": evaluator._percentiles(decode_ms)["p95"] < 91.0,
+            "reservedOovP95WithinBudget": p95 < 91.0,
         },
         "toolchain": versions,
         "limitations": [
-            "Candidate recall is membership in the ranking-competing slate (merged union reserved), not an unbounded bag.",
-            "Every reserved candidate counted for recall is passed to rank_static_fusion_with_reserved.",
-            "Frequency-free OOV compete at the median lexicon spatial; no fabricated frequency prior.",
-            "Production vocabulary, scoring, and safety policy were not changed.",
+            "Candidate recall is membership in rank_static_fusion_with_reserved(...)[:31], the published list.",
+            "Reserved merge displaces into the 32-slot bound and does not grow a bag ranking then truncates.",
+            "True OOV stay frequency-free and use the train-fit spatial map; in-lexicon reserved use real frequency.",
+            "This is published-31 membership, not a Phase 0 quality or top-3 win.",
+            "Production vocabulary, scoring, beam, and safety policy were not changed.",
             "Host timing is not Android device latency.",
         ],
     }
@@ -411,7 +736,10 @@ def beam256_recall(args: argparse.Namespace) -> dict[str, Any]:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("fit-calibration", "ranking-1000", "recall-6000", "beam256"))
+    parser.add_argument(
+        "command",
+        choices=("fit-calibration", "ranking-1000", "recall-6000", "beam256", "ablate-184"),
+    )
     parser.add_argument("--output", type=pathlib.Path, required=True)
     parser.add_argument("--data-root", type=pathlib.Path, default=DEFAULT_DATA)
     parser.add_argument("--export-report", type=pathlib.Path, default=DEFAULT_EXPORT)
@@ -425,6 +753,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--oov-beam-width", type=int, default=32)
     parser.add_argument("--beam-width", type=int, default=64)
     parser.add_argument("--stratum-adaptive-merge", action="store_true")
+    parser.add_argument("--reserved-budget", type=int, default=4)
+    parser.add_argument("--reserved-sources", type=str, default="greedy,greedy_alts")
+    parser.add_argument("--include-lexicon-neighbors", action="store_true")
+    parser.add_argument("--include-truncated-leftovers", action="store_true")
+    parser.add_argument("--oov-conservative-spatial", action="store_true")
     return parser.parse_args(argv)
 
 
@@ -444,6 +777,10 @@ def main(argv: list[str] | None = None) -> int:
             if args.oov_calibration is None:
                 raise evaluator.SwipeEvaluationError("recall-6000 requires --oov-calibration")
             report = recall_6000(args)
+        elif args.command == "ablate-184":
+            if args.oov_calibration is None:
+                raise evaluator.SwipeEvaluationError("ablate-184 requires --oov-calibration")
+            report = ablate_184(args)
         else:
             report = beam256_recall(args)
         print(json.dumps({

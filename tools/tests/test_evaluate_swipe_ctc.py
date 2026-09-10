@@ -323,10 +323,24 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
             evaluator.competing_slate,
             evaluator.conservative_lexicon_spatial,
             evaluator.reserved_from_decoder_slates,
+            evaluator.greedy_unconstrained_emissions,
+            evaluator.greedy_alt_unconstrained_emissions,
+            evaluator.nbest_unconstrained_emissions,
+            evaluator.collect_reserved_sources,
+            evaluator.flatten_reserved_sources,
+            evaluator.score_reserved_candidate,
+            evaluator.score_reserved_sources,
+            evaluator.publish_reserved_slots,
+            evaluator.split_published_slate,
+            evaluator.published_ranking,
+            evaluator.static_fusion_values,
+            evaluator.reserved_fusion_values,
         )
         for helper in helpers:
             self.assertNotIn("target", inspect.signature(helper).parameters)
             self.assertNotIn("targets", inspect.signature(helper).parameters)
+        self.assertIn("target", inspect.signature(evaluator.first_recovered_source).parameters)
+        self.assertIn("target", inspect.signature(evaluator.cumulative_recovery_stage).parameters)
 
     def test_reserved_ranking_keeps_lexicon_z_pools_uncontaminated(self):
         rare = evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("rare", "en", (1,), 1), -0.10)
@@ -341,38 +355,56 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
         self.assertEqual(baseline, ranked[:3])
         self.assertEqual(baseline, [entry.word for entry in evaluator.rank_static_fusion_with_reserved(lexicon, [])])
 
-    def test_extra_frequency_free_nbest_does_not_steal_lexicon_top3(self):
+    def test_weak_frequency_free_oov_do_not_steal_lexicon_top3(self):
         lexicon = [
             evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cat", "en", (1,), 50), 2.0),
             evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("car", "en", (2,), 40), 1.5),
             evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("can", "en", (3,), 30), 1.0),
         ]
-        median = evaluator.conservative_lexicon_spatial([2.0, 1.5, 1.0])
-        greedy = evaluator.ScoredLexiconEntry(
-            evaluator.LexiconEntry("cax", "en", (4,), 0), median, frequency_free=True,
+        weak = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (4,), 0), -3.0, frequency_free=True,
         )
         extras = [
             evaluator.ScoredLexiconEntry(
-                evaluator.LexiconEntry(f"zz{index}", "en", (5,), 0), median, frequency_free=True,
+                evaluator.LexiconEntry(f"zz{index}", "en", (5,), 0), -3.0, frequency_free=True,
             )
             for index in range(8)
         ]
-        reserved = [greedy, *extras]
-        competing = evaluator.competing_slate(lexicon, reserved)
-        self.assertEqual(3 + 9, len(competing))
-        ranked = [entry.word for entry in evaluator.rank_static_fusion_with_reserved(lexicon, reserved)]
+        reserved = [weak, *extras]
+        published = evaluator.publish_reserved_slots(lexicon, reserved, reserved_budget=4)
+        self.assertLessEqual(len(published), 32)
+        ranked = [entry.word for entry in evaluator.published_ranking(published, reserved)]
         self.assertEqual(["cat", "car", "can"], ranked[:3])
-        self.assertTrue({"cax", "zz0"}.issubset({item.word for item in competing}))
+        self.assertLessEqual(len(ranked), 31)
 
-    def test_recall_is_membership_in_the_ranking_competing_slate(self):
-        merged = [evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cat", "en", (1,), 10), 1.0)]
+    def test_frequency_free_oov_are_not_floor_clamped_below_top3(self):
+        lexicon = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cat", "en", (1,), 50), 2.0),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("car", "en", (2,), 40), 1.5),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("can", "en", (3,), 30), 1.0),
+        ]
+        strong = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (4,), 0), 8.0, frequency_free=True,
+        )
+        ranked = [entry.word for entry in evaluator.rank_static_fusion_with_reserved(lexicon, [strong])]
+        self.assertEqual("cax", ranked[0])
+        self.assertEqual(31, evaluator.PUBLISHED_RANKING_BOUND)
+
+    def test_recall_is_membership_in_the_published_ranking_list(self):
+        merged = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry(f"w{index}", "en", (1,), 10), 1.0 - 0.01 * index)
+            for index in range(32)
+        ]
         reserved = [evaluator.ScoredLexiconEntry(
-            evaluator.LexiconEntry("cax", "en", (2,), 0), 0.0, frequency_free=True,
+            evaluator.LexiconEntry("cax", "en", (2,), 0), 4.0, frequency_free=True,
         )]
-        competing = evaluator.competing_slate(merged, reserved)
-        self.assertEqual(["cat", "cax"], [item.word for item in competing])
-        ranked = evaluator.rank_static_fusion_with_reserved(merged, reserved)
-        self.assertEqual({"cat", "cax"}, {entry.word for entry in ranked})
+        published = evaluator.publish_reserved_slots(merged, reserved, reserved_budget=1)
+        self.assertEqual(32, len(published))
+        self.assertIn("cax", {item.word for item in published})
+        ranked = evaluator.published_ranking(published, reserved)
+        self.assertLessEqual(len(ranked), 31)
+        self.assertEqual({"cax"}, {item.word for item in published} - {item.word for item in merged})
+        self.assertIn("cax", [entry.word for entry in ranked])
 
     def test_conservative_oov_spatial_is_below_the_lexicon_median(self):
         spatials = [-0.8, -0.4, -0.1, 0.2]
@@ -452,6 +484,87 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
         self.assertEqual("en", rows[0][1])
         self.assertEqual(128, len(rows[0][2]))
         self.assertTrue(all("secret-target" not in str(item) for item in rows[0]))
+
+    def test_publish_reserved_slots_displaces_inside_the_32_slot_bound(self):
+        base = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry(f"w{index}", "en", (1,), 10), -0.1 * index)
+            for index in range(32)
+        ]
+        reserved = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry("oovword", "en", (2, 3), 0), 2.0, frequency_free=True,
+            ),
+            evaluator.ScoredLexiconEntry(base[0].entry, 9.0, frequency_free=True),
+        ]
+        published = evaluator.publish_reserved_slots(base, reserved, reserved_budget=1)
+        self.assertEqual(32, len(published))
+        self.assertIn("oovword", {candidate.word for candidate in published})
+        self.assertIn(base[0].word, {candidate.word for candidate in published})
+        weak = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("zzzz", "en", (9,), 0), -9.0, frequency_free=True,
+        )
+        unchanged = evaluator.publish_reserved_slots(base, [weak], reserved_budget=1)
+        self.assertEqual([candidate.word for candidate in base], [candidate.word for candidate in unchanged])
+        self.assertNotIn("target", inspect.signature(evaluator.publish_reserved_slots).parameters)
+
+    def test_in_lexicon_reserved_neighbors_use_real_frequency(self):
+        layout = {"keyLabels": list("catd") + [None] * 60}
+        output = logits([1, 2, 3], classes=8, frames=6)
+        calibration = evaluator.fit_oov_score_calibration([-0.2, -0.1], [-0.2, -0.1])
+        lexicon = {
+            "cat": evaluator.LexiconEntry("cat", "en", (1, 2, 3), 77),
+            "cad": evaluator.LexiconEntry("cad", "en", (1, 2, 4), 12),
+        }
+        existing = [evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("zz", "en", (4,), 8), -0.3)]
+        reserved, rejected = evaluator.reserved_oov_from_logits(
+            output,
+            layout,
+            calibration=calibration,
+            n_best=1,
+            beam_width=4,
+            existing=existing,
+            known_offensive=set(),
+            lexicon_by_word=lexicon,
+            language="en",
+            ctc_spatials=[-0.3, -0.4],
+            include_lexicon_neighbors=True,
+        )
+        self.assertEqual(0, rejected)
+        neighbors = [item for item in reserved if item.word in {"cat", "cad"}]
+        self.assertTrue(neighbors)
+        for item in neighbors:
+            self.assertFalse(item.frequency_free)
+            self.assertEqual(lexicon[item.word].frequency, item.entry.frequency)
+        oov = [item for item in reserved if item.frequency_free]
+        for item in oov:
+            self.assertEqual(0, item.entry.frequency)
+
+    def test_first_recovered_source_labels_without_construction_reading_targets(self):
+        greedy = evaluator.ReservedCandidate(
+            evaluator.LexiconEntry("cax", "en", (1,), 0), "greedy", forward=-0.2,
+        )
+        neighbor = evaluator.ReservedCandidate(
+            evaluator.LexiconEntry("cat", "en", (1, 2, 3), 10), "neighbors",
+        )
+        leftover = evaluator.ReservedCandidate(
+            evaluator.LexiconEntry("catalog", "en", (1,), 4), "truncated_ctc", decoder_spatial=0.1,
+        )
+        sources = {
+            "greedy": [greedy],
+            "greedy_alts": [],
+            "nbest": [],
+            "neighbors": [neighbor],
+            "truncated_ctc": [leftover],
+            "truncated_geometry": [],
+        }
+        self.assertIsNone(evaluator.first_recovered_source("cax", ["cax"], sources))
+        self.assertEqual("greedy", evaluator.first_recovered_source("cax", ["other"], sources))
+        self.assertEqual("neighbors", evaluator.first_recovered_source("cat", ["other"], sources))
+        self.assertEqual("truncated_ctc", evaluator.first_recovered_source("catalog", ["other"], sources))
+        stage = evaluator.cumulative_recovery_stage("cat", sources)
+        self.assertFalse(stage["greedyOnly"])
+        self.assertTrue(stage["plusNeighbors"])
+        self.assertNotIn("target", inspect.signature(evaluator.collect_reserved_sources).parameters)
 
     def test_calibration_observations_do_not_consult_targets(self):
         output = logits([1, 2], classes=8, frames=6)

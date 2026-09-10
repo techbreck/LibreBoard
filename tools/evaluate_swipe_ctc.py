@@ -1224,6 +1224,71 @@ def emissions_to_spelling(emissions: Sequence[int], layout: dict[str, Any]) -> s
     return "".join(characters).lower() if characters else None
 
 
+def _collapse_classes(classes: Sequence[int]) -> tuple[int, ...]:
+    collapsed = []
+    previous = -1
+    for output_class in classes:
+        if output_class != 0 and output_class != previous:
+            collapsed.append(output_class)
+        previous = output_class
+    return tuple(collapsed)
+
+
+def greedy_unconstrained_emissions(
+    logits: Sequence[Sequence[float]],
+) -> list[tuple[tuple[int, ...], float]]:
+    """Greedy CTC collapse. No target argument."""
+    greedy = collapse_greedy(logits)
+    if not greedy:
+        return []
+    return [(greedy, ctc_forward_logprob(logits, greedy))]
+
+
+def greedy_alt_unconstrained_emissions(
+    logits: Sequence[Sequence[float]],
+    seen: set[tuple[int, ...]] | None = None,
+) -> list[tuple[tuple[int, ...], float]]:
+    """Per-frame 2nd/3rd-best class swap on the greedy path. No beam, no targets."""
+    if not logits:
+        return []
+    known = set(seen or ())
+    greedy_classes = [max(range(len(frame)), key=frame.__getitem__) for frame in logits]
+    results: list[tuple[tuple[int, ...], float]] = []
+    for index, frame in enumerate(logits):
+        ordered = sorted(range(len(frame)), key=frame.__getitem__, reverse=True)
+        for alt_class in ordered[1:3]:
+            alternative = list(greedy_classes)
+            alternative[index] = alt_class
+            emissions = _collapse_classes(alternative)
+            if emissions and emissions not in known:
+                known.add(emissions)
+                results.append((emissions, ctc_forward_logprob(logits, emissions)))
+    return results
+
+
+def nbest_unconstrained_emissions(
+    logits: Sequence[Sequence[float]],
+    *,
+    n_best: int,
+    beam_width: int,
+    seen: set[tuple[int, ...]] | None = None,
+) -> list[tuple[tuple[int, ...], float, int]]:
+    """Lexicon-free prefix-beam n-best. Rank is 1-indexed in the beam list. No targets."""
+    if n_best <= 0 or not logits:
+        return []
+    known = set(seen or ())
+    results: list[tuple[tuple[int, ...], float, int]] = []
+    for rank, (emissions, score) in enumerate(
+        unconstrained_prefix_beam_scored(logits, beam_width=beam_width, maximum_results=n_best),
+        start=1,
+    ):
+        if emissions in known:
+            continue
+        known.add(emissions)
+        results.append((emissions, score, rank))
+    return results
+
+
 def unconstrained_ctc_emissions(
     logits: Sequence[Sequence[float]],
     *,
@@ -1235,37 +1300,21 @@ def unconstrained_ctc_emissions(
         return []
     results: list[tuple[tuple[int, ...], float]] = []
     seen: set[tuple[int, ...]] = set()
-    greedy = collapse_greedy(logits)
-    if greedy:
-        results.append((greedy, ctc_forward_logprob(logits, greedy)))
-        seen.add(greedy)
+    for emissions, score in greedy_unconstrained_emissions(logits):
+        results.append((emissions, score))
+        seen.add(emissions)
     if n_best <= 1:
         return results[:1]
-    for emissions, score in unconstrained_prefix_beam_scored(
-        logits, beam_width=beam_width, maximum_results=n_best,
+    for emissions, score, _rank in nbest_unconstrained_emissions(
+        logits, n_best=n_best, beam_width=beam_width, seen=seen,
     ):
-        if emissions in seen:
-            continue
-        seen.add(emissions)
         results.append((emissions, score))
+        seen.add(emissions)
         if len(results) >= n_best:
             break
-    greedy_classes = [max(range(len(frame)), key=frame.__getitem__) for frame in logits]
-    for index, frame in enumerate(logits):
-        ordered = sorted(range(len(frame)), key=frame.__getitem__, reverse=True)
-        for alt_class in ordered[1:3]:
-            alternative = list(greedy_classes)
-            alternative[index] = alt_class
-            collapsed = []
-            previous = -1
-            for output_class in alternative:
-                if output_class != 0 and output_class != previous:
-                    collapsed.append(output_class)
-                previous = output_class
-            emissions = tuple(collapsed)
-            if emissions and emissions not in seen:
-                seen.add(emissions)
-                results.append((emissions, ctc_forward_logprob(logits, emissions)))
+    for emissions, score in greedy_alt_unconstrained_emissions(logits, seen=seen):
+        results.append((emissions, score))
+        seen.add(emissions)
     return results
 
 
@@ -1298,6 +1347,293 @@ def lexicon_neighbors(spelling: str, lexicon_by_word: dict[str, LexiconEntry]) -
     return list(found.values())
 
 
+RESERVED_SOURCE_ORDER = (
+    "greedy",
+    "greedy_alts",
+    "nbest",
+    "neighbors",
+    "truncated_ctc",
+    "truncated_geometry",
+)
+PUBLISHED_SLATE_BOUND = 32
+PUBLISHED_RANKING_BOUND = 31
+
+
+@dataclasses.dataclass(frozen=True)
+class ReservedCandidate:
+    """A reserved-slot spelling with its construction source. No evaluation target."""
+
+    entry: LexiconEntry
+    source: str
+    forward: float | None = None
+    nbest_rank: int | None = None
+    decoder_spatial: float | None = None
+
+
+def _reserved_from_emissions(
+    emissions: tuple[int, ...],
+    forward: float,
+    source: str,
+    layout: dict[str, Any],
+    *,
+    known_offensive: set[str],
+    lexicon_by_word: dict[str, LexiconEntry],
+    language: str,
+    skip_keys: set[tuple[str, str]],
+    nbest_rank: int | None = None,
+) -> tuple[ReservedCandidate | None, int]:
+    spelling = emissions_to_spelling(emissions, layout)
+    if spelling is None:
+        return None, 0
+    normalized = _normalize(spelling)
+    if normalized in known_offensive:
+        return None, 1
+    key = (normalized, language)
+    if key in skip_keys:
+        return None, 0
+    lexicon_entry = lexicon_by_word.get(normalized)
+    if lexicon_entry is None:
+        entry = LexiconEntry(normalized, language, emissions, 0)
+    else:
+        entry = LexiconEntry(
+            lexicon_entry.word, lexicon_entry.language, emissions, lexicon_entry.frequency,
+        )
+        key = (_normalize(entry.word), entry.language)
+        if key in skip_keys:
+            return None, 0
+    return ReservedCandidate(entry, source, forward=forward, nbest_rank=nbest_rank), 0
+
+
+def collect_reserved_sources(
+    logits: Sequence[Sequence[float]],
+    layout: dict[str, Any],
+    *,
+    n_best: int,
+    beam_width: int,
+    existing: Iterable[ScoredLexiconEntry],
+    known_offensive: set[str],
+    lexicon_by_word: dict[str, LexiconEntry],
+    language: str,
+    ctc: Sequence[ScoredLexiconEntry] = (),
+    geometric: Sequence[ScoredLexiconEntry] = (),
+    baseline_merged: Sequence[ScoredLexiconEntry] = (),
+    include_lexicon_neighbors: bool = False,
+    include_truncated: bool = False,
+) -> tuple[dict[str, list[ReservedCandidate]], int, list[str]]:
+    """Build per-source reserved spellings. Does not take evaluation targets."""
+    sources = {name: [] for name in RESERVED_SOURCE_ORDER}
+    rejected = 0
+    spellings: list[str] = []
+    per_source_keys = {name: set() for name in RESERVED_SOURCE_ORDER}
+
+    def note_spelling(emissions: tuple[int, ...]) -> None:
+        spelling = emissions_to_spelling(emissions, layout)
+        if spelling is None:
+            return
+        normalized = _normalize(spelling)
+        if normalized in known_offensive:
+            return
+        spellings.append(normalized)
+
+    def accept(candidate: ReservedCandidate | None, offensive: int) -> None:
+        nonlocal rejected
+        rejected += offensive
+        if candidate is None:
+            return
+        key = (_normalize(candidate.entry.word), candidate.entry.language)
+        bucket = per_source_keys[candidate.source]
+        if key in bucket:
+            return
+        bucket.add(key)
+        sources[candidate.source].append(candidate)
+
+    greedy_emissions: set[tuple[int, ...]] = set()
+    empty_skip: set[tuple[str, str]] = set()
+    for emissions, forward in greedy_unconstrained_emissions(logits):
+        greedy_emissions.add(emissions)
+        note_spelling(emissions)
+        candidate, offensive = _reserved_from_emissions(
+            emissions, forward, "greedy", layout,
+            known_offensive=known_offensive, lexicon_by_word=lexicon_by_word,
+            language=language, skip_keys=empty_skip,
+        )
+        accept(candidate, offensive)
+    for emissions, forward in greedy_alt_unconstrained_emissions(logits, seen=greedy_emissions):
+        note_spelling(emissions)
+        candidate, offensive = _reserved_from_emissions(
+            emissions, forward, "greedy_alts", layout,
+            known_offensive=known_offensive, lexicon_by_word=lexicon_by_word,
+            language=language, skip_keys=empty_skip,
+        )
+        accept(candidate, offensive)
+    if n_best > 1:
+        for emissions, forward, rank in nbest_unconstrained_emissions(
+            logits, n_best=n_best, beam_width=beam_width, seen=greedy_emissions,
+        ):
+            note_spelling(emissions)
+            candidate, offensive = _reserved_from_emissions(
+                emissions, forward, "nbest", layout,
+                known_offensive=known_offensive, lexicon_by_word=lexicon_by_word,
+                language=language, skip_keys=empty_skip, nbest_rank=rank,
+            )
+            accept(candidate, offensive)
+    if include_lexicon_neighbors:
+        for spelling in dict.fromkeys(spellings):
+            for entry in lexicon_neighbors(spelling, lexicon_by_word):
+                if _normalize(entry.word) in known_offensive:
+                    rejected += 1
+                    continue
+                key = (_normalize(entry.word), entry.language)
+                if key in per_source_keys["neighbors"]:
+                    continue
+                per_source_keys["neighbors"].add(key)
+                sources["neighbors"].append(ReservedCandidate(entry, "neighbors"))
+    if include_truncated:
+        leftover_skip = {
+            (_normalize(candidate.word), candidate.entry.language)
+            for candidate in (baseline_merged or existing)
+        }
+        for source_name, slate in (("truncated_ctc", ctc), ("truncated_geometry", geometric)):
+            if not slate:
+                continue
+            normalized = _z_normalize([candidate.spatial for candidate in slate])
+            for candidate, score in zip(slate, normalized, strict=True):
+                key = (_normalize(candidate.word), candidate.entry.language)
+                if key in leftover_skip or key in per_source_keys[source_name]:
+                    continue
+                per_source_keys[source_name].add(key)
+                sources[source_name].append(
+                    ReservedCandidate(candidate.entry, source_name, decoder_spatial=score),
+                )
+    return sources, rejected, spellings
+
+
+def first_recovered_source(
+    target: str,
+    baseline_words: Iterable[str],
+    sources: dict[str, list[ReservedCandidate]],
+) -> str | None:
+    """Label the first source that recovered ``target``. Construction never calls this."""
+    needle = _normalize(target)
+    if needle in {_normalize(word) for word in baseline_words}:
+        return None
+    for source in RESERVED_SOURCE_ORDER:
+        for candidate in sources.get(source, ()):
+            if _normalize(candidate.entry.word) == needle:
+                return source
+    return None
+
+
+def cumulative_recovery_stage(
+    target: str,
+    sources: dict[str, list[ReservedCandidate]],
+) -> dict[str, Any]:
+    """Membership of ``target`` in cheaper-to-richer source prefixes. Labeling only."""
+    needle = _normalize(target)
+
+    def has(source: str) -> bool:
+        return any(_normalize(candidate.entry.word) == needle for candidate in sources.get(source, ()))
+
+    greedy = has("greedy")
+    alts = greedy or has("greedy_alts")
+    ranks = [
+        candidate.nbest_rank
+        for candidate in sources.get("nbest", ())
+        if _normalize(candidate.entry.word) == needle and candidate.nbest_rank
+    ]
+    min_rank = min(ranks) if ranks else None
+    beam = {str(width): alts or (min_rank is not None and min_rank <= width) for width in range(2, 33)}
+    neighbors = beam["32"] or has("neighbors")
+    dropped = neighbors or has("truncated_ctc") or has("truncated_geometry")
+    return {
+        "greedyOnly": greedy,
+        "greedyAlts": alts,
+        "beamLe": beam,
+        "plusNeighbors": neighbors,
+        "plusDropped": dropped,
+        "nbestRank": min_rank,
+        "sourcesPresent": [source for source in RESERVED_SOURCE_ORDER if has(source)],
+    }
+
+
+def flatten_reserved_sources(
+    sources: dict[str, list[ReservedCandidate]],
+    allowed: Sequence[str] | None = None,
+    *,
+    nbest_rank_limit: int | None = None,
+    skip_keys: Iterable[tuple[str, str]] = (),
+) -> list[ReservedCandidate]:
+    """Deterministic reserved union. Does not take evaluation targets."""
+    names = tuple(allowed) if allowed is not None else RESERVED_SOURCE_ORDER
+    skipped = set(skip_keys)
+    result: list[ReservedCandidate] = []
+    seen: set[tuple[str, str]] = set(skipped)
+    for source in names:
+        for candidate in sources.get(source, ()):
+            if (
+                source == "nbest"
+                and nbest_rank_limit is not None
+                and (candidate.nbest_rank is None or candidate.nbest_rank > nbest_rank_limit)
+            ):
+                continue
+            key = (_normalize(candidate.entry.word), candidate.entry.language)
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(candidate)
+    return result
+
+
+def score_reserved_candidate(
+    candidate: ReservedCandidate,
+    *,
+    calibration: OovScoreCalibration,
+    ctc_spatials: Sequence[float],
+    oov_conservative: bool = False,
+) -> ScoredLexiconEntry:
+    """Map a reserved spelling onto the lexicon spatial scale. No fabricated frequency."""
+    true_oov = candidate.source in {"greedy", "greedy_alts", "nbest"} and candidate.entry.frequency == 0
+    if candidate.decoder_spatial is not None:
+        spatial = candidate.decoder_spatial
+    elif true_oov and candidate.forward is not None and not oov_conservative:
+        mapped = project_onto_lexicon_scale(
+            calibration.to_lexicon_spatial(candidate.forward), ctc_spatials,
+        )
+        spatial = _z_score_against(mapped, ctc_spatials) if ctc_spatials else mapped
+    elif true_oov or candidate.forward is None:
+        mapped = conservative_lexicon_spatial(ctc_spatials)
+        spatial = _z_score_against(mapped, ctc_spatials) if ctc_spatials else mapped
+    else:
+        mapped = project_onto_lexicon_scale(
+            calibration.to_lexicon_spatial(candidate.forward), ctc_spatials,
+        )
+        spatial = _z_score_against(mapped, ctc_spatials) if ctc_spatials else mapped
+    return ScoredLexiconEntry(candidate.entry, spatial, frequency_free=true_oov)
+
+
+def score_reserved_sources(
+    sources: dict[str, list[ReservedCandidate]],
+    *,
+    calibration: OovScoreCalibration,
+    ctc_spatials: Sequence[float],
+    oov_conservative: bool = False,
+    allowed: Sequence[str] | None = None,
+    nbest_rank_limit: int | None = None,
+    skip_keys: Iterable[tuple[str, str]] = (),
+) -> list[ScoredLexiconEntry]:
+    return [
+        score_reserved_candidate(
+            candidate,
+            calibration=calibration,
+            ctc_spatials=ctc_spatials,
+            oov_conservative=oov_conservative,
+        )
+        for candidate in flatten_reserved_sources(
+            sources, allowed, nbest_rank_limit=nbest_rank_limit, skip_keys=skip_keys,
+        )
+    ]
+
+
 def reserved_oov_from_logits(
     logits: Sequence[Sequence[float]],
     layout: dict[str, Any],
@@ -1311,53 +1647,40 @@ def reserved_oov_from_logits(
     language: str,
     ctc_spatials: Sequence[float],
     include_lexicon_neighbors: bool = False,
+    ctc: Sequence[ScoredLexiconEntry] = (),
+    geometric: Sequence[ScoredLexiconEntry] = (),
+    baseline_merged: Sequence[ScoredLexiconEntry] = (),
+    include_truncated: bool = False,
+    oov_conservative: bool = False,
+    allowed_sources: Sequence[str] | None = None,
+    nbest_rank_limit: int | None = None,
 ) -> tuple[list[ScoredLexiconEntry], int]:
     """Build append-only reserved-slot candidates. Does not take evaluation targets."""
-    existing_keys = {(_normalize(candidate.word), candidate.entry.language) for candidate in existing}
-    reserved: list[ScoredLexiconEntry] = []
-    rejected = 0
-
-    def add_entry(entry: LexiconEntry, forward: float, frequency_free: bool, *, conservative: bool) -> None:
-        key = (_normalize(entry.word), entry.language)
-        if key in existing_keys:
-            return
-        if conservative:
-            mapped = conservative_lexicon_spatial(ctc_spatials)
-        else:
-            mapped = project_onto_lexicon_scale(calibration.to_lexicon_spatial(forward), ctc_spatials)
-        spatial = _z_score_against(mapped, ctc_spatials) if ctc_spatials else mapped
-        reserved.append(ScoredLexiconEntry(entry, spatial, frequency_free=frequency_free))
-        existing_keys.add(key)
-
-    spellings: list[str] = []
-    for emissions, forward in unconstrained_ctc_emissions(
-        logits, n_best=n_best, beam_width=beam_width,
-    ):
-        spelling = emissions_to_spelling(emissions, layout)
-        if spelling is None:
-            continue
-        normalized = _normalize(spelling)
-        if normalized in known_offensive:
-            rejected += 1
-            continue
-        spellings.append(normalized)
-        lexicon_entry = lexicon_by_word.get(normalized)
-        if lexicon_entry is None:
-            add_entry(LexiconEntry(normalized, language, emissions, 0), forward, True, conservative=True)
-        else:
-            add_entry(
-                LexiconEntry(lexicon_entry.word, lexicon_entry.language, emissions, lexicon_entry.frequency),
-                forward,
-                False,
-                conservative=False,
-            )
-    if include_lexicon_neighbors:
-        for spelling in spellings:
-            for entry in lexicon_neighbors(spelling, lexicon_by_word):
-                if _normalize(entry.word) in known_offensive:
-                    rejected += 1
-                    continue
-                add_entry(entry, 0.0, True, conservative=True)
+    sources, rejected, _spellings = collect_reserved_sources(
+        logits,
+        layout,
+        n_best=n_best,
+        beam_width=beam_width,
+        existing=existing,
+        known_offensive=known_offensive,
+        lexicon_by_word=lexicon_by_word,
+        language=language,
+        ctc=ctc,
+        geometric=geometric,
+        baseline_merged=baseline_merged,
+        include_lexicon_neighbors=include_lexicon_neighbors,
+        include_truncated=include_truncated,
+    )
+    skip_keys = {(_normalize(candidate.word), candidate.entry.language) for candidate in existing}
+    reserved = score_reserved_sources(
+        sources,
+        calibration=calibration,
+        ctc_spatials=ctc_spatials,
+        oov_conservative=oov_conservative,
+        allowed=allowed_sources,
+        nbest_rank_limit=nbest_rank_limit,
+        skip_keys=skip_keys,
+    )
     return reserved, rejected
 
 
@@ -1377,11 +1700,109 @@ def append_reserved_slots(
     return [*base, *extra]
 
 
+def static_fusion_values(candidates: Sequence[ScoredLexiconEntry]) -> list[float]:
+    """Lexicon-only static fusion values. No evaluation targets."""
+    if not candidates:
+        return []
+    spatial = _z_normalize([candidate.spatial for candidate in candidates])
+    frequencies = _z_normalize([math.log1p(candidate.entry.frequency) for candidate in candidates])
+    return [space + freq * 0.65 for space, freq in zip(spatial, frequencies, strict=True)]
+
+
+def reserved_fusion_values(
+    lexicon_candidates: Sequence[ScoredLexiconEntry],
+    reserved_candidates: Sequence[ScoredLexiconEntry],
+) -> list[float]:
+    """Reserved fusion against the lexicon z-pools. Frequency-free uses spatial only."""
+    if not reserved_candidates:
+        return []
+    if not lexicon_candidates:
+        return static_fusion_values(reserved_candidates)
+    lexicon_spatials = [candidate.spatial for candidate in lexicon_candidates]
+    lexicon_log_freq = [math.log1p(candidate.entry.frequency) for candidate in lexicon_candidates]
+    values = []
+    for candidate in reserved_candidates:
+        spatial_z = _z_score_against(candidate.spatial, lexicon_spatials)
+        if candidate.frequency_free:
+            values.append(spatial_z)
+        else:
+            values.append(
+                spatial_z
+                + 0.65 * _z_score_against(math.log1p(candidate.entry.frequency), lexicon_log_freq)
+            )
+    return values
+
+
+def publish_reserved_slots(
+    base: Sequence[ScoredLexiconEntry],
+    reserved: Sequence[ScoredLexiconEntry],
+    *,
+    reserved_budget: int,
+    bound: int = PUBLISHED_SLATE_BOUND,
+) -> list[ScoredLexiconEntry]:
+    """Keep at most ``reserved_budget`` reserved items in a ``bound``-slot slate.
+
+    Reserved candidates enter only when they beat the current worst published
+    candidate. The slate never grows past ``bound``.
+    """
+    if reserved_budget < 0:
+        raise SwipeEvaluationError("reserved budget must not be negative")
+    budget = min(reserved_budget, bound)
+    published: list[ScoredLexiconEntry] = []
+    seen: set[tuple[str, str]] = set()
+    for candidate in base:
+        key = (_normalize(candidate.word), candidate.entry.language)
+        if key in seen:
+            continue
+        if len(published) >= bound:
+            break
+        published.append(candidate)
+        seen.add(key)
+    if budget == 0 or not reserved:
+        return published[:bound]
+    lexicon_ref = published or list(base)
+    reserved_scores = reserved_fusion_values(lexicon_ref, reserved)
+    ranked_reserved = sorted(
+        zip(reserved, reserved_scores, strict=True),
+        key=lambda item: (-item[1], _normalize(item[0].word), item[0].entry.language),
+    )
+    values = static_fusion_values(published) if published else []
+    origin = ["lexicon"] * len(published)
+    added = 0
+    for candidate, fusion in ranked_reserved:
+        if added >= budget:
+            break
+        key = (_normalize(candidate.word), candidate.entry.language)
+        if key in seen:
+            continue
+        if len(published) < bound:
+            published.append(candidate)
+            values.append(fusion)
+            origin.append("reserved")
+            seen.add(key)
+            added += 1
+            continue
+        worst_index = min(
+            range(len(published)),
+            key=lambda index: (values[index], origin[index] != "lexicon", _normalize(published[index].word)),
+        )
+        if fusion <= values[worst_index]:
+            continue
+        old_key = (_normalize(published[worst_index].word), published[worst_index].entry.language)
+        seen.remove(old_key)
+        published[worst_index] = candidate
+        values[worst_index] = fusion
+        origin[worst_index] = "reserved"
+        seen.add(key)
+        added += 1
+    return published[:bound]
+
+
 def competing_slate(
     merged: Sequence[ScoredLexiconEntry],
     reserved: Sequence[ScoredLexiconEntry],
 ) -> list[ScoredLexiconEntry]:
-    """Slate passed to ranking. Candidate recall is membership in this list, not an unbounded bag."""
+    """Unbounded ranking-input union. Not the published-31 recall bound."""
     return append_reserved_slots(merged, reserved)
 
 
@@ -1407,6 +1828,23 @@ def reserved_from_decoder_slates(
     return reserved
 
 
+def split_published_slate(
+    published: Sequence[ScoredLexiconEntry],
+    reserved: Sequence[ScoredLexiconEntry],
+) -> tuple[list[ScoredLexiconEntry], list[ScoredLexiconEntry]]:
+    """Split a bounded published slate into lexicon vs reserved origin. No targets."""
+    reserved_keys = {(_normalize(candidate.word), candidate.entry.language) for candidate in reserved}
+    lexicon_part = [
+        candidate for candidate in published
+        if (_normalize(candidate.word), candidate.entry.language) not in reserved_keys
+    ]
+    reserved_part = [
+        candidate for candidate in published
+        if (_normalize(candidate.word), candidate.entry.language) in reserved_keys
+    ]
+    return lexicon_part, reserved_part
+
+
 def rank_static_fusion_with_reserved(
     lexicon_candidates: Sequence[ScoredLexiconEntry],
     reserved_candidates: Sequence[ScoredLexiconEntry] = (),
@@ -1415,13 +1853,13 @@ def rank_static_fusion_with_reserved(
 
     Lexicon spatial/frequency z-scores are computed without reserved candidates.
     Frequency-free reserved entries use only a spatial z-score against the lexicon
-    spatial distribution (no fabricated frequency prior). Recall may only count
-    targets present in lexicon_candidates ∪ reserved_candidates.
+    spatial distribution (no fabricated frequency prior and no top-3 floor clamp).
+    Published recall may only count targets present in the returned [:31] list.
     """
     if not reserved_candidates:
         return rank_static_fusion(lexicon_candidates)
     if not lexicon_candidates:
-        return rank_static_fusion(reserved_candidates)
+        return rank_static_fusion(reserved_candidates)[:PUBLISHED_RANKING_BOUND]
     spatial = _z_normalize([candidate.spatial for candidate in lexicon_candidates])
     frequencies = _z_normalize([math.log1p(candidate.entry.frequency) for candidate in lexicon_candidates])
     scored: list[tuple[ScoredLexiconEntry, float]] = [
@@ -1430,15 +1868,14 @@ def rank_static_fusion_with_reserved(
     ]
     lexicon_spatials = [candidate.spatial for candidate in lexicon_candidates]
     lexicon_log_freq = [math.log1p(candidate.entry.frequency) for candidate in lexicon_candidates]
-    lexicon_fusions = [item[1] for item in scored]
-    top3_floor = sorted(lexicon_fusions, reverse=True)[min(2, len(lexicon_fusions) - 1)]
     for candidate in reserved_candidates:
         spatial_z = _z_score_against(candidate.spatial, lexicon_spatials)
         if candidate.frequency_free:
-            # Calibrated OOV compete, but never outrank the lexicon top-3.
-            fusion = top3_floor - 1e-3
+            fusion = spatial_z
         else:
-            fusion = spatial_z + 0.65 * _z_score_against(math.log1p(candidate.entry.frequency), lexicon_log_freq)
+            fusion = spatial_z + 0.65 * _z_score_against(
+                math.log1p(candidate.entry.frequency), lexicon_log_freq,
+            )
         scored.append((candidate, fusion))
     ranked = sorted(
         scored,
@@ -1448,7 +1885,16 @@ def rank_static_fusion_with_reserved(
             item[0].entry.language,
         ),
     )
-    return [item[0].entry for item in ranked[:31]]
+    return [item[0].entry for item in ranked[:PUBLISHED_RANKING_BOUND]]
+
+
+def published_ranking(
+    published: Sequence[ScoredLexiconEntry],
+    reserved: Sequence[ScoredLexiconEntry],
+) -> list[LexiconEntry]:
+    """Rank the bounded published slate. The counted list is this [:31] result."""
+    lexicon_part, reserved_part = split_published_slate(published, reserved)
+    return rank_static_fusion_with_reserved(lexicon_part, reserved_part)
 
 
 def collect_oov_calibration_observations(
@@ -1588,6 +2034,10 @@ def _evaluate(args: argparse.Namespace, slate_stream=None) -> dict[str, Any]:
     }
     oov_nbest = int(getattr(args, "reserved_oov_nbest", 0) or 0)
     adaptive_merge = bool(getattr(args, "stratum_adaptive_merge", False))
+    reserved_budget = int(getattr(args, "reserved_budget", 0) or 0)
+    include_neighbors = bool(getattr(args, "include_lexicon_neighbors", False))
+    include_truncated = bool(getattr(args, "include_truncated_leftovers", False))
+    oov_conservative = bool(getattr(args, "oov_conservative_spatial", False))
     calibration = None
     known_offensive: set[str] = set()
     if oov_nbest:
@@ -1693,17 +2143,27 @@ def _evaluate(args: argparse.Namespace, slate_stream=None) -> dict[str, Any]:
                 layout,
                 calibration=calibration,
                 n_best=oov_nbest,
-                beam_width=max(16, oov_nbest),
+                beam_width=max(16, min(32, oov_nbest)),
                 existing=merged,
                 known_offensive=known_offensive,
                 lexicon_by_word=lexicon_by_language.get(row.language, {}),
                 language=row.language,
                 ctc_spatials=[candidate.spatial for candidate in decoded],
+                include_lexicon_neighbors=include_neighbors,
+                ctc=decoded,
+                geometric=geometric,
+                include_truncated=include_truncated,
+                oov_conservative=oov_conservative,
             )
             known_offensive_rejected += rejected
             reserved_added += len(reserved)
-        competing = competing_slate(merged, reserved)
-        ctc_geometric_fusion = rank_static_fusion_with_reserved(merged, reserved)
+        if reserved_budget > 0:
+            published = publish_reserved_slots(merged, reserved, reserved_budget=reserved_budget)
+            ctc_geometric_fusion = published_ranking(published, reserved)
+            competing = published
+        else:
+            competing = competing_slate(merged, reserved)
+            ctc_geometric_fusion = rank_static_fusion_with_reserved(merged, reserved)
         finished = time.perf_counter_ns()
         if slate_stream is not None:
             _write_candidate_slate(slate_stream, row, decoded, geometric, merged, reserved or None)
@@ -1746,7 +2206,10 @@ def _evaluate(args: argparse.Namespace, slate_stream=None) -> dict[str, Any]:
             ctc_geometric_metric["inVocabulary"] += in_vocabulary
             ctc_geometric_metric["lengthWindowEligible"] += length_window_eligible
             candidate_recall[name]["rows"] += 1
-            candidate_recall[name]["targetPresent"] += row.target in {item.word for item in competing}
+            if reserved_budget > 0:
+                candidate_recall[name]["targetPresent"] += row.target in ctc_geometric_predictions
+            else:
+                candidate_recall[name]["targetPresent"] += row.target in {item.word for item in competing}
             baseline_candidate_recall[name]["rows"] += 1
             baseline_candidate_recall[name]["targetPresent"] += row.target in {item.word for item in merged}
         inference_ms.append((inference_finished - inference_started) / 1_000_000)
@@ -1844,6 +2307,11 @@ def _evaluate(args: argparse.Namespace, slate_stream=None) -> dict[str, Any]:
             "decoderSlatesNormalizedBeforeUnion": True,
             "stratumAdaptiveMerge": adaptive_merge,
             "reservedOovNBest": oov_nbest,
+            "reservedBudget": reserved_budget,
+            "published31Membership": reserved_budget > 0,
+            "includeLexiconNeighbors": include_neighbors,
+            "includeTruncatedLeftovers": include_truncated,
+            "oovConservativeSpatial": oov_conservative,
             "reservedOovCandidatesAdded": reserved_added,
             "knownOffensiveRejected": known_offensive_rejected,
         },
@@ -1944,6 +2412,27 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--stratum-adaptive-merge",
         action="store_true",
         help="Diagnostic: allocate CTC vs geometry union slots by stratum",
+    )
+    parser.add_argument(
+        "--reserved-budget",
+        type=int,
+        default=0,
+        help="Diagnostic: published reserved slots inside the 32-slot bound (0 = unbounded competing slate)",
+    )
+    parser.add_argument(
+        "--include-lexicon-neighbors",
+        action="store_true",
+        help="Diagnostic: add in-lexicon edit-1 neighbors of unconstrained CTC spellings",
+    )
+    parser.add_argument(
+        "--include-truncated-leftovers",
+        action="store_true",
+        help="Diagnostic: add CTC/geometry candidates dropped by the 32-slot union",
+    )
+    parser.add_argument(
+        "--oov-conservative-spatial",
+        action="store_true",
+        help="Diagnostic: score true OOV at the 25th-percentile lexicon spatial instead of the OLS map",
     )
     return parser.parse_args(argv)
 

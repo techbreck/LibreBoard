@@ -318,6 +318,52 @@ from 10.3 ms to 40.3 ms. The earlier matched 1,000-path union p95 of 91 ms is st
 unaffordable, so production beam width stays 64. This is a residual search gap, not a capacity
 signal to retrain. Evidence: `docs/models/evidence/swipe-beam256-recall.json`.
 
+## Published-31 membership (not the competing-slate 97.57%)
+
+The 5,854/6,000 competing-slate figure counts membership in an unbounded ranking-input bag
+(~184 extra spellings per path). Phase 0 `fused_swipe` top-3 ≥ 0.95 needs the target in the
+published 31 (32 slots, one empty-swipe placeholder). A first-source ablation of the 184
+recoveries on the frozen slates (`slatesSha256`
+`fbbbcd0ef004f651a2e6c698ce6d834d4d2ca8d5f8195a6c9996e5ff2c61776e`) labeled:
+
+| First source | Recovered rows |
+| --- | ---: |
+| greedy unconstrained CTC | 41 |
+| per-frame 2nd/3rd-best greedy variant | 69 |
+| prefix-beam n-best (n=2…32) | 33 |
+| in-lexicon edit-1 / transposition / apostrophe neighbor | 36 |
+| truncated CTC leftover | 4 |
+| truncated geometry leftover | 1 |
+
+Cumulative bag recoveries: greedy 41, greedy+alts 110, beam≤4 115, beam≤32 143,
++neighbors 179, +dropped 184. Construction never reads targets. Evidence:
+`docs/models/evidence/swipe-184-source-ablation.json`.
+
+Reserved merge now displaces into the 32-slot bound only when a reserved candidate beats the
+current worst published candidate (at most 4 reserved slots). In-lexicon reserved neighbors
+use real `log1p(frequency)`. True OOV stay frequency-free. Mapping unconstrained CTC forward
+through the train-fit OLS map without a top-3 clamp recovered 5,745 published-31 targets but
+regressed 6k top-3 from 5,551 to 5,527 and host reserved-decode p95 to 103 ms; that scoring is
+rejected. Conservative 25th-percentile OOV spatial keeps the floors.
+
+The official published-31 diagnostic (greedy + 2nd/3rd-best + neighbors + truncated leftovers,
+n-best 1, reserved budget 4, no stratum-adaptive merge, conservative OOV spatial) measured:
+
+| Quantity | Frozen 32-slot | Published-31 diagnostic | Gate |
+| --- | ---: | ---: | ---: |
+| Target in ranked[:31] | 5,670 | 5,691 | 5,822 at 97.9% conversion |
+| Static-fusion top-3 | 5,551 (92.52%) | 5,552 (92.53%) | 5,700 (95%) |
+| return_trip published-31 | 1,529 | 1,539 | 1,572 |
+| return_trip top-3 | 1,498 | 1,500 | 1,539 (90%) |
+| Host reserved-decode p95 | — | 20.9 ms | < 91 ms |
+
+New membership hits convert at 1/21, not 97.9%. The 97.9% rate describes frozen lexicon
+candidates, not reserved recoveries. Matched 1,000-path union ranking twice was 86.9%/92.7%.
+`diagnosticOnly` / `releaseEligible` false; this is published-31 membership, not a Phase 0
+quality pass. Production vocabulary, scoring, beam 64, and `CtcSwipeDecoder.kt` are unchanged.
+Evidence: `docs/models/evidence/swipe-published-31-recall.json` and
+`docs/models/evidence/swipe-published-31-1000-{1,2}.json`.
+
 The 1,000-row ranking follow-up assigned frequency 1 to the 4,089 supplemental words. Adding them
 to both CTC and geometry lowered combined top-1/top-3 from 86.6%/92.7% to 85.0%/91.9%. Replaying
 only supplemented CTC with the original geometric candidates yielded 84.8%/92.3%. Both scoring

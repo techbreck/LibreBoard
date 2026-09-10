@@ -43,6 +43,22 @@ class CandidateRecallDiagnosticTest(unittest.TestCase):
         self.assertEqual(-0.25, entries[0].spatial)
         self.assertFalse(entries[0].frequency_free)
 
+    def test_parse_reserved_sources_rejects_unknown_names(self):
+        self.assertEqual(("greedy", "greedy_alts"), diagnostic.parse_reserved_sources("greedy,greedy_alts"))
+        with self.assertRaises(evaluator.SwipeEvaluationError):
+            diagnostic.parse_reserved_sources("greedy,rerank")
+
+    def test_metric_tables_treat_ranked_list_as_the_published_bound(self):
+        rows = [{"target": "cax", "strata": ["short"]}, {"target": "dog", "strata": ["long"]}]
+        present = [True, False]
+        ranked = [["cat", "cax"], ["dot"] * 31]
+        membership, ranking = diagnostic.metric_tables(rows, present, ranked)
+        self.assertEqual(1, membership["overall"]["targetPresent"])
+        self.assertEqual(31, len(ranked[1]))
+        self.assertEqual(0, ranking["overall"]["top1"])
+        self.assertEqual(1, ranking["overall"]["top3"])
+        self.assertNotIn("target", inspect.signature(diagnostic.parse_reserved_sources).parameters)
+
 
 if __name__ == "__main__":
     unittest.main()
