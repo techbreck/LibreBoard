@@ -1,0 +1,51 @@
+{
+  "candidateRecall": {
+    "baselineRecall": 0.944,
+    "baselineTargetPresent": 944,
+    "recall": 0.952,
+    "run1TargetPresent": 952,
+    "run2TargetPresent": 952
+  },
+  "combinedRanking": {
+    "baseline": {
+      "top1": 866,
+      "top3": 927
+    },
+    "calibratedReservedRun1": {
+      "top1": 866,
+      "top3": 927
+    },
+    "calibratedReservedRun2": {
+      "top1": 866,
+      "top3": 927
+    },
+    "uncalibratedRejected": {
+      "top1": 842,
+      "top3": 915
+    }
+  },
+  "decision": "Calibrated reserved-slot greedy OOV preserves the 1,000-path ranking floor; competing-set recall rises; production is unchanged.",
+  "diagnosticOnly": true,
+  "frequencyPrior": null,
+  "hostPrefixBeamP95Ms": {
+    "run1": 11.173417,
+    "run2": 11.564416
+  },
+  "knownOffensiveRejected": 0,
+  "limitations": [
+    "Matched 1,000-path validation development comparison, not the 6,000-row fused baseline.",
+    "Candidate recall is membership in the ranking-competing slate (merged union reserved).",
+    "Uncalibrated greedy-OOV ranked 84.2%/91.5% after adding the same 315 OOV into the CTC slate with replacement; calibrated append-only competing-set recall is 952/1000 versus merged 944/1000.",
+    "Production vocabulary, scoring, and safety policy were not changed.",
+    "Host prefix-decoding p95 is not Android device latency."
+  ],
+  "rankingFloorMet": true,
+  "recallAboveUncalibratedRejected": true,
+  "recallCountsCompetingSlateOnly": true,
+  "releaseEligible": false,
+  "reservedOovCandidatesAdded": 315,
+  "rows": 1000,
+  "runsAgree": true,
+  "schemaVersion": 1,
+  "slatesSha256": "fbbbcd0ef004f651a2e6c698ce6d834d4d2ca8d5f8195a6c9996e5ff2c61776e"
+}

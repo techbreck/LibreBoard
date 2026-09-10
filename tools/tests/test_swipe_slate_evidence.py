@@ -64,6 +64,23 @@ class SlateEvidenceTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             evaluator._write_candidate_slate(io.BytesIO(), row, invalid, [], [])
 
+    def test_reserved_slots_are_serialized_without_dropping_merged_candidates(self):
+        row = evaluator.EvaluationRow('id', 'session', 'en', 'word', (), (), frozenset({'short'}))
+        merged = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry(f'w{index}', 'en', (1,), 5), -0.1 * index)
+            for index in range(32)
+        ]
+        reserved = [evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry('oovword', 'en', (2,), 0), 0.4, frequency_free=True,
+        )]
+        stream = io.BytesIO()
+        evaluator._write_candidate_slate(stream, row, merged[:2], [], merged, reserved)
+        result = json.loads(stream.getvalue())
+        self.assertEqual(32, len(result['merged']))
+        self.assertEqual([item.word for item in merged], [item['word'] for item in result['merged']])
+        self.assertEqual(['oovword'], [item['word'] for item in result['reserved']])
+        self.assertTrue(result['reserved'][0]['frequencyFree'])
+
 
 if __name__ == '__main__':
     unittest.main()

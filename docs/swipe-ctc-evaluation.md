@@ -290,6 +290,34 @@ These are coverage bounds, not improved ranking results. The earlier greedy-rank
 regressed and remains rejected. Production vocabulary, scoring, and policy are unchanged; any
 candidate expansion still needs actual ranking, latency, memory, and full-runtime validation.
 
+A later diagnostic fitted an OLS map from unconstrained CTC forward log-probability onto
+lexicon-constrained spatial scores on 512 training paths (targets not returned; no frequency
+prior). Greedy OOV spellings then entered append-only reserved slots and competed in ranking
+with frequency-free scores placed just below the lexicon top-3. On the matched 1,000-path
+comparison two runs agreed: union top-1/top-3 86.6%/92.7%, competing-slate recall 952/1,000
+versus merged 944/1,000 (the uncalibrated greedy-OOV ranking had been 84.2%/91.5%). Host
+prefix-beam p95 stayed near 11 ms. Evidence:
+`docs/models/evidence/swipe-oov-score-calibration.json` and
+`docs/models/evidence/swipe-calibrated-greedy-oov-ranking.json`.
+
+On the frozen 6,000-row slate (`slatesSha256` `fbbbcd0ef004f651a2e6c698ce6d834d4d2ca8d5f8195a6c9996e5ff2c61776e`),
+candidate recall counts only the ranking-competing slate (merged union reserved). Every reserved
+candidate in that bound is passed to `rank_static_fusion_with_reserved`. Reserved-slot n-best CTC
+spellings, in-lexicon edit neighbors, stratum-adaptive CTC/geometry budgets, and truncated decoder
+candidates raised competing-slate recall from 5,670 to 5,854 of 6,000 (97.57%), with `return_trip`
+recall 94.39%. Static-fusion ranking on those slates was 87.28%/92.60% versus the frozen
+86.67%/92.52% floor. Host reserved-decode p95 was 63.4 ms. This is a candidate membership bound,
+not a Phase 0 quality pass. Production vocabulary, scoring, beam width, and safety policy stay
+unchanged. Evidence: `docs/models/evidence/swipe-nbest-reserved-recall.json`,
+`docs/models/evidence/swipe-stratum-adaptive-merge.json`, and
+`docs/models/evidence/swipe-validation-candidate-recall-bound-calibrated.json`.
+
+Beam 256 on the 1,156 long and double-letter frozen rows raised CTC-only candidate recall from
+1,006 to 1,023 targets (long 605→618, double_letter 550→561). Isolated prefix-beam p95 moved
+from 10.3 ms to 40.3 ms. The earlier matched 1,000-path union p95 of 91 ms is still treated as
+unaffordable, so production beam width stays 64. This is a residual search gap, not a capacity
+signal to retrain. Evidence: `docs/models/evidence/swipe-beam256-recall.json`.
+
 The 1,000-row ranking follow-up assigned frequency 1 to the 4,089 supplemental words. Adding them
 to both CTC and geometry lowered combined top-1/top-3 from 86.6%/92.7% to 85.0%/91.9%. Replaying
 only supplemented CTC with the original geometric candidates yielded 84.8%/92.3%. Both scoring

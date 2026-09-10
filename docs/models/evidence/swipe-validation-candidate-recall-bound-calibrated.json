@@ -1,0 +1,283 @@
+{
+  "baselineCandidateRecall": {
+    "clean": {
+      "recall": 0.9496166484118291,
+      "rows": 4565,
+      "targetPresent": 4335
+    },
+    "double_letter": {
+      "recall": 0.8915470494417863,
+      "rows": 627,
+      "targetPresent": 559
+    },
+    "long": {
+      "recall": 0.8579465541490858,
+      "rows": 711,
+      "targetPresent": 610
+    },
+    "medium": {
+      "recall": 0.9317732366512854,
+      "rows": 3034,
+      "targetPresent": 2827
+    },
+    "overall": {
+      "recall": 0.945,
+      "rows": 6000,
+      "targetPresent": 5670
+    },
+    "return_trip": {
+      "recall": 0.8941520467836257,
+      "rows": 1710,
+      "targetPresent": 1529
+    },
+    "short": {
+      "recall": 0.9902439024390244,
+      "rows": 2255,
+      "targetPresent": 2233
+    },
+    "sloppy": {
+      "recall": 0.9303135888501742,
+      "rows": 1435,
+      "targetPresent": 1335
+    },
+    "very_sloppy": {
+      "recall": 0.9133333333333333,
+      "rows": 600,
+      "targetPresent": 548
+    }
+  },
+  "baselineRanking": {
+    "clean": {
+      "rows": 4565,
+      "top1": 4050,
+      "top1Accuracy": 0.8871851040525739,
+      "top3": 4283,
+      "top3Accuracy": 0.9382256297918948
+    },
+    "double_letter": {
+      "rows": 627,
+      "top1": 449,
+      "top1Accuracy": 0.7161084529505582,
+      "top3": 524,
+      "top3Accuracy": 0.835725677830941
+    },
+    "long": {
+      "rows": 711,
+      "top1": 562,
+      "top1Accuracy": 0.790436005625879,
+      "top3": 599,
+      "top3Accuracy": 0.8424753867791842
+    },
+    "medium": {
+      "rows": 3034,
+      "top1": 2507,
+      "top1Accuracy": 0.8263019116677653,
+      "top3": 2740,
+      "top3Accuracy": 0.9030982201713909
+    },
+    "overall": {
+      "rows": 6000,
+      "top1": 5200,
+      "top1Accuracy": 0.8666666666666667,
+      "top3": 5551,
+      "top3Accuracy": 0.9251666666666667
+    },
+    "return_trip": {
+      "rows": 1710,
+      "top1": 1398,
+      "top1Accuracy": 0.8175438596491228,
+      "top3": 1498,
+      "top3Accuracy": 0.8760233918128655
+    },
+    "short": {
+      "rows": 2255,
+      "top1": 2131,
+      "top1Accuracy": 0.9450110864745012,
+      "top3": 2212,
+      "top3Accuracy": 0.9809312638580931
+    },
+    "sloppy": {
+      "rows": 1435,
+      "top1": 1150,
+      "top1Accuracy": 0.8013937282229965,
+      "top3": 1268,
+      "top3Accuracy": 0.883623693379791
+    },
+    "very_sloppy": {
+      "rows": 600,
+      "top1": 457,
+      "top1Accuracy": 0.7616666666666667,
+      "top3": 506,
+      "top3Accuracy": 0.8433333333333334
+    }
+  },
+  "boundKind": "candidate-membership-in-ranking-competing-slate",
+  "candidateRecall": {
+    "clean": {
+      "recall": 0.9785323110624315,
+      "rows": 4565,
+      "targetPresent": 4467
+    },
+    "double_letter": {
+      "recall": 0.9298245614035088,
+      "rows": 627,
+      "targetPresent": 583
+    },
+    "long": {
+      "recall": 0.9029535864978903,
+      "rows": 711,
+      "targetPresent": 642
+    },
+    "medium": {
+      "recall": 0.9765985497692815,
+      "rows": 3034,
+      "targetPresent": 2963
+    },
+    "overall": {
+      "recall": 0.9756666666666667,
+      "rows": 6000,
+      "targetPresent": 5854
+    },
+    "return_trip": {
+      "recall": 0.9438596491228071,
+      "rows": 1710,
+      "targetPresent": 1614
+    },
+    "short": {
+      "recall": 0.9973392461197339,
+      "rows": 2255,
+      "targetPresent": 2249
+    },
+    "sloppy": {
+      "recall": 0.9665505226480836,
+      "rows": 1435,
+      "targetPresent": 1387
+    },
+    "very_sloppy": {
+      "recall": 0.9583333333333334,
+      "rows": 600,
+      "targetPresent": 575
+    }
+  },
+  "counts": {
+    "baselineTargetPresent": 5670,
+    "knownOffensiveRejected": 318,
+    "newTargetsRecovered": 184,
+    "proposedTargetPresent": 5854,
+    "recallCountsCompetingSlateOnly": true,
+    "reservedCandidatesAdded": 1103829,
+    "rows": 6000,
+    "targetsLostAtAppend": 0
+  },
+  "diagnosticOnly": true,
+  "evaluatorSha256": "d4940dbef97c46e712317a9a0c9b31c351a7cbe6f74925eee6e070ab89d830fa",
+  "exportReportSha256": "04a261eef7db4adf18b7342fe4421326321a6cb674076b4915ff50c817d6342b",
+  "knownOffensiveSourceSha256": "e23644662586f6bcb76f4bc0d9e01e7f38efd89afb823fc2b2a4530177a97525",
+  "latencyMs": {
+    "hostDiagnosticOnly": true,
+    "inference": {
+      "p50": 1.946042,
+      "p95": 2.43425,
+      "p99": 3.499083
+    },
+    "reservedOov": {
+      "p50": 43.329958,
+      "p95": 63.41475,
+      "p99": 89.275125
+    },
+    "reservedOovP95BudgetMs": 91.0,
+    "reservedOovP95WithinBudget": true
+  },
+  "limitations": [
+    "Candidate recall is membership in the ranking-competing slate (merged union reserved), not an unbounded bag.",
+    "Every reserved candidate counted for recall is passed to rank_static_fusion_with_reserved.",
+    "Frequency-free OOV compete at the median lexicon spatial; no fabricated frequency prior.",
+    "Production vocabulary, scoring, and safety policy were not changed.",
+    "Host timing is not Android device latency."
+  ],
+  "modelSha256": "1301f0d076f526fe0b67f2ea86a38abc8448f6de54d2c7191c002dcd4d05d38c",
+  "oovBeamWidth": 32,
+  "oovCalibrationSha256": "9f295e5e6a09df38c51b55c0c199baf50954dd313498e395a4319f5a2bad496a",
+  "phase0ReleaseEvidence": false,
+  "qualityClaim": false,
+  "ranking": {
+    "clean": {
+      "rows": 4565,
+      "top1": 4062,
+      "top1Accuracy": 0.8898138006571742,
+      "top3": 4282,
+      "top3Accuracy": 0.9380065717415115
+    },
+    "double_letter": {
+      "rows": 627,
+      "top1": 460,
+      "top1Accuracy": 0.733652312599681,
+      "top3": 526,
+      "top3Accuracy": 0.8389154704944178
+    },
+    "long": {
+      "rows": 711,
+      "top1": 567,
+      "top1Accuracy": 0.7974683544303798,
+      "top3": 599,
+      "top3Accuracy": 0.8424753867791842
+    },
+    "medium": {
+      "rows": 3034,
+      "top1": 2539,
+      "top1Accuracy": 0.8368490441661174,
+      "top3": 2745,
+      "top3Accuracy": 0.9047462096242584
+    },
+    "overall": {
+      "rows": 6000,
+      "top1": 5237,
+      "top1Accuracy": 0.8728333333333333,
+      "top3": 5556,
+      "top3Accuracy": 0.926
+    },
+    "return_trip": {
+      "rows": 1710,
+      "top1": 1413,
+      "top1Accuracy": 0.8263157894736842,
+      "top3": 1502,
+      "top3Accuracy": 0.8783625730994152
+    },
+    "short": {
+      "rows": 2255,
+      "top1": 2131,
+      "top1Accuracy": 0.9450110864745012,
+      "top3": 2212,
+      "top3Accuracy": 0.9809312638580931
+    },
+    "sloppy": {
+      "rows": 1435,
+      "top1": 1175,
+      "top1Accuracy": 0.818815331010453,
+      "top3": 1274,
+      "top3Accuracy": 0.8878048780487805
+    },
+    "very_sloppy": {
+      "rows": 600,
+      "top1": 469,
+      "top1Accuracy": 0.7816666666666666,
+      "top3": 512,
+      "top3Accuracy": 0.8533333333333334
+    }
+  },
+  "rankingFloorsMet": true,
+  "releaseEligible": false,
+  "reservedOovNBest": 32,
+  "returnTripRecall": 0.9438596491228071,
+  "schemaVersion": 1,
+  "slatesSha256": "fbbbcd0ef004f651a2e6c698ce6d834d4d2ca8d5f8195a6c9996e5ff2c61776e",
+  "slatesSha256After": "fbbbcd0ef004f651a2e6c698ce6d834d4d2ca8d5f8195a6c9996e5ff2c61776e",
+  "stratumAdaptiveMerge": true,
+  "targetPresent": 5854,
+  "toolSha256": "58e2ebaccfb1b33b13105a726004440259c91ef6a6e47292afc732d361d411a4",
+  "toolchain": {
+    "numpy": "2.2.6",
+    "onnxruntime": "1.26.0"
+  },
+  "untrimmedUnionNotAQualityWin": true
+}

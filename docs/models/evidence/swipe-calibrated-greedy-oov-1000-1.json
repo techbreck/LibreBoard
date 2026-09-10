@@ -1,0 +1,602 @@
+{
+  "artifacts": {
+    "evaluationDataSha256": "bc11f707c849b9c9daec5a5ffef06108771887f1c9d019b4c123f4bf8714be6e",
+    "evaluatorSha256": "d4940dbef97c46e712317a9a0c9b31c351a7cbe6f74925eee6e070ab89d830fa",
+    "exportReportSha256": "04a261eef7db4adf18b7342fe4421326321a6cb674076b4915ff50c817d6342b",
+    "model": {
+      "path": "swipe-latin-v1.onnx",
+      "sha256": "1301f0d076f526fe0b67f2ea86a38abc8448f6de54d2c7191c002dcd4d05d38c"
+    },
+    "modelSpecSha256": "78ad40a1a873ed86803f28d7677e57bae665fca808d032cc927f581b42d43928",
+    "splitManifestSha256": "c56b13c5895a0037df4599753963fb16ba2b43bd60ff7f2ea7074959dca715cd"
+  },
+  "baselineCandidateRecall": {
+    "clean": {
+      "recall": 0.9444444444444444,
+      "rows": 756,
+      "targetPresent": 714
+    },
+    "double_letter": {
+      "recall": 0.8461538461538461,
+      "rows": 104,
+      "targetPresent": 88
+    },
+    "long": {
+      "recall": 0.8617886178861789,
+      "rows": 123,
+      "targetPresent": 106
+    },
+    "medium": {
+      "recall": 0.9243353783231084,
+      "rows": 489,
+      "targetPresent": 452
+    },
+    "overall": {
+      "recall": 0.944,
+      "rows": 1000,
+      "targetPresent": 944
+    },
+    "return_trip": {
+      "recall": 0.8954703832752613,
+      "rows": 287,
+      "targetPresent": 257
+    },
+    "short": {
+      "recall": 0.9948453608247423,
+      "rows": 388,
+      "targetPresent": 386
+    },
+    "sloppy": {
+      "recall": 0.9426229508196722,
+      "rows": 244,
+      "targetPresent": 230
+    },
+    "very_sloppy": {
+      "recall": 0.92,
+      "rows": 100,
+      "targetPresent": 92
+    }
+  },
+  "candidateRecall": {
+    "clean": {
+      "recall": 0.9523809523809523,
+      "rows": 756,
+      "targetPresent": 720
+    },
+    "double_letter": {
+      "recall": 0.8461538461538461,
+      "rows": 104,
+      "targetPresent": 88
+    },
+    "long": {
+      "recall": 0.8617886178861789,
+      "rows": 123,
+      "targetPresent": 106
+    },
+    "medium": {
+      "recall": 0.9406952965235174,
+      "rows": 489,
+      "targetPresent": 460
+    },
+    "overall": {
+      "recall": 0.952,
+      "rows": 1000,
+      "targetPresent": 952
+    },
+    "return_trip": {
+      "recall": 0.9094076655052264,
+      "rows": 287,
+      "targetPresent": 261
+    },
+    "short": {
+      "recall": 0.9948453608247423,
+      "rows": 388,
+      "targetPresent": 386
+    },
+    "sloppy": {
+      "recall": 0.9508196721311475,
+      "rows": 244,
+      "targetPresent": 232
+    },
+    "very_sloppy": {
+      "recall": 0.93,
+      "rows": 100,
+      "targetPresent": 93
+    }
+  },
+  "ctcGeometricFusionMetrics": {
+    "clean": {
+      "inVocabulary": 717,
+      "lengthWindowCoverage": 0.9986772486772487,
+      "lengthWindowEligible": 755,
+      "rows": 756,
+      "top1": 666,
+      "top1Accuracy": 0.8809523809523809,
+      "top3": 711,
+      "top3Accuracy": 0.9404761904761905,
+      "vocabularyCoverage": 0.9484126984126984
+    },
+    "double_letter": {
+      "inVocabulary": 91,
+      "lengthWindowCoverage": 0.9903846153846154,
+      "lengthWindowEligible": 103,
+      "rows": 104,
+      "top1": 71,
+      "top1Accuracy": 0.6826923076923077,
+      "top3": 85,
+      "top3Accuracy": 0.8173076923076923,
+      "vocabularyCoverage": 0.875
+    },
+    "long": {
+      "inVocabulary": 106,
+      "lengthWindowCoverage": 0.991869918699187,
+      "lengthWindowEligible": 122,
+      "rows": 123,
+      "top1": 94,
+      "top1Accuracy": 0.7642276422764228,
+      "top3": 106,
+      "top3Accuracy": 0.8617886178861789,
+      "vocabularyCoverage": 0.8617886178861789
+    },
+    "medium": {
+      "inVocabulary": 462,
+      "lengthWindowCoverage": 1.0,
+      "lengthWindowEligible": 489,
+      "rows": 489,
+      "top1": 402,
+      "top1Accuracy": 0.8220858895705522,
+      "top3": 438,
+      "top3Accuracy": 0.8957055214723927,
+      "vocabularyCoverage": 0.9447852760736196
+    },
+    "overall": {
+      "inVocabulary": 955,
+      "lengthWindowCoverage": 0.999,
+      "lengthWindowEligible": 999,
+      "rows": 1000,
+      "top1": 866,
+      "top1Accuracy": 0.866,
+      "top3": 927,
+      "top3Accuracy": 0.927,
+      "vocabularyCoverage": 0.955
+    },
+    "return_trip": {
+      "inVocabulary": 259,
+      "lengthWindowCoverage": 0.9965156794425087,
+      "lengthWindowEligible": 286,
+      "rows": 287,
+      "top1": 233,
+      "top1Accuracy": 0.8118466898954704,
+      "top3": 254,
+      "top3Accuracy": 0.8850174216027874,
+      "vocabularyCoverage": 0.9024390243902439
+    },
+    "short": {
+      "inVocabulary": 387,
+      "lengthWindowCoverage": 1.0,
+      "lengthWindowEligible": 388,
+      "rows": 388,
+      "top1": 370,
+      "top1Accuracy": 0.9536082474226805,
+      "top3": 383,
+      "top3Accuracy": 0.9871134020618557,
+      "vocabularyCoverage": 0.9974226804123711
+    },
+    "sloppy": {
+      "inVocabulary": 238,
+      "lengthWindowCoverage": 1.0,
+      "lengthWindowEligible": 244,
+      "rows": 244,
+      "top1": 200,
+      "top1Accuracy": 0.819672131147541,
+      "top3": 216,
+      "top3Accuracy": 0.8852459016393442,
+      "vocabularyCoverage": 0.9754098360655737
+    },
+    "very_sloppy": {
+      "inVocabulary": 98,
+      "lengthWindowCoverage": 1.0,
+      "lengthWindowEligible": 100,
+      "rows": 100,
+      "top1": 80,
+      "top1Accuracy": 0.8,
+      "top3": 86,
+      "top3Accuracy": 0.86,
+      "vocabularyCoverage": 0.98
+    }
+  },
+  "decoder": {
+    "algorithm": "diagnostic-lexicon-ctc-with-calibrated-reserved-oov-v1",
+    "beamWidth": 64,
+    "decoderSlatesNormalizedBeforeUnion": true,
+    "geometricAlgorithm": "production-template-cost-v1",
+    "geometricTemplates": 99222,
+    "greedyBlankFallbacks": 0,
+    "greedyExactAccuracy": 0.662,
+    "knownOffensiveRejected": 0,
+    "reservedOovCandidatesAdded": 315,
+    "reservedOovNBest": 1,
+    "stratumAdaptiveMerge": false
+  },
+  "diagnosticOnly": true,
+  "geometricMetrics": {
+    "clean": {
+      "inVocabulary": 717,
+      "lengthWindowCoverage": 0.9986772486772487,
+      "lengthWindowEligible": 755,
+      "rows": 756,
+      "top1": 588,
+      "top1Accuracy": 0.7777777777777778,
+      "top3": 681,
+      "top3Accuracy": 0.9007936507936508,
+      "vocabularyCoverage": 0.9484126984126984
+    },
+    "double_letter": {
+      "inVocabulary": 91,
+      "lengthWindowCoverage": 0.9903846153846154,
+      "lengthWindowEligible": 103,
+      "rows": 104,
+      "top1": 63,
+      "top1Accuracy": 0.6057692307692307,
+      "top3": 75,
+      "top3Accuracy": 0.7211538461538461,
+      "vocabularyCoverage": 0.875
+    },
+    "long": {
+      "inVocabulary": 106,
+      "lengthWindowCoverage": 0.991869918699187,
+      "lengthWindowEligible": 122,
+      "rows": 123,
+      "top1": 94,
+      "top1Accuracy": 0.7642276422764228,
+      "top3": 102,
+      "top3Accuracy": 0.8292682926829268,
+      "vocabularyCoverage": 0.8617886178861789
+    },
+    "medium": {
+      "inVocabulary": 462,
+      "lengthWindowCoverage": 1.0,
+      "lengthWindowEligible": 489,
+      "rows": 489,
+      "top1": 347,
+      "top1Accuracy": 0.7096114519427403,
+      "top3": 404,
+      "top3Accuracy": 0.8261758691206544,
+      "vocabularyCoverage": 0.9447852760736196
+    },
+    "overall": {
+      "inVocabulary": 955,
+      "lengthWindowCoverage": 0.999,
+      "lengthWindowEligible": 999,
+      "rows": 1000,
+      "top1": 694,
+      "top1Accuracy": 0.694,
+      "top3": 838,
+      "top3Accuracy": 0.838,
+      "vocabularyCoverage": 0.955
+    },
+    "return_trip": {
+      "inVocabulary": 259,
+      "lengthWindowCoverage": 0.9965156794425087,
+      "lengthWindowEligible": 286,
+      "rows": 287,
+      "top1": 221,
+      "top1Accuracy": 0.7700348432055749,
+      "top3": 243,
+      "top3Accuracy": 0.8466898954703833,
+      "vocabularyCoverage": 0.9024390243902439
+    },
+    "short": {
+      "inVocabulary": 387,
+      "lengthWindowCoverage": 1.0,
+      "lengthWindowEligible": 388,
+      "rows": 388,
+      "top1": 253,
+      "top1Accuracy": 0.6520618556701031,
+      "top3": 332,
+      "top3Accuracy": 0.8556701030927835,
+      "vocabularyCoverage": 0.9974226804123711
+    },
+    "sloppy": {
+      "inVocabulary": 238,
+      "lengthWindowCoverage": 1.0,
+      "lengthWindowEligible": 244,
+      "rows": 244,
+      "top1": 106,
+      "top1Accuracy": 0.4344262295081967,
+      "top3": 157,
+      "top3Accuracy": 0.6434426229508197,
+      "vocabularyCoverage": 0.9754098360655737
+    },
+    "very_sloppy": {
+      "inVocabulary": 98,
+      "lengthWindowCoverage": 1.0,
+      "lengthWindowEligible": 100,
+      "rows": 100,
+      "top1": 35,
+      "top1Accuracy": 0.35,
+      "top3": 50,
+      "top3Accuracy": 0.5,
+      "vocabularyCoverage": 0.98
+    }
+  },
+  "latencyMs": {
+    "ctcGeometricFusionTotal": {
+      "p50": 135.368375,
+      "p95": 320.632167,
+      "p99": 374.679792
+    },
+    "hostDiagnosticOnly": true,
+    "inference": {
+      "p50": 1.938583,
+      "p95": 2.080792,
+      "p99": 2.40225
+    },
+    "prefixBeam": {
+      "p50": 8.7775,
+      "p95": 11.173417,
+      "p99": 81.536791
+    },
+    "total": {
+      "p50": 10.742041,
+      "p95": 13.232292,
+      "p99": 83.505375
+    },
+    "vectorizedGeometricAndFusion": {
+      "p50": 124.274333,
+      "p95": 308.659875,
+      "p99": 325.776916
+    }
+  },
+  "lexicon": {
+    "apkSha256": "fb290d7877dd95713bac015f6f7939f0b2682c302f506bcaa77bf6bbf88b3c6b",
+    "dictionaryAsset": "dicts/main_en-US.dict",
+    "dictionarySha256": "bd950ef4b57655120eee65cee62a5d216a63f721d9a8bb759ce2022437840443",
+    "evaluatedTargetsExcludedFromConstruction": true,
+    "gestureVariants": 99222,
+    "languages": [
+      "en"
+    ],
+    "lengthToleranceAbove": 4,
+    "lengthToleranceBelow": 3,
+    "lexiconExportSha256": "4018c34c1085ae980ff094b99cfad77999bdad8c0652aecf31b831ab2addac5d",
+    "maximumWords": 100000,
+    "possiblyOffensiveWordsExcluded": true,
+    "source": "bundled-static-dictionary",
+    "sourceSplits": [],
+    "testTargetsExcludedFromConstruction": true,
+    "words": 99222
+  },
+  "limitations": [
+    "Host CPU timing is not Android device latency or memory evidence.",
+    "The native dictionary dump is hash-bound to the supplied APK; complete runtime fusion remains unmeasured.",
+    "Personal, context, language-lock, retained AOSP gesture suggestions, and complete final fusion are not measured.",
+    "Reserved-slot OOV is a diagnostic candidate-membership bound, not a quality or top-3 win.",
+    "Production vocabulary, scoring, and safety policy are unchanged."
+  ],
+  "metrics": {
+    "clean": {
+      "inVocabulary": 717,
+      "lengthWindowCoverage": 0.9986772486772487,
+      "lengthWindowEligible": 755,
+      "rows": 756,
+      "top1": 663,
+      "top1Accuracy": 0.876984126984127,
+      "top3": 700,
+      "top3Accuracy": 0.9259259259259259,
+      "vocabularyCoverage": 0.9484126984126984
+    },
+    "double_letter": {
+      "inVocabulary": 91,
+      "lengthWindowCoverage": 0.9903846153846154,
+      "lengthWindowEligible": 103,
+      "rows": 104,
+      "top1": 65,
+      "top1Accuracy": 0.625,
+      "top3": 80,
+      "top3Accuracy": 0.7692307692307693,
+      "vocabularyCoverage": 0.875
+    },
+    "long": {
+      "inVocabulary": 106,
+      "lengthWindowCoverage": 0.991869918699187,
+      "lengthWindowEligible": 122,
+      "rows": 123,
+      "top1": 95,
+      "top1Accuracy": 0.7723577235772358,
+      "top3": 102,
+      "top3Accuracy": 0.8292682926829268,
+      "vocabularyCoverage": 0.8617886178861789
+    },
+    "medium": {
+      "inVocabulary": 462,
+      "lengthWindowCoverage": 1.0,
+      "lengthWindowEligible": 489,
+      "rows": 489,
+      "top1": 391,
+      "top1Accuracy": 0.7995910020449898,
+      "top3": 425,
+      "top3Accuracy": 0.869120654396728,
+      "vocabularyCoverage": 0.9447852760736196
+    },
+    "overall": {
+      "inVocabulary": 955,
+      "lengthWindowCoverage": 0.999,
+      "lengthWindowEligible": 999,
+      "rows": 1000,
+      "top1": 860,
+      "top1Accuracy": 0.86,
+      "top3": 910,
+      "top3Accuracy": 0.91,
+      "vocabularyCoverage": 0.955
+    },
+    "return_trip": {
+      "inVocabulary": 259,
+      "lengthWindowCoverage": 0.9965156794425087,
+      "lengthWindowEligible": 286,
+      "rows": 287,
+      "top1": 230,
+      "top1Accuracy": 0.8013937282229965,
+      "top3": 248,
+      "top3Accuracy": 0.8641114982578397,
+      "vocabularyCoverage": 0.9024390243902439
+    },
+    "short": {
+      "inVocabulary": 387,
+      "lengthWindowCoverage": 1.0,
+      "lengthWindowEligible": 388,
+      "rows": 388,
+      "top1": 374,
+      "top1Accuracy": 0.9639175257731959,
+      "top3": 383,
+      "top3Accuracy": 0.9871134020618557,
+      "vocabularyCoverage": 0.9974226804123711
+    },
+    "sloppy": {
+      "inVocabulary": 238,
+      "lengthWindowCoverage": 1.0,
+      "lengthWindowEligible": 244,
+      "rows": 244,
+      "top1": 197,
+      "top1Accuracy": 0.8073770491803278,
+      "top3": 210,
+      "top3Accuracy": 0.860655737704918,
+      "vocabularyCoverage": 0.9754098360655737
+    },
+    "very_sloppy": {
+      "inVocabulary": 98,
+      "lengthWindowCoverage": 1.0,
+      "lengthWindowEligible": 100,
+      "rows": 100,
+      "top1": 78,
+      "top1Accuracy": 0.78,
+      "top3": 84,
+      "top3Accuracy": 0.84,
+      "vocabularyCoverage": 0.98
+    }
+  },
+  "modelId": "swipe-latin-v1",
+  "phase0ReleaseEvidence": false,
+  "qualitySnapshot": {
+    "ctcGeometricTop1RelativeErrorReductionOverGeometric": 0.5620915032679739,
+    "doesNotSatisfyPhase0": true,
+    "meetsPhase0SwipeThresholdsInCtcIsolation": false,
+    "meetsPhase0SwipeThresholdsWithCtcGeometricFusion": false,
+    "meetsPhase0SwipeThresholdsWithStaticFusion": false,
+    "meetsTwentyPercentRelativeErrorReductionOverGeometric": true
+  },
+  "releaseEligibleInputs": false,
+  "sample": {
+    "minimumRowsPerStratum": 100,
+    "rows": 1000,
+    "selection": "sha256-row-id-stratified-v1",
+    "sessions": 348,
+    "split": "validation"
+  },
+  "schemaVersion": 1,
+  "staticFusionMetrics": {
+    "clean": {
+      "inVocabulary": 717,
+      "lengthWindowCoverage": 0.9986772486772487,
+      "lengthWindowEligible": 755,
+      "rows": 756,
+      "top1": 682,
+      "top1Accuracy": 0.9021164021164021,
+      "top3": 709,
+      "top3Accuracy": 0.9378306878306878,
+      "vocabularyCoverage": 0.9484126984126984
+    },
+    "double_letter": {
+      "inVocabulary": 91,
+      "lengthWindowCoverage": 0.9903846153846154,
+      "lengthWindowEligible": 103,
+      "rows": 104,
+      "top1": 76,
+      "top1Accuracy": 0.7307692307692307,
+      "top3": 83,
+      "top3Accuracy": 0.7980769230769231,
+      "vocabularyCoverage": 0.875
+    },
+    "long": {
+      "inVocabulary": 106,
+      "lengthWindowCoverage": 0.991869918699187,
+      "lengthWindowEligible": 122,
+      "rows": 123,
+      "top1": 98,
+      "top1Accuracy": 0.7967479674796748,
+      "top3": 103,
+      "top3Accuracy": 0.8373983739837398,
+      "vocabularyCoverage": 0.8617886178861789
+    },
+    "medium": {
+      "inVocabulary": 462,
+      "lengthWindowCoverage": 1.0,
+      "lengthWindowEligible": 489,
+      "rows": 489,
+      "top1": 407,
+      "top1Accuracy": 0.8323108384458078,
+      "top3": 435,
+      "top3Accuracy": 0.8895705521472392,
+      "vocabularyCoverage": 0.9447852760736196
+    },
+    "overall": {
+      "inVocabulary": 955,
+      "lengthWindowCoverage": 0.999,
+      "lengthWindowEligible": 999,
+      "rows": 1000,
+      "top1": 882,
+      "top1Accuracy": 0.882,
+      "top3": 922,
+      "top3Accuracy": 0.922,
+      "vocabularyCoverage": 0.955
+    },
+    "return_trip": {
+      "inVocabulary": 259,
+      "lengthWindowCoverage": 0.9965156794425087,
+      "lengthWindowEligible": 286,
+      "rows": 287,
+      "top1": 238,
+      "top1Accuracy": 0.8292682926829268,
+      "top3": 253,
+      "top3Accuracy": 0.8815331010452961,
+      "vocabularyCoverage": 0.9024390243902439
+    },
+    "short": {
+      "inVocabulary": 387,
+      "lengthWindowCoverage": 1.0,
+      "lengthWindowEligible": 388,
+      "rows": 388,
+      "top1": 377,
+      "top1Accuracy": 0.9716494845360825,
+      "top3": 384,
+      "top3Accuracy": 0.9896907216494846,
+      "vocabularyCoverage": 0.9974226804123711
+    },
+    "sloppy": {
+      "inVocabulary": 238,
+      "lengthWindowCoverage": 1.0,
+      "lengthWindowEligible": 244,
+      "rows": 244,
+      "top1": 200,
+      "top1Accuracy": 0.819672131147541,
+      "top3": 213,
+      "top3Accuracy": 0.8729508196721312,
+      "vocabularyCoverage": 0.9754098360655737
+    },
+    "very_sloppy": {
+      "inVocabulary": 98,
+      "lengthWindowCoverage": 1.0,
+      "lengthWindowEligible": 100,
+      "rows": 100,
+      "top1": 80,
+      "top1Accuracy": 0.8,
+      "top3": 86,
+      "top3Accuracy": 0.86,
+      "vocabularyCoverage": 0.98
+    }
+  },
+  "toolchain": {
+    "numpy": "2.2.6",
+    "onnxruntime": "1.26.0"
+  }
+}

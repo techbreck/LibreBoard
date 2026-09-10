@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import tempfile
 import zipfile
@@ -239,6 +240,228 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
         self.assertEqual(128, len(flattened))
         self.assertEqual(3, evaluator.path_length_estimate(flattened, layout))
         self.assertLessEqual(abs(evaluator.path_length_estimate(flattened, layout) - len("both")), 1)
+
+    def test_ctc_forward_matches_prefix_beam_score_for_a_single_path(self):
+        entries = [evaluator.LexiconEntry("ab", "en", (1, 2), 10)]
+        output = logits([1, 2, 0, 2], classes=8, frames=8)
+        scored = evaluator.prefix_beam_decode_scored(output, trie(entries))
+        self.assertEqual("ab", scored[0].word)
+        self.assertAlmostEqual(scored[0].spatial, evaluator.ctc_forward_logprob(output, (1, 2)), places=9)
+
+    def test_oov_calibration_maps_onto_the_lexicon_constrained_scale(self):
+        forwards = [-0.40, -0.20, -0.10, -0.02]
+        spatials = [-0.85, -0.45, -0.25, -0.09]
+        calibration = evaluator.fit_oov_score_calibration(forwards, spatials, optimism_gaps=[0.05, 0.07])
+        mapped = [calibration.to_lexicon_spatial(value) for value in forwards]
+        self.assertTrue(all(min(spatials) - 0.2 <= value <= max(spatials) + 0.2 for value in mapped))
+        projected = evaluator.project_onto_lexicon_scale(0.50, spatials)
+        self.assertEqual(max(spatials), projected)
+        self.assertLess(calibration.optimism_offset, 0.1)
+        self.assertIsNone(evaluator.oov_score_calibration_report(calibration)["frequencyPrior"])
+
+    def test_oov_calibration_rejects_a_fabricated_frequency_prior(self):
+        calibration = evaluator.fit_oov_score_calibration([-0.2, -0.1], [-0.2, -0.1])
+        payload = evaluator.oov_score_calibration_report(calibration)
+        payload["frequencyPrior"] = 1
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "calibration.json"
+            path.write_text(json.dumps(payload))
+            with self.assertRaises(evaluator.SwipeEvaluationError):
+                evaluator.load_oov_score_calibration(path)
+
+    def test_reserved_slot_append_does_not_drop_an_existing_candidate(self):
+        base = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry(f"w{index}", "en", (1,), 10), -0.1 * index)
+            for index in range(32)
+        ]
+        reserved = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry("oovword", "en", (2, 3), 0), -0.05, frequency_free=True,
+            ),
+            evaluator.ScoredLexiconEntry(base[0].entry, 9.0, frequency_free=True),
+        ]
+        merged = evaluator.append_reserved_slots(base, reserved)
+        self.assertEqual(33, len(merged))
+        self.assertEqual([candidate.word for candidate in base], [candidate.word for candidate in merged[:32]])
+        self.assertEqual("oovword", merged[32].word)
+
+    def test_known_offensive_spellings_are_rejected_from_reserved_slots(self):
+        layout = {"keyLabels": list("abcdefgh") + [None] * 56}
+        output = logits([1, 2], classes=8, frames=6)
+        calibration = evaluator.fit_oov_score_calibration([-0.2, -0.1], [-0.2, -0.1])
+        existing = [evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("zz", "en", (3,), 8), -0.3)]
+        reserved, rejected = evaluator.reserved_oov_from_logits(
+            output,
+            layout,
+            calibration=calibration,
+            n_best=4,
+            beam_width=8,
+            existing=existing,
+            known_offensive={"ab"},
+            lexicon_by_word={},
+            language="en",
+            ctc_spatials=[-0.3],
+        )
+        self.assertGreaterEqual(rejected, 1)
+        self.assertNotIn("ab", {candidate.word for candidate in reserved})
+
+    def test_construction_helpers_do_not_take_evaluation_targets(self):
+        helpers = (
+            evaluator.ctc_forward_logprob,
+            evaluator.fit_oov_score_calibration,
+            evaluator.reserved_oov_from_logits,
+            evaluator.unconstrained_ctc_emissions,
+            evaluator.unconstrained_prefix_beam_scored,
+            evaluator.emissions_to_spelling,
+            evaluator.append_reserved_slots,
+            evaluator.collect_oov_calibration_observations,
+            evaluator.load_train_paths,
+            evaluator.decoder_slate_budgets,
+            evaluator.rank_static_fusion_with_reserved,
+            evaluator.project_onto_lexicon_scale,
+            evaluator.lexicon_neighbors,
+            evaluator.competing_slate,
+            evaluator.conservative_lexicon_spatial,
+            evaluator.reserved_from_decoder_slates,
+        )
+        for helper in helpers:
+            self.assertNotIn("target", inspect.signature(helper).parameters)
+            self.assertNotIn("targets", inspect.signature(helper).parameters)
+
+    def test_reserved_ranking_keeps_lexicon_z_pools_uncontaminated(self):
+        rare = evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("rare", "en", (1,), 1), -0.10)
+        common = evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("common", "en", (2,), 10_000), -0.11)
+        distant = evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("distant", "en", (3,), 100), -2.0)
+        lexicon = [rare, common, distant]
+        baseline = [entry.word for entry in evaluator.rank_static_fusion(lexicon)]
+        weak = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("zzzz", "en", (4,), 0), -3.0, frequency_free=True,
+        )
+        ranked = [entry.word for entry in evaluator.rank_static_fusion_with_reserved(lexicon, [weak])]
+        self.assertEqual(baseline, ranked[:3])
+        self.assertEqual(baseline, [entry.word for entry in evaluator.rank_static_fusion_with_reserved(lexicon, [])])
+
+    def test_extra_frequency_free_nbest_does_not_steal_lexicon_top3(self):
+        lexicon = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cat", "en", (1,), 50), 2.0),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("car", "en", (2,), 40), 1.5),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("can", "en", (3,), 30), 1.0),
+        ]
+        median = evaluator.conservative_lexicon_spatial([2.0, 1.5, 1.0])
+        greedy = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (4,), 0), median, frequency_free=True,
+        )
+        extras = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"zz{index}", "en", (5,), 0), median, frequency_free=True,
+            )
+            for index in range(8)
+        ]
+        reserved = [greedy, *extras]
+        competing = evaluator.competing_slate(lexicon, reserved)
+        self.assertEqual(3 + 9, len(competing))
+        ranked = [entry.word for entry in evaluator.rank_static_fusion_with_reserved(lexicon, reserved)]
+        self.assertEqual(["cat", "car", "can"], ranked[:3])
+        self.assertTrue({"cax", "zz0"}.issubset({item.word for item in competing}))
+
+    def test_recall_is_membership_in_the_ranking_competing_slate(self):
+        merged = [evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cat", "en", (1,), 10), 1.0)]
+        reserved = [evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (2,), 0), 0.0, frequency_free=True,
+        )]
+        competing = evaluator.competing_slate(merged, reserved)
+        self.assertEqual(["cat", "cax"], [item.word for item in competing])
+        ranked = evaluator.rank_static_fusion_with_reserved(merged, reserved)
+        self.assertEqual({"cat", "cax"}, {entry.word for entry in ranked})
+
+    def test_conservative_oov_spatial_is_below_the_lexicon_median(self):
+        spatials = [-0.8, -0.4, -0.1, 0.2]
+        conservative = evaluator.conservative_lexicon_spatial(spatials)
+        median = sorted(spatials)[len(spatials) // 2]
+        self.assertLessEqual(conservative, median)
+        self.assertGreaterEqual(conservative, min(spatials))
+
+    def test_frequency_free_reserved_scores_are_on_the_lexicon_spatial_scale(self):
+        lexicon = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cat", "en", (1,), 50), 2.0),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("car", "en", (2,), 40), 0.5),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("can", "en", (3,), 30), -0.5),
+        ]
+        reserved = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (4,), 0), 2.0, frequency_free=True,
+        )
+        ranked = evaluator.rank_static_fusion_with_reserved(lexicon, [reserved])
+        self.assertIn("cax", [entry.word for entry in ranked])
+        self.assertEqual("cat", ranked[0].word)
+
+    def test_lexicon_neighbors_are_edit_distance_variants_without_targets(self):
+        lexicon = {
+            "cat": evaluator.LexiconEntry("cat", "en", (1, 2, 3), 10),
+            "car": evaluator.LexiconEntry("car", "en", (1, 2, 4), 9),
+            "don't": evaluator.LexiconEntry("don't", "en", (1, 2, 3, 4), 8),
+        }
+        words = {entry.word for entry in evaluator.lexicon_neighbors("cot", lexicon)}
+        self.assertIn("cat", words)
+        self.assertIn("cat", {entry.word for entry in evaluator.lexicon_neighbors("act", lexicon)})
+        self.assertNotIn("don't", words)
+        contractions = {entry.word for entry in evaluator.lexicon_neighbors("dont", lexicon)}
+        self.assertIn("don't", contractions)
+        self.assertNotIn("target", inspect.signature(evaluator.lexicon_neighbors).parameters)
+
+    def test_unconstrained_nbest_includes_the_greedy_spelling(self):
+        output = logits([1, 2, 0, 2], classes=8, frames=8)
+        greedy = evaluator.collapse_greedy(output)
+        nbest = evaluator.unconstrained_ctc_emissions(output, n_best=4, beam_width=8)
+        self.assertEqual(greedy, nbest[0][0])
+        self.assertGreaterEqual(len(nbest), 1)
+        greedy_only = evaluator.unconstrained_ctc_emissions(output, n_best=1, beam_width=8)
+        self.assertEqual(1, len(greedy_only))
+        self.assertEqual(greedy, greedy_only[0][0])
+
+    def test_stratum_adaptive_budgets_do_not_reduce_short(self):
+        self.assertEqual((32, 32), evaluator.decoder_slate_budgets({"short", "very_sloppy"}))
+        self.assertEqual((32, 32), evaluator.decoder_slate_budgets({"short", "long", "sloppy"}))
+        self.assertEqual((32, 8), evaluator.decoder_slate_budgets({"long", "very_sloppy"}))
+        self.assertEqual((32, 8), evaluator.decoder_slate_budgets({"very_sloppy"}))
+        self.assertEqual((32, 12), evaluator.decoder_slate_budgets({"sloppy", "medium"}))
+        self.assertEqual((32, 32), evaluator.decoder_slate_budgets({"clean", "medium"}))
+
+    def test_train_path_loader_does_not_return_targets(self):
+        layout = {"id": "test-layout", "keyLabels": list("abc"), "keyMask": [1, 1, 1]}
+        record = {
+            "schemaVersion": 1,
+            "sessionId": identifier("session"),
+            "id": identifier("row"),
+            "split": "train",
+            "language": "en",
+            "target": "secret-target",
+            "ctcLabels": [1, 2],
+            "pathCoordinates": [0.1] * 128,
+            "layoutId": "test-layout",
+            "orientation": "portrait",
+            "geometricDeviation": 0.0,
+            "strata": ["short"],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "train.jsonl"
+            path.write_text(json.dumps(record) + "\n")
+            rows = evaluator.load_train_paths(path, layout, maximum_rows=1)
+        self.assertEqual(1, len(rows))
+        self.assertEqual(3, len(rows[0]))
+        self.assertEqual(identifier("row"), rows[0][0])
+        self.assertEqual("en", rows[0][1])
+        self.assertEqual(128, len(rows[0][2]))
+        self.assertTrue(all("secret-target" not in str(item) for item in rows[0]))
+
+    def test_calibration_observations_do_not_consult_targets(self):
+        output = logits([1, 2], classes=8, frames=6)
+        candidates = [evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("ab", "en", (1, 2), 9), -0.05)]
+        pairs, gap = evaluator.collect_oov_calibration_observations(
+            output, candidates, (1, 3), "ac", {"ab"},
+        )
+        self.assertEqual(1, len(pairs))
+        self.assertIsNotNone(gap)
+        self.assertNotIn("target", inspect.signature(evaluator.collect_oov_calibration_observations).parameters)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,272 @@
+{
+  "baselineCandidateRecall": {
+    "clean": {
+      "recall": 0.9496166484118291,
+      "rows": 4565,
+      "targetPresent": 4335
+    },
+    "double_letter": {
+      "recall": 0.8915470494417863,
+      "rows": 627,
+      "targetPresent": 559
+    },
+    "long": {
+      "recall": 0.8579465541490858,
+      "rows": 711,
+      "targetPresent": 610
+    },
+    "medium": {
+      "recall": 0.9317732366512854,
+      "rows": 3034,
+      "targetPresent": 2827
+    },
+    "overall": {
+      "recall": 0.945,
+      "rows": 6000,
+      "targetPresent": 5670
+    },
+    "return_trip": {
+      "recall": 0.8941520467836257,
+      "rows": 1710,
+      "targetPresent": 1529
+    },
+    "short": {
+      "recall": 0.9902439024390244,
+      "rows": 2255,
+      "targetPresent": 2233
+    },
+    "sloppy": {
+      "recall": 0.9303135888501742,
+      "rows": 1435,
+      "targetPresent": 1335
+    },
+    "very_sloppy": {
+      "recall": 0.9133333333333333,
+      "rows": 600,
+      "targetPresent": 548
+    }
+  },
+  "baselineRanking": {
+    "clean": {
+      "rows": 4565,
+      "top1": 4050,
+      "top1Accuracy": 0.8871851040525739,
+      "top3": 4283,
+      "top3Accuracy": 0.9382256297918948
+    },
+    "double_letter": {
+      "rows": 627,
+      "top1": 449,
+      "top1Accuracy": 0.7161084529505582,
+      "top3": 524,
+      "top3Accuracy": 0.835725677830941
+    },
+    "long": {
+      "rows": 711,
+      "top1": 562,
+      "top1Accuracy": 0.790436005625879,
+      "top3": 599,
+      "top3Accuracy": 0.8424753867791842
+    },
+    "medium": {
+      "rows": 3034,
+      "top1": 2507,
+      "top1Accuracy": 0.8263019116677653,
+      "top3": 2740,
+      "top3Accuracy": 0.9030982201713909
+    },
+    "overall": {
+      "rows": 6000,
+      "top1": 5200,
+      "top1Accuracy": 0.8666666666666667,
+      "top3": 5551,
+      "top3Accuracy": 0.9251666666666667
+    },
+    "return_trip": {
+      "rows": 1710,
+      "top1": 1398,
+      "top1Accuracy": 0.8175438596491228,
+      "top3": 1498,
+      "top3Accuracy": 0.8760233918128655
+    },
+    "short": {
+      "rows": 2255,
+      "top1": 2131,
+      "top1Accuracy": 0.9450110864745012,
+      "top3": 2212,
+      "top3Accuracy": 0.9809312638580931
+    },
+    "sloppy": {
+      "rows": 1435,
+      "top1": 1150,
+      "top1Accuracy": 0.8013937282229965,
+      "top3": 1268,
+      "top3Accuracy": 0.883623693379791
+    },
+    "very_sloppy": {
+      "rows": 600,
+      "top1": 457,
+      "top1Accuracy": 0.7616666666666667,
+      "top3": 506,
+      "top3Accuracy": 0.8433333333333334
+    }
+  },
+  "budgets": {
+    "double_letter": [
+      32,
+      16
+    ],
+    "long": [
+      32,
+      8
+    ],
+    "return_trip": [
+      32,
+      16
+    ],
+    "shortProtected": [
+      32,
+      32
+    ],
+    "sloppy": [
+      32,
+      12
+    ],
+    "very_sloppy": [
+      32,
+      8
+    ]
+  },
+  "candidateRecall": {
+    "clean": {
+      "recall": 0.9496166484118291,
+      "rows": 4565,
+      "targetPresent": 4335
+    },
+    "double_letter": {
+      "recall": 0.8963317384370016,
+      "rows": 627,
+      "targetPresent": 562
+    },
+    "long": {
+      "recall": 0.8621659634317862,
+      "rows": 711,
+      "targetPresent": 613
+    },
+    "medium": {
+      "recall": 0.9340804218852999,
+      "rows": 3034,
+      "targetPresent": 2834
+    },
+    "overall": {
+      "recall": 0.9466666666666667,
+      "rows": 6000,
+      "targetPresent": 5680
+    },
+    "return_trip": {
+      "recall": 0.8964912280701754,
+      "rows": 1710,
+      "targetPresent": 1533
+    },
+    "short": {
+      "recall": 0.9902439024390244,
+      "rows": 2255,
+      "targetPresent": 2233
+    },
+    "sloppy": {
+      "recall": 0.9372822299651568,
+      "rows": 1435,
+      "targetPresent": 1345
+    },
+    "very_sloppy": {
+      "recall": 0.925,
+      "rows": 600,
+      "targetPresent": 555
+    }
+  },
+  "counts": {
+    "baselineTargetPresent": 5670,
+    "newTargetsRecovered": 14,
+    "proposedTargetPresent": 5680,
+    "rows": 6000,
+    "targetsLostFromBaselineMerge": 4
+  },
+  "diagnosticOnly": true,
+  "evaluatorSha256": "387979de076a24098a1b549cb5ea4d956858239968926f87414c871329de687d",
+  "limitations": [
+    "Stratum-adaptive union is a candidate-membership diagnostic on frozen slates.",
+    "Short rows keep a full 32/32 split.",
+    "Production decoder merge is unchanged.",
+    "Recall is not a quality or top-3 win."
+  ],
+  "ranking": {
+    "clean": {
+      "rows": 4565,
+      "top1": 4063,
+      "top1Accuracy": 0.8900328587075576,
+      "top3": 4282,
+      "top3Accuracy": 0.9380065717415115
+    },
+    "double_letter": {
+      "rows": 627,
+      "top1": 460,
+      "top1Accuracy": 0.733652312599681,
+      "top3": 526,
+      "top3Accuracy": 0.8389154704944178
+    },
+    "long": {
+      "rows": 711,
+      "top1": 568,
+      "top1Accuracy": 0.7988748241912799,
+      "top3": 599,
+      "top3Accuracy": 0.8424753867791842
+    },
+    "medium": {
+      "rows": 3034,
+      "top1": 2539,
+      "top1Accuracy": 0.8368490441661174,
+      "top3": 2745,
+      "top3Accuracy": 0.9047462096242584
+    },
+    "overall": {
+      "rows": 6000,
+      "top1": 5238,
+      "top1Accuracy": 0.873,
+      "top3": 5556,
+      "top3Accuracy": 0.926
+    },
+    "return_trip": {
+      "rows": 1710,
+      "top1": 1414,
+      "top1Accuracy": 0.8269005847953217,
+      "top3": 1502,
+      "top3Accuracy": 0.8783625730994152
+    },
+    "short": {
+      "rows": 2255,
+      "top1": 2131,
+      "top1Accuracy": 0.9450110864745012,
+      "top3": 2212,
+      "top3Accuracy": 0.9809312638580931
+    },
+    "sloppy": {
+      "rows": 1435,
+      "top1": 1175,
+      "top1Accuracy": 0.818815331010453,
+      "top3": 1274,
+      "top3Accuracy": 0.8878048780487805
+    },
+    "very_sloppy": {
+      "rows": 600,
+      "top1": 469,
+      "top1Accuracy": 0.7816666666666666,
+      "top3": 512,
+      "top3Accuracy": 0.8533333333333334
+    }
+  },
+  "releaseEligible": false,
+  "schemaVersion": 1,
+  "slatesSha256": "fbbbcd0ef004f651a2e6c698ce6d834d4d2ca8d5f8195a6c9996e5ff2c61776e",
+  "slatesSha256After": "fbbbcd0ef004f651a2e6c698ce6d834d4d2ca8d5f8195a6c9996e5ff2c61776e",
+  "toolSha256": "652b8bed720efcc6d25f38e28e6846007b47f02bd9d3290da8ea6bfba0e73e85"
+}

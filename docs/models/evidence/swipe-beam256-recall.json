@@ -1,0 +1,73 @@
+{
+  "beam256Adopted": false,
+  "beam256RejectedBecauseP95Unaffordable": false,
+  "candidateRecall": {
+    "beam256": {
+      "double_letter": {
+        "recall": 0.8947368421052632,
+        "rows": 627,
+        "targetPresent": 561
+      },
+      "long": {
+        "recall": 0.869198312236287,
+        "rows": 711,
+        "targetPresent": 618
+      },
+      "overall": {
+        "recall": 0.8849480968858131,
+        "rows": 1156,
+        "targetPresent": 1023
+      }
+    },
+    "beam64": {
+      "double_letter": {
+        "recall": 0.8771929824561403,
+        "rows": 627,
+        "targetPresent": 550
+      },
+      "long": {
+        "recall": 0.8509142053445851,
+        "rows": 711,
+        "targetPresent": 605
+      },
+      "overall": {
+        "recall": 0.870242214532872,
+        "rows": 1156,
+        "targetPresent": 1006
+      }
+    }
+  },
+  "diagnosticOnly": true,
+  "evaluatorSha256": "8e042e734051306b9c5b25005418210d5c40225553d0e11eab9a343fa81eb762",
+  "exportReportSha256": "04a261eef7db4adf18b7342fe4421326321a6cb674076b4915ff50c817d6342b",
+  "latencyMs": {
+    "hostDiagnosticOnly": true,
+    "prefixBeam256": {
+      "p50": 26.188042,
+      "p95": 40.262458,
+      "p99": 52.826375
+    },
+    "prefixBeam64": {
+      "p50": 6.65825,
+      "p95": 10.288042,
+      "p99": 12.073208
+    }
+  },
+  "limitations": [
+    "Beam-256 recall is a search/capacity diagnostic on long and double_letter only.",
+    "Isolated prefix-beam p95 was 40.3 ms here versus 10.3 ms at beam 64; the earlier matched 1,000-path union p95 of 91 ms remains the unaffordable host result.",
+    "Search recovered +13 long and +11 double_letter targets versus beam 64. That is a residual search gap, not a reason to retrain the 821k model.",
+    "Production beam width remains 64. Beam 256 was not adopted."
+  ],
+  "modelSha256": "1301f0d076f526fe0b67f2ea86a38abc8448f6de54d2c7191c002dcd4d05d38c",
+  "releaseEligible": false,
+  "rows": 1156,
+  "schemaVersion": 1,
+  "slatesSha256": "fbbbcd0ef004f651a2e6c698ce6d834d4d2ca8d5f8195a6c9996e5ff2c61776e",
+  "slatesSha256After": "fbbbcd0ef004f651a2e6c698ce6d834d4d2ca8d5f8195a6c9996e5ff2c61776e",
+  "toolSha256": "046dbe9606b7a3546c506b6914559259ebd3688ff086862496b0800b47805866",
+  "toolchain": {
+    "numpy": "2.2.6",
+    "onnxruntime": "1.26.0"
+  }
+}

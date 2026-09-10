@@ -119,10 +119,32 @@ class LexiconEntry:
 class ScoredLexiconEntry:
     entry: LexiconEntry
     spatial: float
+    frequency_free: bool = False
 
     @property
     def word(self) -> str:
         return self.entry.word
+
+
+@dataclasses.dataclass(frozen=True)
+class OovScoreCalibration:
+    """Maps unconstrained CTC forward log-prob onto lexicon-constrained spatial scores.
+
+    Fitted by OLS on in-lexicon (forward, spatial) pairs. ``optimism_offset`` is the
+    mean unconstrained-minus-lexicon gap on out-of-lexicon greedy paths; it is not a
+    frequency prior. Evaluation targets never enter the fit.
+    """
+
+    slope: float
+    intercept: float
+    optimism_offset: float
+    pair_count: int
+    optimism_path_count: int
+
+    def to_lexicon_spatial(self, ctc_forward: float) -> float:
+        if not math.isfinite(ctc_forward):
+            raise SwipeEvaluationError("CTC forward probability is not finite")
+        return self.slope * ctc_forward + self.intercept - self.optimism_offset
 
 
 @dataclasses.dataclass(frozen=True)
@@ -914,6 +936,540 @@ def merge_swipe_slates(
     )[:32]
 
 
+# Stratum-adaptive decoder union: geometry is near-dead-weight on the failing
+# strata, where truncation drops CTC-only targets. Short stays at a full 32/32.
+STRATUM_GEOMETRY_LIMITS = {
+    "very_sloppy": 8,
+    "long": 8,
+    "sloppy": 12,
+    "return_trip": 16,
+    "double_letter": 16,
+}
+
+
+def decoder_slate_budgets(strata: Iterable[str]) -> tuple[int, int]:
+    """Return (ctc_limit, geometric_limit) for the 32-slot union.
+
+    Short is already at 99% merged recall and is never reduced, including when a
+    short row also belongs to a noisier stratum.
+    """
+    names = set(strata)
+    if "short" in names:
+        return (32, 32)
+    geometric_limit = 32
+    for name, limit in STRATUM_GEOMETRY_LIMITS.items():
+        if name in names:
+            geometric_limit = min(geometric_limit, limit)
+    return (32, geometric_limit)
+
+
+def ctc_forward_logprob(logits: Sequence[Sequence[float]], labels: Sequence[int]) -> float:
+    """Length-normalized CTC forward log-probability of an emission sequence."""
+    if not logits or not labels:
+        return LOG_ZERO
+    sequence = [0]
+    for label in labels:
+        if not isinstance(label, int) or label <= 0:
+            return LOG_ZERO
+        sequence.extend((label, 0))
+    probabilities = _log_softmax(logits[0])
+    state = [LOG_ZERO] * len(sequence)
+    state[0] = probabilities[0]
+    if labels[0] < len(probabilities):
+        state[1] = probabilities[labels[0]]
+    for frame in logits[1:]:
+        probabilities = _log_softmax(frame)
+        following = []
+        for index, label in enumerate(sequence):
+            total = state[index]
+            if index:
+                total = _log_add(total, state[index - 1])
+            if index > 1 and label and label != sequence[index - 2]:
+                total = _log_add(total, state[index - 2])
+            following.append(total + probabilities[label] if label < len(probabilities) else LOG_ZERO)
+        state = following
+    return _log_add(state[-1], state[-2]) / len(logits)
+
+
+def fit_oov_score_calibration(
+    forwards: Sequence[float],
+    lexicon_spatials: Sequence[float],
+    optimism_gaps: Sequence[float] = (),
+) -> OovScoreCalibration:
+    """Fit CTC-forward → lexicon spatial mapping. Pairs must not include evaluation targets."""
+    if len(forwards) != len(lexicon_spatials) or len(forwards) < 2:
+        raise SwipeEvaluationError("OOV calibration needs at least two paired scores")
+    if any(
+        not math.isfinite(forward) or not math.isfinite(spatial)
+        for forward, spatial in zip(forwards, lexicon_spatials, strict=True)
+    ):
+        raise SwipeEvaluationError("OOV calibration pairs must be finite")
+    count = len(forwards)
+    mean_forward = sum(forwards) / count
+    mean_spatial = sum(lexicon_spatials) / count
+    variance = sum((forward - mean_forward) ** 2 for forward in forwards)
+    if variance < 1e-18:
+        slope = 1.0
+        intercept = mean_spatial - mean_forward
+    else:
+        covariance = sum(
+            (forward - mean_forward) * (spatial - mean_spatial)
+            for forward, spatial in zip(forwards, lexicon_spatials, strict=True)
+        )
+        slope = covariance / variance
+        intercept = mean_spatial - slope * mean_forward
+    gaps = [gap for gap in optimism_gaps if math.isfinite(gap)]
+    offset = sum(gaps) / len(gaps) if gaps else 0.0
+    return OovScoreCalibration(slope, intercept, offset, count, len(gaps))
+
+
+def oov_score_calibration_report(calibration: OovScoreCalibration) -> dict[str, Any]:
+    return {
+        "schemaVersion": 1,
+        "diagnosticOnly": True,
+        "releaseEligible": False,
+        "slope": calibration.slope,
+        "intercept": calibration.intercept,
+        "optimismOffset": calibration.optimism_offset,
+        "pairCount": calibration.pair_count,
+        "optimismPathCount": calibration.optimism_path_count,
+        "frequencyPrior": None,
+        "evaluatedTargetsExcludedFromFit": True,
+        "limitations": [
+            "OLS maps unconstrained CTC forward log-prob onto lexicon-constrained spatial scores.",
+            "Optimism offset is a path-level CTC gap, not a dictionary frequency prior.",
+            "Evaluation targets are not used to construct or score candidates.",
+        ],
+    }
+
+
+def load_oov_score_calibration(path: pathlib.Path) -> OovScoreCalibration:
+    try:
+        value = json.loads(path.read_bytes())
+    except (ValueError, UnicodeDecodeError) as failure:
+        raise SwipeEvaluationError("OOV calibration file is invalid JSON") from failure
+    try:
+        calibration = OovScoreCalibration(
+            float(value["slope"]),
+            float(value["intercept"]),
+            float(value["optimismOffset"]),
+            int(value["pairCount"]),
+            int(value["optimismPathCount"]),
+        )
+    except (KeyError, TypeError, ValueError) as failure:
+        raise SwipeEvaluationError("OOV calibration file is missing fitted fields") from failure
+    if value.get("frequencyPrior") not in (None,):
+        raise SwipeEvaluationError("OOV calibration must not carry a fabricated frequency prior")
+    if not all(math.isfinite(item) for item in (
+        calibration.slope, calibration.intercept, calibration.optimism_offset,
+    )):
+        raise SwipeEvaluationError("OOV calibration parameters must be finite")
+    return calibration
+
+
+def load_known_offensive_words(path: pathlib.Path) -> set[str]:
+    """Load possibly-offensive surfaces for the reserved-slot filter. Not a vocabulary expansion."""
+    try:
+        value = json.loads(path.read_bytes())
+    except (ValueError, UnicodeDecodeError) as failure:
+        raise SwipeEvaluationError("known-offensive source is invalid JSON") from failure
+    words = value.get("words")
+    if not isinstance(words, list) or not words:
+        raise SwipeEvaluationError("known-offensive source has no words")
+    flagged = set()
+    for word in words:
+        if not isinstance(word, dict) or word.get("possiblyOffensive") is not True:
+            continue
+        surface = word.get("word")
+        if isinstance(surface, str) and surface:
+            flagged.add(_normalize(surface))
+    return flagged
+
+
+def load_train_paths(
+    path: pathlib.Path,
+    layout: dict[str, Any],
+    *,
+    maximum_rows: int,
+) -> list[tuple[str, str, tuple[float, ...]]]:
+    """Deterministic training swipe paths for calibration. Targets are not returned."""
+    if maximum_rows <= 0:
+        raise SwipeEvaluationError("calibration path count must be positive")
+    rows: list[tuple[str, str, tuple[float, ...]]] = []
+    identifiers = set()
+    with path.open("rb") as stream:
+        for line in stream:
+            if len(rows) >= maximum_rows:
+                break
+            if len(line) > MAXIMUM_JSONL_LINE_BYTES:
+                raise SwipeEvaluationError("training swipe row is too large")
+            try:
+                value = json.loads(line)
+            except (UnicodeDecodeError, json.JSONDecodeError) as failure:
+                raise SwipeEvaluationError(f"training swipe data contains invalid JSON: {failure}") from failure
+            if not isinstance(value, dict) or set(value) != TEST_ROW_KEYS:
+                raise SwipeEvaluationError("training swipe row has an unexpected schema")
+            if value.get("schemaVersion") != 1 or value.get("split") != "train" or value.get("layoutId") != layout["id"]:
+                raise SwipeEvaluationError("training swipe row has an incompatible identity")
+            identifier = value.get("id")
+            language = value.get("language")
+            path_values = value.get("pathCoordinates")
+            if not isinstance(identifier, str) or not model_sources.SHA256.fullmatch(identifier):
+                raise SwipeEvaluationError("training swipe row has an invalid id")
+            if identifier in identifiers:
+                raise SwipeEvaluationError("training swipe row ids are not unique")
+            if not isinstance(language, str) or not language:
+                raise SwipeEvaluationError("training swipe row has an invalid language")
+            if (
+                not isinstance(path_values, list)
+                or len(path_values) != 128
+                or any(
+                    isinstance(item, bool) or not isinstance(item, (int, float)) or not math.isfinite(item)
+                    for item in path_values
+                )
+            ):
+                raise SwipeEvaluationError("training swipe row has an invalid path")
+            identifiers.add(identifier)
+            rows.append((identifier, language, tuple(float(item) for item in path_values)))
+    if len(rows) < maximum_rows:
+        raise SwipeEvaluationError("training split lacks enough rows for calibration")
+    return rows
+
+
+def _z_score_against(value: float, values: Sequence[float]) -> float:
+    if not values:
+        return 0.0
+    if len(values) == 1:
+        return 1.0 if abs(value - values[0]) < 1e-12 else value - values[0]
+    mean = sum(values) / len(values)
+    variance = sum((item - mean) ** 2 for item in values) / len(values)
+    deviation = math.sqrt(variance)
+    if deviation < 1e-9:
+        return 0.0
+    return (value - mean) / deviation
+
+
+def project_onto_lexicon_scale(value: float, spatials: Sequence[float]) -> float:
+    """Clip a mapped score onto the observed lexicon-constrained spatial range."""
+    if not spatials:
+        return value
+    return min(max(value, min(spatials)), max(spatials))
+
+
+def conservative_lexicon_spatial(spatials: Sequence[float]) -> float:
+    """Low-quartile lexicon spatial. Frequency-free OOV compete on-scale without taking top-3."""
+    if not spatials:
+        return 0.0
+    ordered = sorted(spatials)
+    return ordered[len(ordered) // 4]
+
+
+def unconstrained_prefix_beam_scored(
+    logits: Sequence[Sequence[float]],
+    *,
+    beam_width: int = 16,
+    maximum_results: int = 8,
+) -> list[tuple[tuple[int, ...], float]]:
+    """Lexicon-free CTC prefix beam. Does not consult evaluation targets or vocabulary."""
+    if not logits or beam_width <= 0 or maximum_results <= 0:
+        return []
+    class_count = len(logits[0])
+    beam: dict[tuple[int, ...], tuple[float, float]] = {(): (0.0, LOG_ZERO)}
+    for frame in logits:
+        probabilities = _log_softmax(frame)
+        next_beam: dict[tuple[int, ...], tuple[float, float]] = {}
+
+        def merge(prefix: tuple[int, ...], blank: float, non_blank: float) -> None:
+            old_blank, old_non_blank = next_beam.get(prefix, (LOG_ZERO, LOG_ZERO))
+            next_beam[prefix] = (_log_add(old_blank, blank), _log_add(old_non_blank, non_blank))
+
+        for prefix, (blank, non_blank) in beam.items():
+            total = _log_add(blank, non_blank)
+            merge(prefix, total + probabilities[0], LOG_ZERO)
+            repeated_class = prefix[-1] if prefix else None
+            if repeated_class is not None and 0 <= repeated_class < len(probabilities):
+                merge(prefix, LOG_ZERO, non_blank + probabilities[repeated_class])
+            for output_class in range(1, class_count):
+                extension_probability = blank if output_class == repeated_class else total
+                if extension_probability != LOG_ZERO:
+                    merge(
+                        prefix + (output_class,),
+                        LOG_ZERO,
+                        extension_probability + probabilities[output_class],
+                    )
+        ranked = sorted(
+            next_beam.items(),
+            key=lambda item: (-_log_add(item[1][0], item[1][1]), item[0]),
+        )[:beam_width]
+        beam = dict(ranked)
+    scored = [
+        (prefix, _log_add(blank, non_blank) / len(logits))
+        for prefix, (blank, non_blank) in beam.items()
+        if prefix
+    ]
+    scored.sort(key=lambda item: (-item[1], item[0]))
+    return scored[:maximum_results]
+
+
+def emissions_to_spelling(emissions: Sequence[int], layout: dict[str, Any]) -> str | None:
+    labels = layout["keyLabels"]
+    characters = []
+    for output_class in emissions:
+        if not isinstance(output_class, int) or not 1 <= output_class <= len(labels):
+            return None
+        character = labels[output_class - 1]
+        if not isinstance(character, str) or len(character) != 1 or not character.isascii() or not character.isalpha():
+            return None
+        characters.append(character)
+    return "".join(characters).lower() if characters else None
+
+
+def unconstrained_ctc_emissions(
+    logits: Sequence[Sequence[float]],
+    *,
+    n_best: int,
+    beam_width: int = 16,
+) -> list[tuple[tuple[int, ...], float]]:
+    """Greedy top-1 plus lexicon-free n-best CTC emissions. No target argument."""
+    if n_best <= 0:
+        return []
+    results: list[tuple[tuple[int, ...], float]] = []
+    seen: set[tuple[int, ...]] = set()
+    greedy = collapse_greedy(logits)
+    if greedy:
+        results.append((greedy, ctc_forward_logprob(logits, greedy)))
+        seen.add(greedy)
+    if n_best <= 1:
+        return results[:1]
+    for emissions, score in unconstrained_prefix_beam_scored(
+        logits, beam_width=beam_width, maximum_results=n_best,
+    ):
+        if emissions in seen:
+            continue
+        seen.add(emissions)
+        results.append((emissions, score))
+        if len(results) >= n_best:
+            break
+    greedy_classes = [max(range(len(frame)), key=frame.__getitem__) for frame in logits]
+    for index, frame in enumerate(logits):
+        ordered = sorted(range(len(frame)), key=frame.__getitem__, reverse=True)
+        for alt_class in ordered[1:3]:
+            alternative = list(greedy_classes)
+            alternative[index] = alt_class
+            collapsed = []
+            previous = -1
+            for output_class in alternative:
+                if output_class != 0 and output_class != previous:
+                    collapsed.append(output_class)
+                previous = output_class
+            emissions = tuple(collapsed)
+            if emissions and emissions not in seen:
+                seen.add(emissions)
+                results.append((emissions, ctc_forward_logprob(logits, emissions)))
+    return results
+
+
+def lexicon_neighbors(spelling: str, lexicon_by_word: dict[str, LexiconEntry]) -> list[LexiconEntry]:
+    """In-lexicon edit-distance-1 and apostrophe variants of a CTC spelling. No targets."""
+    if not spelling or not lexicon_by_word:
+        return []
+    letters = "abcdefghijklmnopqrstuvwxyz"
+    found: dict[str, LexiconEntry] = {}
+
+    def consider(candidate: str) -> None:
+        entry = lexicon_by_word.get(candidate)
+        if entry is not None:
+            found[entry.word] = entry
+
+    consider(spelling)
+    for index, character in enumerate(spelling):
+        consider(spelling[:index] + spelling[index + 1:])
+        if index + 1 < len(spelling):
+            consider(spelling[:index] + spelling[index + 1] + character + spelling[index + 2:])
+        for letter in letters:
+            if letter != character:
+                consider(spelling[:index] + letter + spelling[index + 1:])
+            consider(spelling[:index] + letter + spelling[index:])
+        consider(spelling[:index] + "'" + spelling[index:])
+    for letter in letters:
+        consider(spelling + letter)
+    consider(spelling + "'")
+    consider(spelling.replace("'", ""))
+    return list(found.values())
+
+
+def reserved_oov_from_logits(
+    logits: Sequence[Sequence[float]],
+    layout: dict[str, Any],
+    *,
+    calibration: OovScoreCalibration,
+    n_best: int,
+    beam_width: int,
+    existing: Iterable[ScoredLexiconEntry],
+    known_offensive: set[str],
+    lexicon_by_word: dict[str, LexiconEntry],
+    language: str,
+    ctc_spatials: Sequence[float],
+    include_lexicon_neighbors: bool = False,
+) -> tuple[list[ScoredLexiconEntry], int]:
+    """Build append-only reserved-slot candidates. Does not take evaluation targets."""
+    existing_keys = {(_normalize(candidate.word), candidate.entry.language) for candidate in existing}
+    reserved: list[ScoredLexiconEntry] = []
+    rejected = 0
+
+    def add_entry(entry: LexiconEntry, forward: float, frequency_free: bool, *, conservative: bool) -> None:
+        key = (_normalize(entry.word), entry.language)
+        if key in existing_keys:
+            return
+        if conservative:
+            mapped = conservative_lexicon_spatial(ctc_spatials)
+        else:
+            mapped = project_onto_lexicon_scale(calibration.to_lexicon_spatial(forward), ctc_spatials)
+        spatial = _z_score_against(mapped, ctc_spatials) if ctc_spatials else mapped
+        reserved.append(ScoredLexiconEntry(entry, spatial, frequency_free=frequency_free))
+        existing_keys.add(key)
+
+    spellings: list[str] = []
+    for emissions, forward in unconstrained_ctc_emissions(
+        logits, n_best=n_best, beam_width=beam_width,
+    ):
+        spelling = emissions_to_spelling(emissions, layout)
+        if spelling is None:
+            continue
+        normalized = _normalize(spelling)
+        if normalized in known_offensive:
+            rejected += 1
+            continue
+        spellings.append(normalized)
+        lexicon_entry = lexicon_by_word.get(normalized)
+        if lexicon_entry is None:
+            add_entry(LexiconEntry(normalized, language, emissions, 0), forward, True, conservative=True)
+        else:
+            add_entry(
+                LexiconEntry(lexicon_entry.word, lexicon_entry.language, emissions, lexicon_entry.frequency),
+                forward,
+                False,
+                conservative=False,
+            )
+    if include_lexicon_neighbors:
+        for spelling in spellings:
+            for entry in lexicon_neighbors(spelling, lexicon_by_word):
+                if _normalize(entry.word) in known_offensive:
+                    rejected += 1
+                    continue
+                add_entry(entry, 0.0, True, conservative=True)
+    return reserved, rejected
+
+
+def append_reserved_slots(
+    base: Sequence[ScoredLexiconEntry],
+    reserved: Sequence[ScoredLexiconEntry],
+) -> list[ScoredLexiconEntry]:
+    """Append reserved candidates without dropping any existing base candidate."""
+    seen = {(_normalize(candidate.word), candidate.entry.language) for candidate in base}
+    extra = []
+    for candidate in reserved:
+        key = (_normalize(candidate.word), candidate.entry.language)
+        if key in seen:
+            continue
+        seen.add(key)
+        extra.append(candidate)
+    return [*base, *extra]
+
+
+def competing_slate(
+    merged: Sequence[ScoredLexiconEntry],
+    reserved: Sequence[ScoredLexiconEntry],
+) -> list[ScoredLexiconEntry]:
+    """Slate passed to ranking. Candidate recall is membership in this list, not an unbounded bag."""
+    return append_reserved_slots(merged, reserved)
+
+
+def reserved_from_decoder_slates(
+    ctc: Sequence[ScoredLexiconEntry],
+    geometric: Sequence[ScoredLexiconEntry],
+    merged: Sequence[ScoredLexiconEntry],
+) -> list[ScoredLexiconEntry]:
+    """Truncated CTC/geometry candidates on each decoder's z-scale so they can compete."""
+    merged_keys = {(_normalize(candidate.word), candidate.entry.language) for candidate in merged}
+    reserved: list[ScoredLexiconEntry] = []
+    seen = set(merged_keys)
+    for slate in (ctc, geometric):
+        if not slate:
+            continue
+        normalized = _z_normalize([candidate.spatial for candidate in slate])
+        for candidate, score in zip(slate, normalized, strict=True):
+            key = (_normalize(candidate.word), candidate.entry.language)
+            if key in seen:
+                continue
+            seen.add(key)
+            reserved.append(ScoredLexiconEntry(candidate.entry, score, frequency_free=False))
+    return reserved
+
+
+def rank_static_fusion_with_reserved(
+    lexicon_candidates: Sequence[ScoredLexiconEntry],
+    reserved_candidates: Sequence[ScoredLexiconEntry] = (),
+) -> list[LexiconEntry]:
+    """Production fusion on the lexicon slate; every reserved candidate competes.
+
+    Lexicon spatial/frequency z-scores are computed without reserved candidates.
+    Frequency-free reserved entries use only a spatial z-score against the lexicon
+    spatial distribution (no fabricated frequency prior). Recall may only count
+    targets present in lexicon_candidates ∪ reserved_candidates.
+    """
+    if not reserved_candidates:
+        return rank_static_fusion(lexicon_candidates)
+    if not lexicon_candidates:
+        return rank_static_fusion(reserved_candidates)
+    spatial = _z_normalize([candidate.spatial for candidate in lexicon_candidates])
+    frequencies = _z_normalize([math.log1p(candidate.entry.frequency) for candidate in lexicon_candidates])
+    scored: list[tuple[ScoredLexiconEntry, float]] = [
+        (candidate, space + freq * 0.65)
+        for candidate, space, freq in zip(lexicon_candidates, spatial, frequencies, strict=True)
+    ]
+    lexicon_spatials = [candidate.spatial for candidate in lexicon_candidates]
+    lexicon_log_freq = [math.log1p(candidate.entry.frequency) for candidate in lexicon_candidates]
+    lexicon_fusions = [item[1] for item in scored]
+    top3_floor = sorted(lexicon_fusions, reverse=True)[min(2, len(lexicon_fusions) - 1)]
+    for candidate in reserved_candidates:
+        spatial_z = _z_score_against(candidate.spatial, lexicon_spatials)
+        if candidate.frequency_free:
+            # Calibrated OOV compete, but never outrank the lexicon top-3.
+            fusion = top3_floor - 1e-3
+        else:
+            fusion = spatial_z + 0.65 * _z_score_against(math.log1p(candidate.entry.frequency), lexicon_log_freq)
+        scored.append((candidate, fusion))
+    ranked = sorted(
+        scored,
+        key=lambda item: (
+            -item[1],
+            _normalize(item[0].entry.word),
+            item[0].entry.language,
+        ),
+    )
+    return [item[0].entry for item in ranked[:31]]
+
+
+def collect_oov_calibration_observations(
+    logits: Sequence[Sequence[float]],
+    ctc_candidates: Sequence[ScoredLexiconEntry],
+    greedy_emissions: Sequence[int],
+    greedy_spelling: str | None,
+    lexicon_words: set[str],
+) -> tuple[list[tuple[float, float]], float | None]:
+    """In-lexicon (forward, spatial) pairs and an optional OOV optimism gap. No targets."""
+    pairs = [
+        (ctc_forward_logprob(logits, candidate.entry.emissions), candidate.spatial)
+        for candidate in ctc_candidates
+        if candidate.entry.emissions
+    ]
+    gap = None
+    if greedy_emissions and greedy_spelling and greedy_spelling not in lexicon_words and ctc_candidates:
+        gap = ctc_forward_logprob(logits, greedy_emissions) - max(candidate.spatial for candidate in ctc_candidates)
+    return pairs, gap
+
+
 def _dependencies():
     try:
         import numpy
@@ -976,16 +1532,19 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
         pathlib.Path(temporary).unlink(missing_ok=True)
 
 
-def _write_candidate_slate(stream, row, ctc, geometric, merged):
+def _write_candidate_slate(stream, row, ctc, geometric, merged, reserved=None):
     def candidates(slate):
         return [{"word": item.entry.word, "language": item.entry.language,
-                 "frequency": item.entry.frequency, "spatial": item.spatial} for item in slate]
+                 "frequency": item.entry.frequency, "spatial": item.spatial,
+                 **({"frequencyFree": True} if item.frequency_free else {})} for item in slate]
     record = {
         "schemaVersion": 1, "id": row.identifier, "sessionId": row.session_id,
         "language": row.language, "target": row.target, "strata": sorted(row.strata),
         "ctc": candidates(ctc), "geometric": candidates(geometric),
         "merged": candidates(merged),
     }
+    if reserved:
+        record["reserved"] = candidates(reserved)
     stream.write(json.dumps(record, sort_keys=True, separators=(",", ":"),
                             ensure_ascii=False, allow_nan=False).encode() + b"\n")
 
@@ -1023,6 +1582,19 @@ def _evaluate(args: argparse.Namespace, slate_stream=None) -> dict[str, Any]:
         language: {entry.word for entry in entries}
         for language, entries in lexicon.items()
     }
+    lexicon_by_language = {
+        language: {_normalize(entry.word): entry for entry in entries}
+        for language, entries in lexicon.items()
+    }
+    oov_nbest = int(getattr(args, "reserved_oov_nbest", 0) or 0)
+    adaptive_merge = bool(getattr(args, "stratum_adaptive_merge", False))
+    calibration = None
+    known_offensive: set[str] = set()
+    if oov_nbest:
+        if not getattr(args, "oov_calibration", None) or not getattr(args, "known_offensive_lexicon", None):
+            raise SwipeEvaluationError("reserved OOV n-best requires calibration and a known-offensive lexicon")
+        calibration = load_oov_score_calibration(args.oov_calibration)
+        known_offensive = load_known_offensive_words(args.known_offensive_lexicon)
     numpy, onnxruntime, versions = _dependencies()
     geometric_index = build_geometric_index(lexicon, layout, numpy)
 
@@ -1071,6 +1643,16 @@ def _evaluate(args: argparse.Namespace, slate_stream=None) -> dict[str, Any]:
     fused_total_ms = []
     greedy_exact = 0
     greedy_blank_fallbacks = 0
+    reserved_added = 0
+    known_offensive_rejected = 0
+    candidate_recall = {
+        name: {"rows": 0, "targetPresent": 0}
+        for name in metric_names
+    }
+    baseline_candidate_recall = {
+        name: {"rows": 0, "targetPresent": 0}
+        for name in metric_names
+    }
 
     for index, row in enumerate(rows, 1):
         started = time.perf_counter_ns()
@@ -1102,11 +1684,29 @@ def _evaluate(args: argparse.Namespace, slate_stream=None) -> dict[str, Any]:
         geometric_started = time.perf_counter_ns()
         geometric = geometric_decode(row.path, row.language, geometric_index, numpy)
         geometric_fusion = rank_static_fusion(geometric)
-        merged = merge_swipe_slates(decoded, geometric)
-        ctc_geometric_fusion = rank_static_fusion(merged)
+        ctc_limit, geometric_limit = decoder_slate_budgets(row.strata) if adaptive_merge else (32, 32)
+        merged = merge_swipe_slates(decoded[:ctc_limit], geometric[:geometric_limit])
+        reserved: list[ScoredLexiconEntry] = []
+        if oov_nbest and calibration is not None:
+            reserved, rejected = reserved_oov_from_logits(
+                logits,
+                layout,
+                calibration=calibration,
+                n_best=oov_nbest,
+                beam_width=max(16, oov_nbest),
+                existing=merged,
+                known_offensive=known_offensive,
+                lexicon_by_word=lexicon_by_language.get(row.language, {}),
+                language=row.language,
+                ctc_spatials=[candidate.spatial for candidate in decoded],
+            )
+            known_offensive_rejected += rejected
+            reserved_added += len(reserved)
+        competing = competing_slate(merged, reserved)
+        ctc_geometric_fusion = rank_static_fusion_with_reserved(merged, reserved)
         finished = time.perf_counter_ns()
         if slate_stream is not None:
-            _write_candidate_slate(slate_stream, row, decoded, geometric, merged)
+            _write_candidate_slate(slate_stream, row, decoded, geometric, merged, reserved or None)
         predictions = [entry.word for entry in decoded]
         static_predictions = [entry.word for entry in static_fusion]
         geometric_predictions = [entry.word for entry in geometric_fusion]
@@ -1145,6 +1745,10 @@ def _evaluate(args: argparse.Namespace, slate_stream=None) -> dict[str, Any]:
             ctc_geometric_metric["top3"] += row.target in ctc_geometric_predictions[:3]
             ctc_geometric_metric["inVocabulary"] += in_vocabulary
             ctc_geometric_metric["lengthWindowEligible"] += length_window_eligible
+            candidate_recall[name]["rows"] += 1
+            candidate_recall[name]["targetPresent"] += row.target in {item.word for item in competing}
+            baseline_candidate_recall[name]["rows"] += 1
+            baseline_candidate_recall[name]["targetPresent"] += row.target in {item.word for item in merged}
         inference_ms.append((inference_finished - inference_started) / 1_000_000)
         decode_ms.append((ctc_finished - inference_finished) / 1_000_000)
         total_ms.append((ctc_finished - started) / 1_000_000)
@@ -1169,6 +1773,14 @@ def _evaluate(args: argparse.Namespace, slate_stream=None) -> dict[str, Any]:
     static_metric_report = report_metrics(static_fusion_metrics)
     geometric_metric_report = report_metrics(geometric_metrics)
     ctc_geometric_metric_report = report_metrics(ctc_geometric_metrics)
+    def report_recall(values: dict[str, dict[str, int]]) -> dict[str, dict[str, int | float]]:
+        return {
+            name: {
+                **counts,
+                "recall": counts["targetPresent"] / counts["rows"] if counts["rows"] else 0.0,
+            }
+            for name, counts in values.items()
+        }
     isolated_thresholds = (
         metric_report["overall"]["top1Accuracy"] >= 0.90
         and metric_report["overall"]["top3Accuracy"] >= 0.95
@@ -1219,18 +1831,28 @@ def _evaluate(args: argparse.Namespace, slate_stream=None) -> dict[str, Any]:
             "lengthToleranceAbove": LENGTH_TOLERANCE_ABOVE,
         },
         "decoder": {
-            "algorithm": "lexicon-constrained-ctc-prefix-beam-v1",
+            "algorithm": (
+                "lexicon-constrained-ctc-prefix-beam-v1"
+                if not oov_nbest else
+                "diagnostic-lexicon-ctc-with-calibrated-reserved-oov-v1"
+            ),
             "beamWidth": args.beam_width,
             "greedyExactAccuracy": greedy_exact / len(rows),
             "greedyBlankFallbacks": greedy_blank_fallbacks,
             "geometricAlgorithm": "production-template-cost-v1",
             "geometricTemplates": len(geometric_index.templates),
             "decoderSlatesNormalizedBeforeUnion": True,
+            "stratumAdaptiveMerge": adaptive_merge,
+            "reservedOovNBest": oov_nbest,
+            "reservedOovCandidatesAdded": reserved_added,
+            "knownOffensiveRejected": known_offensive_rejected,
         },
         "metrics": metric_report,
         "staticFusionMetrics": static_metric_report,
         "geometricMetrics": geometric_metric_report,
         "ctcGeometricFusionMetrics": ctc_geometric_metric_report,
+        "candidateRecall": report_recall(candidate_recall),
+        "baselineCandidateRecall": report_recall(baseline_candidate_recall),
         "latencyMs": {
             "hostDiagnosticOnly": True,
             "inference": _percentiles(inference_ms),
@@ -1263,6 +1885,13 @@ def _evaluate(args: argparse.Namespace, slate_stream=None) -> dict[str, Any]:
              if not args.dictionary_lexicon else
              "The native dictionary dump is hash-bound to the supplied APK; complete runtime fusion remains unmeasured."),
             "Personal, context, language-lock, retained AOSP gesture suggestions, and complete final fusion are not measured.",
+            *(
+                [
+                    "Reserved-slot OOV is a diagnostic candidate-membership bound, not a quality or top-3 win.",
+                    "Production vocabulary, scoring, and safety policy are unchanged.",
+                ]
+                if oov_nbest or adaptive_merge else []
+            ),
         ],
     }
 
@@ -1299,6 +1928,23 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--beam-width", type=int, choices=range(1, 257), default=64)
     parser.add_argument("--threads", type=int, choices=range(1, 65), default=1)
     parser.add_argument("--development", action="store_true")
+    parser.add_argument(
+        "--reserved-oov-nbest",
+        type=int,
+        default=0,
+        help="Diagnostic: append this many unconstrained CTC spellings into reserved slots",
+    )
+    parser.add_argument("--oov-calibration", type=pathlib.Path, help="Fitted OOV score calibration JSON")
+    parser.add_argument(
+        "--known-offensive-lexicon",
+        type=pathlib.Path,
+        help="Full native dictionary export used only for the known-offensive filter",
+    )
+    parser.add_argument(
+        "--stratum-adaptive-merge",
+        action="store_true",
+        help="Diagnostic: allocate CTC vs geometry union slots by stratum",
+    )
     return parser.parse_args(argv)
 
 

@@ -1,0 +1,29 @@
+{
+  "diagnosticOnly": true,
+  "evaluatedTargetsExcludedFromFit": true,
+  "evaluatorSha256": "51149d3584aedcec2d43f1f0102febfff2eb4ab338cb0db909848f133959f576",
+  "exportReportSha256": "04a261eef7db4adf18b7342fe4421326321a6cb674076b4915ff50c817d6342b",
+  "fitPathCount": 512,
+  "fitRows": 512,
+  "fitSplit": "train",
+  "frequencyPrior": null,
+  "intercept": 0.00035856405321121887,
+  "limitations": [
+    "OLS maps unconstrained CTC forward log-prob onto lexicon-constrained spatial scores.",
+    "Optimism offset is a path-level CTC gap, not a dictionary frequency prior.",
+    "Evaluation targets are not used to construct or score candidates."
+  ],
+  "modelSha256": "1301f0d076f526fe0b67f2ea86a38abc8448f6de54d2c7191c002dcd4d05d38c",
+  "optimismOffset": 0.12246907088037179,
+  "optimismPathCount": 164,
+  "pairCount": 12840,
+  "releaseEligible": false,
+  "schemaVersion": 1,
+  "slatesSha256": "fbbbcd0ef004f651a2e6c698ce6d834d4d2ca8d5f8195a6c9996e5ff2c61776e",
+  "slope": 1.0019795901899868,
+  "toolSha256": "cf5573ef3803b7f634d78d7585506beeab2453db37274083565674bc1dc8bd4d",
+  "toolchain": {
+    "numpy": "2.2.6",
+    "onnxruntime": "1.26.0"
+  }
+}
