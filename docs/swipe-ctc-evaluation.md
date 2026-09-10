@@ -345,24 +345,25 @@ greedy-41 31/32 existence proof. Slots fill greedy, then best-spatial 2nd/3rd-be
 25th-percentile spatial (a score fix after pure OLS dropped 6k top-3 by 1 and 1k top-3 by 3).
 They are not pinned below top-3. In-lexicon reserved use real `log1p(frequency)`.
 
-Frozen targets in the published 31 all sit in ranks 1–23, so eight to eleven reserved
-slots can replace the tail without dropping a frozen membership hit. The official
-diagnostic uses 11 reserved slots (greedy, seven best unconstrained OOV alts/n-best 8,
-then in-lexicon neighbors ranked by decoder spatial and frequency) and the 50/50 OLS
-blend:
+Frozen targets in the published 31 all sit in ranks 1–23, so eleven reserved slots can
+replace the tail without dropping a frozen membership hit. Reserved spatials are mapped
+onto the merged lexicon scale so in-lexicon neighbors use real frequency. Unique-best
+unconstrained OOV (CTC margin ≥ 0.08) use the full OLS map; other OOV stay at a 50/50
+blend. n-best 16, budget 11:
 
 | Quantity | Frozen 32-slot | Published-31 diagnostic | Gate |
 | --- | ---: | ---: | ---: |
-| Target in ranked[:31] | 5,670 | 5,772 | 5,822 at 97.9% conversion |
-| Static-fusion top-3 | 5,551 (92.52%) | 5,551 (92.52%) | 5,700 (95%) |
-| return_trip published-31 | 1,529 | 1,574 | 1,572 |
-| return_trip top-3 | 1,498 | 1,498 | 1,539 (90%) |
-| Host reserved-decode p95 | — | 30.5 ms | < 91 ms |
+| Target in ranked[:31] | 5,670 | 5,777 | 5,822 at 97.9% conversion |
+| Static-fusion top-3 | 5,551 (92.52%) | 5,555 (92.58%) | 5,700 (95%) |
+| return_trip published-31 | 1,529 | 1,577 | 1,572 |
+| return_trip top-3 | 1,498 | 1,500 | 1,539 (90%) |
+| Host reserved-decode p95 | — | 44.3 ms | < 91 ms |
 
-New reserved hits convert at 0/102 into top-3. return_trip membership clears 1,572;
-return_trip top-3 does not. Matched 1,000-path union ranking twice was 86.6%/92.7%.
-`diagnosticOnly` / `releaseEligible` false. Production vocabulary, scoring, beam 64,
-and `CtcSwipeDecoder.kt` are unchanged.
+New hits: 93 frequency-free / 14 in-lexicon; 6 + 1 entered top-3, net +4 after 3 lexicon
+steals. return_trip membership clears 1,572. Gap to 5,822 is 45; even 100% conversion of
+the 107 new rows would reach 5,658 top-3. Matched 1,000-path union ranking twice was
+86.6%/92.8%. `diagnosticOnly` / `releaseEligible` false. Production vocabulary, scoring,
+beam 64, and `CtcSwipeDecoder.kt` are unchanged.
 Evidence: `docs/models/evidence/swipe-published-31-recall.json` and
 `docs/models/evidence/swipe-published-31-1000-{1,2}.json`.
 

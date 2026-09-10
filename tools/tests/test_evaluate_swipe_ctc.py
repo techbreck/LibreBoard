@@ -322,6 +322,9 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
             evaluator.lexicon_neighbors,
             evaluator.competing_slate,
             evaluator.conservative_lexicon_spatial,
+            evaluator.median_lexicon_spatial,
+            evaluator.map_z_onto_pool,
+            evaluator._oov_blend_by_margin,
             evaluator.reserved_from_decoder_slates,
             evaluator.greedy_unconstrained_emissions,
             evaluator.greedy_alt_unconstrained_emissions,
@@ -501,6 +504,38 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
         self.assertEqual([candidate.word for candidate in base[:30]], [candidate.word for candidate in published[:30]])
         self.assertEqual("oovword", published[30].word)
         self.assertNotIn("target", inspect.signature(evaluator.publish_reserved_slots).parameters)
+
+    def test_in_lexicon_reserved_spatial_is_on_the_merged_scale(self):
+        calibration = evaluator.fit_oov_score_calibration([-0.40, -0.10], [-0.40, -0.10])
+        neighbor = evaluator.ReservedCandidate(
+            evaluator.LexiconEntry("cat", "en", (1, 2, 3), 80), "neighbors",
+        )
+        merged_scale = [2.0, 0.5, -0.5, -1.0]
+        scored = evaluator.score_reserved_candidate(
+            neighbor,
+            calibration=calibration,
+            ctc_spatials=[-0.8, -0.2],
+            lexicon_spatials=merged_scale,
+        )
+        self.assertFalse(scored.frequency_free)
+        self.assertEqual(evaluator.median_lexicon_spatial(merged_scale), scored.spatial)
+        self.assertEqual(80, scored.entry.frequency)
+
+    def test_unique_best_oov_uses_more_of_the_ols_map(self):
+        greedy = evaluator.ReservedCandidate(
+            evaluator.LexiconEntry("cax", "en", (1,), 0), "greedy", forward=-0.05,
+        )
+        alt = evaluator.ReservedCandidate(
+            evaluator.LexiconEntry("caz", "en", (2,), 0), "greedy_alts", forward=-0.40,
+        )
+        blends = evaluator._oov_blend_by_margin([greedy, alt], 0.5)
+        self.assertEqual(0.0, blends[id(greedy)])
+        self.assertEqual(0.5, blends[id(alt)])
+        close = evaluator.ReservedCandidate(
+            evaluator.LexiconEntry("cay", "en", (3,), 0), "greedy_alts", forward=-0.06,
+        )
+        tied = evaluator._oov_blend_by_margin([greedy, close], 0.5)
+        self.assertEqual(0.5, tied[id(greedy)])
 
     def test_true_oov_use_the_train_fit_map_without_floor_clamp(self):
         calibration = evaluator.fit_oov_score_calibration([-0.40, -0.10], [-0.40, -0.10])

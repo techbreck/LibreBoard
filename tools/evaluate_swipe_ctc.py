@@ -1165,6 +1165,31 @@ def conservative_lexicon_spatial(spatials: Sequence[float]) -> float:
     return ordered[len(ordered) // 4]
 
 
+def median_lexicon_spatial(spatials: Sequence[float]) -> float:
+    """Median lexicon spatial for in-lexicon reserved without a decoder score."""
+    if not spatials:
+        return 0.0
+    ordered = sorted(spatials)
+    return ordered[len(ordered) // 2]
+
+
+def _pool_mean_std(values: Sequence[float]) -> tuple[float, float]:
+    if not values:
+        return 0.0, 1.0
+    if len(values) == 1:
+        return values[0], 1.0
+    mean = sum(values) / len(values)
+    variance = sum((value - mean) ** 2 for value in values) / len(values)
+    deviation = math.sqrt(variance)
+    return mean, 1.0 if deviation < 1e-9 else deviation
+
+
+def map_z_onto_pool(z_value: float, dest: Sequence[float]) -> float:
+    """Place a z-score onto the destination spatial pool. No targets."""
+    mean, deviation = _pool_mean_std(dest)
+    return mean + z_value * deviation
+
+
 def unconstrained_prefix_beam_scored(
     logits: Sequence[Sequence[float]],
     *,
@@ -1612,31 +1637,68 @@ def score_reserved_candidate(
     ctc_spatials: Sequence[float],
     oov_conservative: bool = False,
     oov_map_blend: float = 0.0,
+    lexicon_spatials: Sequence[float] = (),
 ) -> ScoredLexiconEntry:
-    """Map a reserved spelling onto the lexicon spatial scale. No fabricated frequency."""
+    """Map a reserved spelling onto the published lexicon spatial scale.
+
+    CTC-scale evidence is converted onto ``lexicon_spatials`` (merged z-scale)
+    so in-lexicon reserved can use real frequency without a scale mismatch.
+    No fabricated frequency.
+    """
     true_oov = candidate.source in {"greedy", "greedy_alts", "nbest"} and candidate.entry.frequency == 0
-    if candidate.decoder_spatial is not None:
-        spatial = candidate.decoder_spatial
+    dest = list(lexicon_spatials) if lexicon_spatials else list(ctc_spatials)
+
+    def onto_dest_from_ctc(raw: float) -> float:
+        z_value = _z_score_against(raw, ctc_spatials) if ctc_spatials else raw
+        return map_z_onto_pool(z_value, dest) if dest else z_value
+
+    if candidate.decoder_spatial is not None and not true_oov:
+        spatial = map_z_onto_pool(candidate.decoder_spatial, dest) if dest else candidate.decoder_spatial
     elif true_oov and candidate.forward is not None and not oov_conservative:
         mapped = project_onto_lexicon_scale(
             calibration.to_lexicon_spatial(candidate.forward), ctc_spatials,
         )
-        if oov_map_blend > 0.0:
-            conservative = conservative_lexicon_spatial(ctc_spatials)
+        if oov_map_blend > 0.0 and dest:
+            conservative = conservative_lexicon_spatial(dest)
             weight = min(1.0, oov_map_blend)
-            mapped = (1.0 - weight) * mapped + weight * conservative
-        spatial = _z_score_against(mapped, ctc_spatials) if ctc_spatials else mapped
-    elif true_oov or candidate.forward is None:
-        mapped = conservative_lexicon_spatial(ctc_spatials)
-        spatial = _z_score_against(mapped, ctc_spatials) if ctc_spatials else mapped
-    else:
+            spatial = (1.0 - weight) * onto_dest_from_ctc(mapped) + weight * conservative
+        else:
+            spatial = onto_dest_from_ctc(mapped)
+    elif true_oov:
+        spatial = conservative_lexicon_spatial(dest)
+    elif candidate.forward is not None:
         mapped = project_onto_lexicon_scale(
             calibration.to_lexicon_spatial(candidate.forward), ctc_spatials,
         )
-        spatial = _z_score_against(mapped, ctc_spatials) if ctc_spatials else mapped
+        spatial = onto_dest_from_ctc(mapped)
+    else:
+        spatial = median_lexicon_spatial(dest)
     return ScoredLexiconEntry(
         candidate.entry, spatial, frequency_free=true_oov, source=candidate.source,
     )
+
+
+def _oov_blend_by_margin(
+    candidates: Sequence[ReservedCandidate],
+    base_blend: float,
+) -> dict[int, float]:
+    """Unique-best unconstrained OOV gets more of the OLS map. No targets."""
+    weights = {id(candidate): base_blend for candidate in candidates}
+    oov = [
+        candidate for candidate in candidates
+        if candidate.source in {"greedy", "greedy_alts", "nbest"}
+        and candidate.entry.frequency == 0
+        and candidate.forward is not None
+    ]
+    if not oov:
+        return weights
+    ranked = sorted(oov, key=lambda candidate: (-candidate.forward, _normalize(candidate.entry.word)))
+    gap = ranked[0].forward - ranked[1].forward if len(ranked) > 1 else 1.0
+    if gap >= 0.08:
+        weights[id(ranked[0])] = 0.0
+    elif gap >= 0.03:
+        weights[id(ranked[0])] = min(base_blend, 0.25)
+    return weights
 
 
 def score_reserved_sources(
@@ -1646,21 +1708,25 @@ def score_reserved_sources(
     ctc_spatials: Sequence[float],
     oov_conservative: bool = False,
     oov_map_blend: float = 0.0,
+    lexicon_spatials: Sequence[float] = (),
     allowed: Sequence[str] | None = None,
     nbest_rank_limit: int | None = None,
     skip_keys: Iterable[tuple[str, str]] = (),
 ) -> list[ScoredLexiconEntry]:
+    flattened = flatten_reserved_sources(
+        sources, allowed, nbest_rank_limit=nbest_rank_limit, skip_keys=skip_keys,
+    )
+    blends = _oov_blend_by_margin(flattened, oov_map_blend)
     return [
         score_reserved_candidate(
             candidate,
             calibration=calibration,
             ctc_spatials=ctc_spatials,
             oov_conservative=oov_conservative,
-            oov_map_blend=oov_map_blend,
+            oov_map_blend=blends[id(candidate)],
+            lexicon_spatials=lexicon_spatials,
         )
-        for candidate in flatten_reserved_sources(
-            sources, allowed, nbest_rank_limit=nbest_rank_limit, skip_keys=skip_keys,
-        )
+        for candidate in flattened
     ]
 
 
@@ -1703,12 +1769,14 @@ def reserved_oov_from_logits(
         include_truncated=include_truncated,
     )
     skip_keys = {(_normalize(candidate.word), candidate.entry.language) for candidate in existing}
+    lexicon_spatials = [candidate.spatial for candidate in existing]
     reserved = score_reserved_sources(
         sources,
         calibration=calibration,
         ctc_spatials=ctc_spatials,
         oov_conservative=oov_conservative,
         oov_map_blend=oov_map_blend,
+        lexicon_spatials=lexicon_spatials,
         allowed=allowed_sources,
         nbest_rank_limit=nbest_rank_limit,
         skip_keys=skip_keys,

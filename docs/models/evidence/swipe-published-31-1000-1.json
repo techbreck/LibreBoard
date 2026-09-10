@@ -1,7 +1,7 @@
 {
   "artifacts": {
     "evaluationDataSha256": "bc11f707c849b9c9daec5a5ffef06108771887f1c9d019b4c123f4bf8714be6e",
-    "evaluatorSha256": "75cafb6de22149f28e2960960f3be3abc76121068c4827da449aa12718ee622e",
+    "evaluatorSha256": "1ad7393918001aad905bcfcde61391874c96f7dc7fa7863195b6c17c1073ebbb",
     "exportReportSha256": "04a261eef7db4adf18b7342fe4421326321a6cb674076b4915ff50c817d6342b",
     "model": {
       "path": "swipe-latin-v1.onnx",
@@ -64,9 +64,9 @@
       "targetPresent": 724
     },
     "double_letter": {
-      "recall": 0.8653846153846154,
+      "recall": 0.875,
       "rows": 104,
-      "targetPresent": 90
+      "targetPresent": 91
     },
     "long": {
       "recall": 0.8617886178861789,
@@ -74,34 +74,34 @@
       "targetPresent": 106
     },
     "medium": {
-      "recall": 0.950920245398773,
+      "recall": 0.9529652351738241,
       "rows": 489,
-      "targetPresent": 465
+      "targetPresent": 466
     },
     "overall": {
-      "recall": 0.957,
+      "recall": 0.959,
       "rows": 1000,
-      "targetPresent": 957
+      "targetPresent": 959
     },
     "return_trip": {
-      "recall": 0.9128919860627178,
+      "recall": 0.9163763066202091,
       "rows": 287,
-      "targetPresent": 262
+      "targetPresent": 263
     },
     "short": {
-      "recall": 0.9948453608247423,
+      "recall": 0.9974226804123711,
       "rows": 388,
-      "targetPresent": 386
+      "targetPresent": 387
     },
     "sloppy": {
-      "recall": 0.9549180327868853,
+      "recall": 0.9631147540983607,
       "rows": 244,
-      "targetPresent": 233
+      "targetPresent": 235
     },
     "very_sloppy": {
-      "recall": 0.93,
+      "recall": 0.96,
       "rows": 100,
-      "targetPresent": 93
+      "targetPresent": 96
     }
   },
   "ctcGeometricFusionMetrics": {
@@ -112,8 +112,8 @@
       "rows": 756,
       "top1": 666,
       "top1Accuracy": 0.8809523809523809,
-      "top3": 711,
-      "top3Accuracy": 0.9404761904761905,
+      "top3": 712,
+      "top3Accuracy": 0.9417989417989417,
       "vocabularyCoverage": 0.9484126984126984
     },
     "double_letter": {
@@ -134,8 +134,8 @@
       "rows": 123,
       "top1": 94,
       "top1Accuracy": 0.7642276422764228,
-      "top3": 106,
-      "top3Accuracy": 0.8617886178861789,
+      "top3": 105,
+      "top3Accuracy": 0.8536585365853658,
       "vocabularyCoverage": 0.8617886178861789
     },
     "medium": {
@@ -145,8 +145,8 @@
       "rows": 489,
       "top1": 402,
       "top1Accuracy": 0.8220858895705522,
-      "top3": 438,
-      "top3Accuracy": 0.8957055214723927,
+      "top3": 440,
+      "top3Accuracy": 0.8997955010224948,
       "vocabularyCoverage": 0.9447852760736196
     },
     "overall": {
@@ -156,8 +156,8 @@
       "rows": 1000,
       "top1": 866,
       "top1Accuracy": 0.866,
-      "top3": 927,
-      "top3Accuracy": 0.927,
+      "top3": 928,
+      "top3Accuracy": 0.928,
       "vocabularyCoverage": 0.955
     },
     "return_trip": {
@@ -167,8 +167,8 @@
       "rows": 287,
       "top1": 233,
       "top1Accuracy": 0.8118466898954704,
-      "top3": 254,
-      "top3Accuracy": 0.8850174216027874,
+      "top3": 255,
+      "top3Accuracy": 0.8885017421602788,
       "vocabularyCoverage": 0.9024390243902439
     },
     "short": {
@@ -215,13 +215,13 @@
     "greedyExactAccuracy": 0.662,
     "includeLexiconNeighbors": true,
     "includeTruncatedLeftovers": true,
-    "knownOffensiveRejected": 14,
+    "knownOffensiveRejected": 37,
     "oovConservativeSpatial": false,
     "oovMapBlend": 0.5,
     "published31Membership": true,
     "reservedBudget": 11,
-    "reservedOovCandidatesAdded": 112871,
-    "reservedOovNBest": 8,
+    "reservedOovCandidatesAdded": 135178,
+    "reservedOovNBest": 16,
     "stratumAdaptiveMerge": false
   },
   "diagnosticOnly": true,
@@ -328,30 +328,30 @@
   },
   "latencyMs": {
     "ctcGeometricFusionTotal": {
-      "p50": 158.131292,
-      "p95": 366.616833,
-      "p99": 433.179291
+      "p50": 173.190042,
+      "p95": 392.971834,
+      "p99": 486.895959
     },
     "hostDiagnosticOnly": true,
     "inference": {
-      "p50": 1.982959,
-      "p95": 2.157,
-      "p99": 2.393042
+      "p50": 2.015417,
+      "p95": 2.243583,
+      "p99": 2.762916
     },
     "prefixBeam": {
-      "p50": 8.870958,
-      "p95": 11.293375,
-      "p99": 88.912042
+      "p50": 9.076291,
+      "p95": 11.474416,
+      "p99": 87.186542
     },
     "total": {
-      "p50": 10.895541,
-      "p95": 13.324833,
-      "p99": 90.917167
+      "p50": 11.182666,
+      "p95": 13.584125,
+      "p99": 89.236125
     },
     "vectorizedGeometricAndFusion": {
-      "p50": 146.593042,
-      "p95": 355.004667,
-      "p99": 386.271791
+      "p50": 161.66175,
+      "p95": 380.96225,
+      "p99": 424.297167
     }
   },
   "lexicon": {
