@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "status": "built",
-  "nativePairCompleted": false,
+  "nativePairCompleted": true,
   "releaseEligible": false,
   "imageId": "sha256:34c6bfa469b1afb637cbe9e95c3a5ec2a5c5e4ad011953cce70d0d83073a1fe7",
   "container": {

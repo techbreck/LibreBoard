@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "status": "built",
+  "nativePairCompleted": true,
+  "releaseEligible": false,
+  "imageId": "sha256:34c6bfa469b1afb637cbe9e95c3a5ec2a5c5e4ad011953cce70d0d83073a1fe7",
+  "container": {
+    "name": "libreboard-runtime-repro-debian-b3",
+    "id": "184bbc778892ba2cea69c9f624212bd6cf7788e97947b115680ce9ce0f374dd6",
+    "exitCode": 0,
+    "oomKilled": false,
+    "StartedAt": "2026-09-09T18:39:16.58803093Z",
+    "FinishedAt": "2026-09-10T10:35:06.308575935Z"
+  },
+  "jobs": 1,
+  "hostTools": "Debian bookworm-backports CMake 3.31.6 and ninja-build on PATH",
+  "aar": {
+    "path": "build/linux-runtime-debian-b/output/onnxruntime-mobile-1.26.0.aar",
+    "bytes": 12352564,
+    "sha256": "54118ac8e37bc4833d32e2cb197ef6bd251f56e5aa9e4e51c3899fb616210d88"
+  },
+  "manifest": {
+    "path": "build/linux-runtime-debian-b/output/onnxruntime-mobile-1.26.0.build.json",
+    "bytes": 1959,
+    "sha256": "020d34fb8307cc1547b53d91a09dbd5b2ff7b2f1f850ee3c0453a0c534496f4f"
+  },
+  "log": "build/reports/linux-runtime-debian-b3.log",
+  "priorContainers": [
+    "libreboard-runtime-repro-debian-b exited 1 on Eigen FetchContent HTTP 503",
+    "libreboard-runtime-repro-debian-b2-host-reboot exited 255 on host reboot; ninja cache reused"
+  ],
+  "limitations": [
+    "Independent Linux development-operator AAR. Byte-identical to A; not a model-qualified release runtime.",
+    "Eigen zip was seeded from A's already-fetched archive after GitHub HTTP 503.",
+    "Built under qemu-user linux/amd64 with --jobs 1. Canonical-model Android checks have not run."
+  ]
+}

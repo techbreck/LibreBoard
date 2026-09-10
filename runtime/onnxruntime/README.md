@@ -148,5 +148,10 @@ The Debian-CMake host-tool image resolved to
 `sha256:425b1a57386654a8124fab1d5c02c182a4e9aa26fe0f4d15ed1c84f461c0187e`. Image build verified
 `cmake`/`ninja` resolve to `/usr/bin` (CMake 3.31.6, ninja 1.11.1). An unprivileged smoke then
 passed `--check-only`, 15/15 reproductions of the FetchContent `echo_append && touch` stamp
-command, and an empty-command ExternalProject including its no-test stamp. That is not a native
-AAR pair. The previous SDK-CMake image remains tagged `libreboard-runtime-build:sdk-cmake-57d61051`.
+command, and an empty-command ExternalProject including its no-test stamp. Independent native
+builds `libreboard-runtime-repro-debian-a4` and `libreboard-runtime-repro-debian-b3` then produced
+byte-identical development AARs (12,352,564 bytes, SHA-256
+`54118ac8e37bc4833d32e2cb197ef6bd251f56e5aa9e4e51c3899fb616210d88`). That is not a
+model-qualified release runtime. Evidence:
+[`docs/models/evidence/linux-runtime-debian-pair.json`](../../docs/models/evidence/linux-runtime-debian-pair.json).
+The previous SDK-CMake image remains tagged `libreboard-runtime-build:sdk-cmake-57d61051`.

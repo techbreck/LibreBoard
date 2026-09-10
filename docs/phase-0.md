@@ -55,7 +55,7 @@ parity. Those results do not establish correction gains on human tap errors.
 | Swipe absolute quality and difficult strata | Offline native-lexicon union remains below absolute top-1/top-3 gates; full live fusion is not qualified |
 | End-to-end latency and combined added peak memory | Not qualified; diagnostic snapshots and generous-deadline replays are insufficient |
 | Required device matrix | Forced-low-RAM emulator checks exist; stock physical Android and physical GrapheneOS evidence are absent |
-| Model/runtime release reproducibility | Both fixed model exports repeat on Linux; two clean Linux runtime AARs and signed model-pack builds are not established |
+| Model/runtime release reproducibility | Both fixed model exports repeat on Linux; two independent Linux development-operator runtime AARs are byte-identical. That is not a model-qualified runtime. Signed model-pack builds are not established |
 | Signing and publication | No accepted production key or model-qualified release; artifacts remain local and unsigned/unaccepted |
 
 The [tap corpus report](phase-0-tap-corpus.md), [swipe evaluation](swipe-ctc-evaluation.md),
