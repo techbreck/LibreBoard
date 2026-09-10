@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "status": "byteIdentical",
+  "nativePairCompleted": true,
+  "releaseEligible": false,
+  "imageId": "sha256:34c6bfa469b1afb637cbe9e95c3a5ec2a5c5e4ad011953cce70d0d83073a1fe7",
+  "hostTools": "Debian bookworm-backports CMake 3.31.6 and Debian ninja-build on PATH",
+  "jobs": 1,
+  "sourceCommit": "8c546c37b43caaca1fa25db430dab94b901cf277",
+  "ndkRevision": "28.0.13004108",
+  "gitCommit": "3c78e6d5fae516a573807d534977bcf3bc81a8af",
+  "inputs": {
+    "tools/build_onnxruntime_android.py": "e5b4a8f74d1772e82f58c671c785bcd2bf0e8322f042394cffdb8d81904e5232",
+    "tools/assemble_runtime_operator_config.py": "0bb41e412044cd9e561f951dd23066d413ca76190061b46c79b26243924e26c3",
+    "tools/model_sources.py": "4b352ee3f915993630665daf9a682d2ca777fcb28ec6e676f43f369778140d76",
+    "runtime/onnxruntime/build-settings.json": "eb7fc13c921c47bb0b4600f5ada8c5d58d61ef1e93b5f106a95ea2b9dda73624",
+    "runtime/onnxruntime/Dockerfile.linux": "bcd124dbb4342da4d86903ee5e703d07d8d7b69ca5401a9627a8dde1d9dd5e7c",
+    "models/training/requirements-onnxruntime-build-linux-x86_64.lock": "473590e3da626c630a721f793b40e248c0a0d7b398eae6d1a564bbd18d5979ba",
+    "build/model-export/onnxruntime-development-types/required_operators-development.config": "76d1e97da383fb70935521f35fd6df40fca932369aea879b481b9c849548172a"
+  },
+  "containers": [
+    {
+      "name": "libreboard-runtime-repro-debian-a4",
+      "id": "0cf3305ad31b17956b398d52696eb821d30cda7f0870b1e77c3642833ca81769",
+      "exitCode": 0,
+      "oomKilled": false,
+      "StartedAt": "2026-09-09T04:36:27.759551961Z",
+      "FinishedAt": "2026-09-09T12:16:34.395225832Z",
+      "buildRoot": "build/linux-runtime-debian-a",
+      "javaBind": "build/linux-runtime-java-a"
+    },
+    {
+      "name": "libreboard-runtime-repro-debian-b3",
+      "id": "184bbc778892ba2cea69c9f624212bd6cf7788e97947b115680ce9ce0f374dd6",
+      "exitCode": 0,
+      "oomKilled": false,
+      "StartedAt": "2026-09-09T18:39:16.58803093Z",
+      "FinishedAt": "2026-09-10T10:35:06.308575935Z",
+      "buildRoot": "build/linux-runtime-debian-b",
+      "javaBind": "build/linux-runtime-java-b"
+    }
+  ],
+  "files": {
+    "onnxruntime-mobile-1.26.0.aar": {
+      "byteIdentical": true,
+      "bytes": [12352564, 12352564],
+      "sha256": [
+        "54118ac8e37bc4833d32e2cb197ef6bd251f56e5aa9e4e51c3899fb616210d88",
+        "54118ac8e37bc4833d32e2cb197ef6bd251f56e5aa9e4e51c3899fb616210d88"
+      ]
+    },
+    "onnxruntime-mobile-1.26.0.build.json": {
+      "byteIdentical": true,
+      "bytes": [1959, 1959],
+      "sha256": [
+        "020d34fb8307cc1547b53d91a09dbd5b2ff7b2f1f850ee3c0453a0c534496f4f",
+        "020d34fb8307cc1547b53d91a09dbd5b2ff7b2f1f850ee3c0453a0c534496f4f"
+      ]
+    }
+  },
+  "byteIdentical": true,
+  "aarEntryCount": 34,
+  "aarDifferingEntries": 0,
+  "limitations": [
+    "Development operator inventory; accepted signed models and final APK remain separate gates.",
+    "Independent native build roots. B's Eigen FetchContent zip was seeded from A's already-fetched 4075744-byte archive after GitHub HTTP 503; compile of B remained on its own tree.",
+    "B3 resumed B2's ninja cache after a host reboot (B2 preserved as libreboard-runtime-repro-debian-b2-host-reboot, exit 255). A4 resumed after a qemu ninja zombie hang.",
+    "qemu-user linux/amd64 with --jobs 1. Host time is not Android latency.",
+    "Pinned development runtime reproducibility is not model-qualified release eligibility. Canonical-model Android checks have not run."
+  ]
+}

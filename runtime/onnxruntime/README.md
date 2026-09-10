@@ -89,10 +89,21 @@ docker build --platform linux/amd64 -f runtime/onnxruntime/Dockerfile.linux \
 docker image inspect libreboard-core-release:local libreboard-runtime-build:local --format '{{.Id}}'
 ```
 
-The image adds CMake 3.31.6, native compiler utilities, and the API 34 / Build Tools 30.0.3
-inputs required by the pinned upstream Android library project. It reuses the core image's
-previously accepted Android SDK licenses. Record both resolved image IDs: a local tag alone does
-not pin the environment, and package repository contents can change between image builds.
+The image installs Debian bookworm-backports CMake 3.31.6 and Debian `ninja-build` as the PATH
+host tools, plus native compiler utilities and the API 34 / Build Tools 30.0.3 inputs required by
+the pinned upstream Android library project. Android SDK `cmake;3.31.6` remains in the SDK tree
+so AGP can locate that package; `cmake` and `ninja` on PATH must resolve to `/usr/bin`. It reuses
+the core image's previously accepted Android SDK licenses. Record both resolved image IDs: a local
+tag alone does not pin the environment, and package repository contents can change between image
+builds.
+
+The SDK CMake 3.31.6 linux-x86_64 binary is a 21 MiB non-PIE `ET_EXEC` with control-flow and
+stack-clash hardening. On this Apple Silicon host it runs through Colima qemu-user 7.0.0. That
+binary intermittently SIGSEGVs during FetchContent `cmake -E` stamp steps such as
+`cmake -E echo_append && cmake -E touch`. Isolated download/extract probes and `OOMKilled=false`
+do not contradict this: the archives were intact, and Docker did not report memory killing.
+Diagnosis is recorded in [`docs/models/evidence/linux-runtime-cmake-qemu-diagnosis.json`](../../docs/models/evidence/linux-runtime-cmake-qemu-diagnosis.json).
+Do not prepend the SDK `cmake/3.31.6/bin` directory to `PATH`.
 
 The first prepared runtime image resolved to
 `sha256:f6e9c2f240620458f548daca3dfc759974c5fad51edd6ba2ce50f8d7ba6518ce`, based on core image
@@ -105,11 +116,19 @@ and serialize heavy builds on memory-constrained hosts.
 
 Run native compilation as an unprivileged container user: the pinned upstream build script rejects
 root execution. Match the output directory owner's UID/GID, set a writable `HOME` and
-`GRADLE_USER_HOME`, and grant that user access only to its output and Gradle cache. When mounting
-source read-only, provide a writable temporary mount at
-`/source/third_party/onnxruntime/java/.gradle` for the upstream project cache. Keep the source,
+`GRADLE_USER_HOME`, and grant that user access only to its output and Gradle cache. When mounting source read-only, bind a writable copy of
+`third_party/onnxruntime/java` over `/source/third_party/onnxruntime/java`. Exclude any host
+`build/` and `.gradle/` trees from that copy. Upstream `--build_java` runs `gradlew clean jar`,
+which deletes `java/build`; a tmpfs mounted at `java/build` cannot be removed. A tmpfs at
+`java/.gradle` is optional once the Java tree itself is writable. Keep the rest of the source,
 operator configuration, and build scripts read-only. The input-only check does not exercise the
-upstream root-user guard; verify this execution setup before starting the full native compile.
+upstream root-user guard or these Gradle output paths; the builder probes `.gradle` and `build`
+for writability before compiling.
+
+On Apple Silicon, `linux/amd64` ninja under qemu-user 7.0 has hung after losing a `/bin/sh`
+compile wrapper (`pipe_w`, zombie child, 0% CPU for hours). Prefer `--jobs 1` on that path so
+ninja does not posix_spawn a second compile while one is in flight. This is an emulation
+workaround, not an ONNX source or archive defect.
 
 The first packaging dry run passed after upstream Gradle installed Platform-Tools 37.0.1 into
 its container. The recipe now installs `platform-tools` when building the image, so an unprivileged
@@ -123,3 +142,16 @@ UID/GID `501:20`, source mounted read-only, and writable output/cache mounts. Up
 reported an analytics home-directory warning for the numeric UID, but configuration completed.
 This confirms the packaging configuration needs no further SDK downloads; native compilation and
 AAR comparison remain separate checks.
+
+The Debian-CMake host-tool image resolved to
+`sha256:34c6bfa469b1afb637cbe9e95c3a5ec2a5c5e4ad011953cce70d0d83073a1fe7`, still based on core
+`sha256:425b1a57386654a8124fab1d5c02c182a4e9aa26fe0f4d15ed1c84f461c0187e`. Image build verified
+`cmake`/`ninja` resolve to `/usr/bin` (CMake 3.31.6, ninja 1.11.1). An unprivileged smoke then
+passed `--check-only`, 15/15 reproductions of the FetchContent `echo_append && touch` stamp
+command, and an empty-command ExternalProject including its no-test stamp. Independent native
+builds `libreboard-runtime-repro-debian-a4` and `libreboard-runtime-repro-debian-b3` then produced
+byte-identical development AARs (12,352,564 bytes, SHA-256
+`54118ac8e37bc4833d32e2cb197ef6bd251f56e5aa9e4e51c3899fb616210d88`). That is not a
+model-qualified release runtime. Evidence:
+[`docs/models/evidence/linux-runtime-debian-pair.json`](../../docs/models/evidence/linux-runtime-debian-pair.json).
+The previous SDK-CMake image remains tagged `libreboard-runtime-build:sdk-cmake-57d61051`.

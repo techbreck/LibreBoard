@@ -73,10 +73,12 @@ The retained comparison is `build/linux-exports/context-smoke-reproducibility.js
 the pinned lock, image identity, training report and runtime smoke report. Full-candidate evidence
 is recorded separately below.
 
-## Full context candidate
+## Full context candidate, independent-split checkpoint
 
-The completed four-epoch student has two byte-identical Linux exports across all eight files. Use
-the same context environment with the full report and omit `--development`:
+The earlier independent-split four-epoch student has two byte-identical Linux exports across all
+eight files. That split was later rejected for cross-task session leakage. Do not treat its hashes
+or Android kernel-parity results as evidence for the shared-session canonical model. Use the same
+context environment with the full report and omit `--development`:
 
 ```sh
 python tools/export_context_model.py \
@@ -91,5 +93,15 @@ The canonical model SHA-256 is
 The macOS export differs slightly in quantized and constant tensor bytes, so validation, test and
 Android kernel parity were repeated against the canonical Linux artifact. Their metrics and the
 remaining acceptance gates are in the [context model card](../../models/context/MODEL_CARD.md).
-This closes repeatable export of this checkpoint; it is not deterministic retraining or release
+This closes repeatable export of that independent-split checkpoint; it is not deterministic
+retraining, shared-session evidence, or release qualification.
+
+## Shared-session canonical context candidate
+
+The corrected shared-session student also has two byte-identical Linux exports across all eight
+files. The INT4 model SHA-256 is
+`8566382e57ea5a9af76ddf600e189572d62fcc8b227de8415ce88ad0e172022b`. The committed comparison is
+[`docs/models/evidence/context-shared-linux-reproducibility.json`](evidence/context-shared-linux-reproducibility.json).
+Host INT4 validation/test diagnostics exist for this artifact. Android kernel parity has not been
+re-run against these exact bytes; earlier emulator timings used other weights. This is not release
 qualification.

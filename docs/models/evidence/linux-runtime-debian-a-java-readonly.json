@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "status": "failed",
+  "nativePairCompleted": false,
+  "releaseEligible": false,
+  "imageId": "sha256:34c6bfa469b1afb637cbe9e95c3a5ec2a5c5e4ad011953cce70d0d83073a1fe7",
+  "container": "libreboard-runtime-repro-debian-a",
+  "state": {
+    "Status": "exited",
+    "OOMKilled": false,
+    "ExitCode": 1,
+    "StartedAt": "2026-09-08T07:53:09.812051276Z",
+    "FinishedAt": "2026-09-08T08:17:36.905834182Z"
+  },
+  "log": "build/reports/linux-runtime-debian-a.log",
+  "logSha256": "c3120111b93e3d4700d3527a516a8a5201c2ed4fb9e573f0cd91c73bb10b345e",
+  "progress": {
+    "cmakeHostTool": "/usr/bin/cmake",
+    "ninjaHostTool": "/usr/bin/ninja",
+    "fetchContentAbseilAndOnnxStamps": "completed",
+    "armeabiV7aCompile": "reached 49/903 before Gradle clean failed"
+  },
+  "failure": "Upstream --build_java invoked gradlew clean jar in /source/third_party/onnxruntime/java. Source was mounted read-only with a tmpfs only on java/.gradle. Gradle could not delete java/build.",
+  "fix": "Mount a writable tmpfs or bind at third_party/onnxruntime/java/build as well as java/.gradle. The builder now fail-closes if those paths are not writable before compiling.",
+  "limitations": [
+    "Preserved failed container and output root. Native AAR pair still absent.",
+    "This is not OOM and not a regression of the SDK-CMake SIGSEGV diagnosis."
+  ]
+}

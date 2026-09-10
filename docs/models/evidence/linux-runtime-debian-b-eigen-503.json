@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "status": "failed",
+  "nativePairCompleted": false,
+  "releaseEligible": false,
+  "container": "libreboard-runtime-repro-debian-b",
+  "imageId": "sha256:34c6bfa469b1afb637cbe9e95c3a5ec2a5c5e4ad011953cce70d0d83073a1fe7",
+  "exitCode": 1,
+  "oomKilled": false,
+  "StartedAt": "2026-09-09T12:19:00.878391451Z",
+  "FinishedAt": "2026-09-09T12:24:29.414594045Z",
+  "log": "build/reports/linux-runtime-debian-b.log",
+  "logSha256": "19c06caeb7173c817d3b51cd4c4b1fbf6ff5321a65481c2acc48f6ff43f5eef4",
+  "failure": "FetchContent Eigen3 download from github.com/eigen-mirror returned HTTP 503. Other deps populated. Not SIGSEGV, not OOM.",
+  "mitigation": "Copied the 4075744-byte Eigen zip already fetched by A (SHA-256 6a60d76351f97132669daeeb721d6bf14b008101883ad2d687a3201c5c461eb0) over B's 0-byte failed download. Compile of B remains independent.",
+  "limitations": [
+    "A AAR exists. B has not compiled. Pair comparison is not done."
+  ]
+}

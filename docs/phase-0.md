@@ -25,11 +25,12 @@ English/German corpus uses whole-session 90/5/5 splits and produces a determinis
 after runtime-parity checks. Its offline teacher-scoring pipeline completed all 68,748 records with no
 rejection, and the committed distillation manifest binds the exact data, teacher, tokenizer, tools,
 toolchain, output hashes and reconciled metrics. Its vectorized student trainer has deterministic
-mid-epoch model/optimizer/RNG checkpoints, but no full trained student has been accepted. The real
-teacher-to-student development smoke reaches the checked INT4 ONNX Runtime path; it does not count as
-quality evidence. A full context candidate has now completed training and INT4 export, and its
-synthetic kernel-parity check passes on the arm64 Android emulator. No accepted full-quality or
-physical-device measurement exists yet. Synthetic smoke results never count as Phase 0 evidence.
+mid-epoch model/optimizer/RNG checkpoints. A shared-session four-epoch student has completed
+training and two byte-identical Linux INT4 exports; distillation ranking diagnostics are not human
+correction quality. The real teacher-to-student development smoke reaches the checked INT4 ONNX
+Runtime path and does not count as quality evidence. Earlier Android kernel-parity timings used
+other weights and do not qualify the canonical export. No accepted full-quality or physical-device
+measurement exists yet. Synthetic smoke results never count as Phase 0 evidence.
 
 Phase 1 remains blocked until all original gates pass: tap relative error reduction, context-sensitive
 and valid-word gains, false-correction ceiling, swipe top-1/top-3 strata, 80/200 ms p95 budgets, 64 MiB
@@ -54,7 +55,7 @@ parity. Those results do not establish correction gains on human tap errors.
 | Swipe absolute quality and difficult strata | Offline native-lexicon union remains below absolute top-1/top-3 gates; full live fusion is not qualified |
 | End-to-end latency and combined added peak memory | Not qualified; diagnostic snapshots and generous-deadline replays are insufficient |
 | Required device matrix | Forced-low-RAM emulator checks exist; stock physical Android and physical GrapheneOS evidence are absent |
-| Model/runtime release reproducibility | Both fixed model exports repeat on Linux; two clean Linux runtime AARs and signed model-pack builds are not established |
+| Model/runtime release reproducibility | Both fixed model exports repeat on Linux; two independent Linux development-operator runtime AARs are byte-identical. That is not a model-qualified runtime. Signed model-pack builds are not established |
 | Signing and publication | No accepted production key or model-qualified release; artifacts remain local and unsigned/unaccepted |
 
 The [tap corpus report](phase-0-tap-corpus.md), [swipe evaluation](swipe-ctc-evaluation.md),

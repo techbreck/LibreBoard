@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "status": "built",
+  "nativePairCompleted": true,
+  "releaseEligible": false,
+  "imageId": "sha256:34c6bfa469b1afb637cbe9e95c3a5ec2a5c5e4ad011953cce70d0d83073a1fe7",
+  "container": {
+    "name": "libreboard-runtime-repro-debian-a4",
+    "id": "0cf3305ad31b17956b398d52696eb821d30cda7f0870b1e77c3642833ca81769",
+    "exitCode": 0,
+    "oomKilled": false,
+    "StartedAt": "2026-09-09T04:36:27.759551961Z",
+    "FinishedAt": "2026-09-09T12:16:34.395225832Z"
+  },
+  "jobs": 1,
+  "hostTools": "Debian bookworm-backports CMake 3.31.6 and ninja-build on PATH",
+  "aar": {
+    "path": "build/linux-runtime-debian-a/output/onnxruntime-mobile-1.26.0.aar",
+    "bytes": 12352564,
+    "sha256": "54118ac8e37bc4833d32e2cb197ef6bd251f56e5aa9e4e51c3899fb616210d88"
+  },
+  "manifest": {
+    "path": "build/linux-runtime-debian-a/output/onnxruntime-mobile-1.26.0.build.json",
+    "bytes": 1959,
+    "sha256": "020d34fb8307cc1547b53d91a09dbd5b2ff7b2f1f850ee3c0453a0c534496f4f"
+  },
+  "log": "build/reports/linux-runtime-debian-a4.log",
+  "limitations": [
+    "Single Linux development-operator AAR, not an independent A/B pair.",
+    "Not a model-qualified release runtime. Canonical-model Android checks have not run.",
+    "Built under qemu-user linux/amd64 with --jobs 1 after a ninja zombie hang on a prior attempt."
+  ]
+}

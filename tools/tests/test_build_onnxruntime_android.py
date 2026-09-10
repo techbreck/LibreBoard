@@ -218,6 +218,27 @@ class OnnxRuntimeBuildTest(unittest.TestCase):
             with self.assertRaises(builder.BuildConfigurationError):
                 builder.validate_ops_config(path)
 
+    def test_java_output_paths_must_be_writable(self):
+        with tempfile.TemporaryDirectory() as temp:
+            java_dir = pathlib.Path(temp) / "java"
+            java_dir.mkdir()
+            builder.validate_java_outputs_writable(java_dir)
+            self.assertTrue((java_dir / ".gradle").is_dir())
+            self.assertTrue((java_dir / "build").is_dir())
+            self.assertFalse((java_dir / "build" / ".libreboard-write-probe").exists())
+
+            readonly = java_dir / "build"
+            readonly.chmod(0o555)
+            try:
+                with self.assertRaisesRegex(builder.BuildConfigurationError, "not writable"):
+                    builder.validate_java_outputs_writable(java_dir)
+            finally:
+                readonly.chmod(0o755)
+
+        missing = pathlib.Path(tempfile.mkdtemp()) / "missing-java"
+        with self.assertRaisesRegex(builder.BuildConfigurationError, "Java project is missing"):
+            builder.validate_java_outputs_writable(missing)
+
     def test_parallel_flag_is_audited_and_accepts_an_explicit_bound(self):
         settings = builder.load_settings()
         parameters = builder.resolved_build_parameters(settings, 2)

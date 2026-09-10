@@ -1,6 +1,6 @@
-# Current-work stopping checkpoint
+# Current-work checkpoint
 
-The user requested completion of work already running, a progress report, and then a stop. Five model/evaluation job chains completed successfully. The sixth, the Linux native runtime pair, ended in a confirmed configuration failure after one diagnostic retry. No further experiments or retries are queued. LibreBoard is not release-qualified.
+The Linux native ONNX Runtime A/B pair on the Debian-CMake image is complete and byte-identical. Canonical-model Android checks, human tap/swipe gates, devices, latency/memory, and signing remain open. LibreBoard is not release-qualified.
 
 ## Completed
 
@@ -13,9 +13,15 @@ The user requested completion of work already running, a progress report, and th
 
 ## Native runtime failure
 
-Both native A attempts exited 1 with Docker reporting `OOMKilled=false`. Initial CMake dependency population failed with SIGSEGV while preparing Abseil. Archive integrity and isolated CMake download/extraction probes passed. The retry progressed to ONNX dependency population, then SIGSEGV occurred in its no-test stamp command. The cause remains unconfirmed. Native compilation and the independent B build did not complete, so no Linux AAR reproducibility result exists. Final canonical-model Android checks using that AAR could not run.
+Both native A attempts on image `sha256:57d61051fc53c6b8d9b21ca2d370a4408dbcb8e86836d3ffa66a81c154e90622` exited 1 with Docker reporting `OOMKilled=false`. Initial CMake dependency population failed with SIGSEGV while preparing Abseil. Archive integrity and isolated CMake download/extraction probes passed. The retry progressed to ONNX dependency population, then SIGSEGV occurred in its no-test stamp command.
 
-Raw logs remain under `build/reports/linux-runtime-a-initial-failure.log` and `build/reports/linux-runtime-a.log`; container states and log hashes are preserved in [failure evidence](evidence/linux-runtime-pair-failure.json). Earlier Android timing results used a partially trained small model and an older large model; they do not qualify either newly completed canonical model.
+Follow-up diagnosis reproduced that stamp command shape (`cmake -E echo_append && cmake -E touch`) SIGSEGVing under Colima qemu-user 7.0.0 when ninja spawned Android SDK CMake 3.31.6, a 21 MiB non-PIE linux-x86_64 binary. Isolated `cmake -E` from Python succeeded; `ldd` on the SDK cmake/ninja binaries exited 139; `/proc/cpuinfo` inside the amd64 container reports ARM features. The crash is intermittent, not an OOM, corrupt archive, or ONNX source defect. Evidence: [failure record](evidence/linux-runtime-pair-failure.json) and [qemu diagnosis](evidence/linux-runtime-cmake-qemu-diagnosis.json).
+
+The Linux runtime image recipe now uses Debian bookworm-backports CMake 3.31.6 and Debian ninja-build as PATH host tools, while keeping Android SDK `cmake;3.31.6` installed for AGP. The rebuilt image is `sha256:34c6bfa469b1afb637cbe9e95c3a5ec2a5c5e4ad011953cce70d0d83073a1fe7`. Unprivileged smoke passed `--check-only`, 15/15 FetchContent stamp-command reproductions, and an empty-command ExternalProject no-test stamp.
+
+Native A completed on the Debian-CMake image after the ninja-zombie resume: container `libreboard-runtime-repro-debian-a4` exited 0. Independent B failed once on Eigen FetchContent HTTP 503, was seeded from A's already-fetched zip, then `libreboard-runtime-repro-debian-b3` exited 0 after a host-reboot resume of the same B ninja cache. Both development AARs are 12,352,564 bytes, SHA-256 `54118ac8e37bc4833d32e2cb197ef6bd251f56e5aa9e4e51c3899fb616210d88`, with identical manifests and all four ABI `.so` pairs. Evidence: [A AAR](evidence/linux-runtime-debian-a-aar.json), [B AAR](evidence/linux-runtime-debian-b-aar.json), [pair](evidence/linux-runtime-debian-pair.json), [Eigen 503](evidence/linux-runtime-debian-b-eigen-503.json). This is pinned development-operator runtime reproducibility, not a model-qualified release.
+
+Raw logs remain under `build/reports/linux-runtime-a-initial-failure.log` and `build/reports/linux-runtime-a.log`. Earlier Android timing results used a partially trained small model and an older large model; they do not qualify either newly completed canonical model.
 
 ## Verification and remaining gates
 
@@ -23,4 +29,4 @@ The final Python suite ran 232 tests successfully with 13 optional-toolchain ski
 
 Release gates remain open: swipe absolute accuracy and return-trip quality; 887 missing human spatial tap examples, 500 spacing examples, and personal/compound coverage; physical stock Android and GrapheneOS testing; full-IME latency and added peak-memory qualification; accepted signing and a model-qualified release artifact. No release was published. Training outputs and candidate worktrees are retained for a later explicitly requested continuation.
 
-Canonical model reports and reproducibility evidence are in [evidence](evidence/). No work should automatically resume from this stopping checkpoint.
+Canonical model reports and reproducibility evidence are in [evidence](evidence/). The failed SDK-CMake runtime image `sha256:57d61051fc53c6b8d9b21ca2d370a4408dbcb8e86836d3ffa66a81c154e90622` is retained as `libreboard-runtime-build:sdk-cmake-57d61051`. Next runtime step is canonical-model Android checks with an explicit fixture, not another native AAR rebuild.

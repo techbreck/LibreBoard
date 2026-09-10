@@ -2,9 +2,19 @@
 # Build runtime/android/Dockerfile.core first and record the resolved base image ID.
 ARG CORE_IMAGE=libreboard-core-release:local
 FROM ${CORE_IMAGE}
-RUN apt-get update && apt-get install -y --no-install-recommends build-essential patch && rm -rf /var/lib/apt/lists/*
+# PATH host tools are Debian CMake/Ninja. Android SDK CMake 3.31.6 remains installed
+# for AGP, but its non-PIE cmake binary SIGSEGVs under qemu-user during FetchContent.
+RUN echo 'deb http://deb.debian.org/debian bookworm-backports main' > /etc/apt/sources.list.d/backports.list \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends build-essential patch ninja-build \
+ && apt-get install -y --no-install-recommends -t bookworm-backports \
+      cmake=3.31.6-2~bpo12+1 cmake-data=3.31.6-2~bpo12+1 \
+ && rm -rf /var/lib/apt/lists/*
 RUN /opt/android-sdk/cmdline-tools/12.0/bin/sdkmanager --sdk_root=/opt/android-sdk 'cmake;3.31.6'
-ENV PATH="/opt/android-sdk/cmake/3.31.6/bin:${PATH}"
+RUN test "$(command -v cmake)" = /usr/bin/cmake \
+ && test "$(command -v ninja)" = /usr/bin/ninja \
+ && cmake --version \
+ && ninja --version
 COPY requirements.lock /opt/onnxruntime-build-requirements.lock
 RUN python -m pip install --no-cache-dir --require-hashes -r /opt/onnxruntime-build-requirements.lock
 RUN /opt/android-sdk/cmdline-tools/12.0/bin/sdkmanager --sdk_root=/opt/android-sdk 'platforms;android-34' 'build-tools;30.0.3'
