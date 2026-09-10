@@ -1502,6 +1502,13 @@ def collect_reserved_sources(
                         entry, "neighbors", decoder_spatial=decoder_spatial_by_key.get(key),
                     )
                 )
+        sources["neighbors"].sort(
+            key=lambda candidate: (
+                -(candidate.decoder_spatial if candidate.decoder_spatial is not None else float("-inf")),
+                -candidate.entry.frequency,
+                _normalize(candidate.entry.word),
+            )
+        )
     if include_truncated:
         leftover_skip = {
             (_normalize(candidate.word), candidate.entry.language)
@@ -1761,21 +1768,41 @@ def reserved_fusion_values(
 def prioritize_reserved_candidates(
     reserved: Sequence[ScoredLexiconEntry],
 ) -> list[ScoredLexiconEntry]:
-    """Greedy, then best-spatial alts/n-best, then in-lexicon neighbors/truncated.
+    """Mix unconstrained CTC OOV with in-lexicon recoveries.
 
-    Ablation recovered 110 rows from greedy+alts; those OOV need published slots,
-    not a single greedy slot with neighbors filling the rest.
+    Frozen targets in the published 31 all sit in ranks 1-23, so up to eight
+    reserved slots can replace the tail without dropping a frozen membership
+    hit. Fill greedy, then the best unconstrained OOV alts/n-best, then
+    in-lexicon neighbors/truncated by spatial and frequency.
     """
+    if not any(candidate.source for candidate in reserved):
+        return list(reserved)
     greedy = [candidate for candidate in reserved if candidate.source == "greedy"]
-    alts = sorted(
-        [candidate for candidate in reserved if candidate.source in {"greedy_alts", "nbest"}],
-        key=lambda candidate: (-candidate.spatial, _normalize(candidate.word)),
-    )
-    other = [
+    ctc_alts = [
+        candidate for candidate in reserved if candidate.source in {"greedy_alts", "nbest"}
+    ]
+    in_lexicon_ctc = [candidate for candidate in ctc_alts if not candidate.frequency_free]
+    oov_ctc = [candidate for candidate in ctc_alts if candidate.frequency_free]
+    other_in_lexicon = [
         candidate for candidate in reserved
         if candidate.source not in {"greedy", "greedy_alts", "nbest"}
+        and not candidate.frequency_free
     ]
-    return [*greedy, *alts, *other]
+
+    def in_lexicon_key(candidate: ScoredLexiconEntry) -> tuple:
+        return (-candidate.spatial, -candidate.entry.frequency, _normalize(candidate.word))
+
+    in_lexicon_ctc.sort(key=in_lexicon_key)
+    other_in_lexicon.sort(key=in_lexicon_key)
+    oov_ctc.sort(key=lambda candidate: (-candidate.spatial, _normalize(candidate.word)))
+    extra_oov = 7
+    return [
+        *greedy,
+        *oov_ctc[:extra_oov],
+        *in_lexicon_ctc,
+        *other_in_lexicon,
+        *oov_ctc[extra_oov:],
+    ]
 
 
 def publish_reserved_slots(

@@ -113,34 +113,34 @@
   },
   "candidateRecall": {
     "clean": {
-      "recall": 0.9680175246440307,
+      "recall": 0.9642935377875137,
       "rows": 4565,
-      "targetPresent": 4419
+      "targetPresent": 4402
     },
     "double_letter": {
-      "recall": 0.9138755980861244,
+      "recall": 0.9043062200956937,
       "rows": 627,
-      "targetPresent": 573
+      "targetPresent": 567
     },
     "long": {
-      "recall": 0.8776371308016878,
+      "recall": 0.8734177215189873,
       "rows": 711,
-      "targetPresent": 624
+      "targetPresent": 621
     },
     "medium": {
-      "recall": 0.957811470006592,
+      "recall": 0.9531970995385629,
       "rows": 3034,
-      "targetPresent": 2906
+      "targetPresent": 2892
     },
     "overall": {
-      "recall": 0.962,
+      "recall": 0.9591666666666666,
       "rows": 6000,
-      "targetPresent": 5772
+      "targetPresent": 5755
     },
     "return_trip": {
-      "recall": 0.92046783625731,
+      "recall": 0.9181286549707602,
       "rows": 1710,
-      "targetPresent": 1574
+      "targetPresent": 1570
     },
     "short": {
       "recall": 0.9942350332594235,
@@ -153,53 +153,53 @@
       "targetPresent": 1353
     },
     "very_sloppy": {
-      "recall": 0.9266666666666666,
+      "recall": 0.9283333333333333,
       "rows": 600,
-      "targetPresent": 556
+      "targetPresent": 557
     }
   },
   "conversionMath": {
     "historicalLexiconConversion": 0.979,
-    "measuredConversionOfPublished31": 0.9617117117117117,
-    "measuredPublished31TargetPresent": 5772,
+    "measuredConversionOfPublished31": 0.9645525629887055,
+    "measuredPublished31TargetPresent": 5755,
     "measuredTop3": 5551,
-    "newMembershipHits": 102,
+    "newMembershipHits": 85,
     "newTop3Hits": 0,
     "note": "Historical 97.9% conversion applies to frozen lexicon membership, not new reserved recoveries.",
     "phase0Top3Gate": 5700,
     "published31NeededAtHistoricalConversion": 5822,
     "returnTripMeasuredTop3": 1498,
     "returnTripPublished31NeededAtHistoricalConversion": 1572,
-    "returnTripPublished31TargetPresent": 1574,
+    "returnTripPublished31TargetPresent": 1570,
     "returnTripTop3Gate": 1539
   },
   "counts": {
     "baselineTargetPresent": 5670,
-    "knownOffensiveRejected": 104,
-    "newTargetsRecovered": 102,
-    "published31TargetPresent": 5772,
+    "knownOffensiveRejected": 84,
+    "newTargetsRecovered": 85,
+    "published31TargetPresent": 5755,
     "publishedRankingBound": 31,
     "publishedSlateBound": 32,
     "recallCountsPublished31Only": true,
-    "reservedBudget": 11,
+    "reservedBudget": 8,
     "rows": 6000,
     "targetsLostAtPublish": 0
   },
   "diagnosticOnly": true,
-  "evaluatorSha256": "75cafb6de22149f28e2960960f3be3abc76121068c4827da449aa12718ee622e",
+  "evaluatorSha256": "ec96885c64ef9f6443865beb1d657df6590e1c7d33696b60cb1e1e022eb32a42",
   "exportReportSha256": "04a261eef7db4adf18b7342fe4421326321a6cb674076b4915ff50c817d6342b",
   "knownOffensiveSourceSha256": "e23644662586f6bcb76f4bc0d9e01e7f38efd89afb823fc2b2a4530177a97525",
   "latencyMs": {
     "hostDiagnosticOnly": true,
     "inference": {
-      "p50": 2.033084,
-      "p95": 2.298209,
-      "p99": 3.244416
+      "p50": 1.980291,
+      "p95": 2.174708,
+      "p99": 2.281667
     },
     "reservedOov": {
-      "p50": 17.024333,
-      "p95": 30.535166,
-      "p99": 38.930208
+      "p50": 12.850208,
+      "p95": 25.083042,
+      "p99": 30.308583
     },
     "reservedOovP95BudgetMs": 91.0,
     "reservedOovP95WithinBudget": true
@@ -213,7 +213,7 @@
     "Host timing is not Android device latency."
   ],
   "modelSha256": "1301f0d076f526fe0b67f2ea86a38abc8448f6de54d2c7191c002dcd4d05d38c",
-  "oovBeamWidth": 8,
+  "oovBeamWidth": 4,
   "oovCalibrationSha256": "9f295e5e6a09df38c51b55c0c199baf50954dd313498e395a4319f5a2bad496a",
   "oovConservativeSpatial": false,
   "oovMapBlend": 0.5,
@@ -285,8 +285,8 @@
     }
   },
   "releaseEligible": false,
-  "reservedBudget": 11,
-  "reservedOovNBest": 8,
+  "reservedBudget": 8,
+  "reservedOovNBest": 4,
   "reservedSources": [
     "greedy",
     "greedy_alts",
@@ -299,7 +299,7 @@
   "slatesSha256": "fbbbcd0ef004f651a2e6c698ce6d834d4d2ca8d5f8195a6c9996e5ff2c61776e",
   "slatesSha256After": "fbbbcd0ef004f651a2e6c698ce6d834d4d2ca8d5f8195a6c9996e5ff2c61776e",
   "stratumAdaptiveMerge": false,
-  "toolSha256": "236b16e23b7f79263c586cd3ef06cb26a16df9e8022b066da73b0c4f631c88be",
+  "toolSha256": "66c602504f645f9a7478c33854063717aaa316f403e34aa63f823b042752ff7b",
   "toolchain": {
     "numpy": "2.2.6",
     "onnxruntime": "1.26.0"

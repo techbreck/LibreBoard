@@ -562,6 +562,48 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
         self.assertEqual(31, len(ranked))
         self.assertIn("cax", [entry.word for entry in ranked])
 
+    def test_publish_mixes_one_extra_oov_with_in_lexicon_neighbors(self):
+        base = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry(f"w{index}", "en", (1,), 10), 1.0 - 0.01 * index)
+            for index in range(32)
+        ]
+        greedy = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (2,), 0), -0.5, frequency_free=True, source="greedy",
+        )
+        weak_oov = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caz", "en", (3,), 0), -1.5, frequency_free=True, source="greedy_alts",
+        )
+        strong_oov = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cay", "en", (4,), 0), -0.2, frequency_free=True, source="greedy_alts",
+        )
+        rare_neighbor = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cab", "en", (5,), 3), 0.1, frequency_free=False, source="neighbors",
+        )
+        common_neighbor = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cat", "en", (1, 2, 3), 200), 0.1, frequency_free=False, source="neighbors",
+        )
+        ordered = evaluator.prioritize_reserved_candidates(
+            [greedy, weak_oov, strong_oov, rare_neighbor, common_neighbor],
+        )
+        self.assertEqual("cax", ordered[0].word)
+        self.assertEqual("cay", ordered[1].word)
+        self.assertIn("cat", [candidate.word for candidate in ordered])
+        published = evaluator.publish_reserved_slots(
+            base, [greedy, weak_oov, strong_oov, rare_neighbor, common_neighbor], reserved_budget=4,
+        )
+        words = {item.word for item in published}
+        self.assertTrue({"cax", "cay", "cat"}.issubset(words))
+        ranked = [
+            entry.word
+            for entry in evaluator.published_ranking(
+                published,
+                [greedy, weak_oov, strong_oov, rare_neighbor, common_neighbor],
+                lexicon_reference=base,
+            )
+        ]
+        self.assertIn("cax", ranked)
+        self.assertIn("cat", ranked)
+
     def test_publish_fills_greedy_then_best_spatial_alts(self):
         base = [
             evaluator.ScoredLexiconEntry(evaluator.LexiconEntry(f"w{index}", "en", (1,), 10), 1.0 - 0.01 * index)

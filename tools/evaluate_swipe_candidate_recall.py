@@ -759,11 +759,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--oov-calibration", type=pathlib.Path)
     parser.add_argument("--slates", type=pathlib.Path, default=DEFAULT_SLATES)
     parser.add_argument("--calibration-rows", type=int, default=512)
-    parser.add_argument("--reserved-oov-nbest", type=int, default=4)
-    parser.add_argument("--oov-beam-width", type=int, default=4)
+    parser.add_argument("--reserved-oov-nbest", type=int, default=8)
+    parser.add_argument("--oov-beam-width", type=int, default=8)
     parser.add_argument("--beam-width", type=int, default=64)
     parser.add_argument("--stratum-adaptive-merge", action="store_true")
-    parser.add_argument("--reserved-budget", type=int, default=4)
+    parser.add_argument("--reserved-budget", type=int, default=11)
     parser.add_argument(
         "--reserved-sources",
         type=str,

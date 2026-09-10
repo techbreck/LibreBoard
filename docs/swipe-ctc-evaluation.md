@@ -345,21 +345,24 @@ greedy-41 31/32 existence proof. Slots fill greedy, then best-spatial 2nd/3rd-be
 25th-percentile spatial (a score fix after pure OLS dropped 6k top-3 by 1 and 1k top-3 by 3).
 They are not pinned below top-3. In-lexicon reserved use real `log1p(frequency)`.
 
-The official published-31 diagnostic (greedy + alts + n-best 4 + neighbors + truncated
-leftovers, reserved budget 4, OLS map blend 0.5) measured:
+Frozen targets in the published 31 all sit in ranks 1–23, so eight to eleven reserved
+slots can replace the tail without dropping a frozen membership hit. The official
+diagnostic uses 11 reserved slots (greedy, seven best unconstrained OOV alts/n-best 8,
+then in-lexicon neighbors ranked by decoder spatial and frequency) and the 50/50 OLS
+blend:
 
 | Quantity | Frozen 32-slot | Published-31 diagnostic | Gate |
 | --- | ---: | ---: | ---: |
-| Target in ranked[:31] | 5,670 | 5,744 | 5,822 at 97.9% conversion |
+| Target in ranked[:31] | 5,670 | 5,772 | 5,822 at 97.9% conversion |
 | Static-fusion top-3 | 5,551 (92.52%) | 5,551 (92.52%) | 5,700 (95%) |
-| return_trip published-31 | 1,529 | 1,564 | 1,572 |
+| return_trip published-31 | 1,529 | 1,574 | 1,572 |
 | return_trip top-3 | 1,498 | 1,498 | 1,539 (90%) |
-| Host reserved-decode p95 | — | 24.1 ms | < 91 ms |
+| Host reserved-decode p95 | — | 30.5 ms | < 91 ms |
 
-New reserved hits convert at 0/74 into top-3. Pure OLS reached the same 5,744 membership but
-5,550 top-3. Matched 1,000-path union ranking twice was 86.6%/92.7%. `diagnosticOnly` /
-`releaseEligible` false. Production vocabulary, scoring, beam 64, and `CtcSwipeDecoder.kt`
-are unchanged.
+New reserved hits convert at 0/102 into top-3. return_trip membership clears 1,572;
+return_trip top-3 does not. Matched 1,000-path union ranking twice was 86.6%/92.7%.
+`diagnosticOnly` / `releaseEligible` false. Production vocabulary, scoring, beam 64,
+and `CtcSwipeDecoder.kt` are unchanged.
 Evidence: `docs/models/evidence/swipe-published-31-recall.json` and
 `docs/models/evidence/swipe-published-31-1000-{1,2}.json`.
 
