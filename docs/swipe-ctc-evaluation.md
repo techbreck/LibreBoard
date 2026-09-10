@@ -340,29 +340,26 @@ Cumulative bag recoveries: greedy 41, greedy+alts 110, beam≤4 115, beam≤32 1
 `docs/models/evidence/swipe-184-source-ablation.json`.
 
 Reserved merge always replaces the worst of the ranked 31 (at most 4 slots), matching the
-greedy-41 31/32 existence proof: membership is that 31-list, so ranking cannot then drop the
-replacement. One slot is kept for a frequency-free OOV (greedy); the rest go to in-lexicon
-neighbors and truncated leftovers. True OOV stay frequency-free at the 25th-percentile lexicon
-spatial. In-lexicon reserved use real `log1p(frequency)` and, when present, decoder spatial.
-The unclamped OLS OOV map and calibrated neighbor spatial both steal rare-lexicon top-3 and
-are rejected.
+greedy-41 31/32 existence proof. Slots fill greedy, then best-spatial 2nd/3rd-best and n-best
+≤4, then in-lexicon neighbors. True OOV use the train-fit OLS map blended 50/50 toward the
+25th-percentile spatial (a score fix after pure OLS dropped 6k top-3 by 1 and 1k top-3 by 3).
+They are not pinned below top-3. In-lexicon reserved use real `log1p(frequency)`.
 
-The official published-31 diagnostic (greedy + 2nd/3rd-best + neighbors + truncated leftovers,
-n-best 1, reserved budget 4, no stratum-adaptive merge, conservative OOV spatial) measured:
+The official published-31 diagnostic (greedy + alts + n-best 4 + neighbors + truncated
+leftovers, reserved budget 4, OLS map blend 0.5) measured:
 
 | Quantity | Frozen 32-slot | Published-31 diagnostic | Gate |
 | --- | ---: | ---: | ---: |
-| Target in ranked[:31] | 5,670 | 5,723 | 5,822 at 97.9% conversion |
+| Target in ranked[:31] | 5,670 | 5,744 | 5,822 at 97.9% conversion |
 | Static-fusion top-3 | 5,551 (92.52%) | 5,551 (92.52%) | 5,700 (95%) |
-| return_trip published-31 | 1,529 | 1,557 | 1,572 |
+| return_trip published-31 | 1,529 | 1,564 | 1,572 |
 | return_trip top-3 | 1,498 | 1,498 | 1,539 (90%) |
-| Host reserved-decode p95 | — | 20.2 ms | < 91 ms |
+| Host reserved-decode p95 | — | 24.1 ms | < 91 ms |
 
-Greedy-41 membership is recovered (5,711 on the 31-bound, 5,723 with alts/neighbors). New
-reserved hits convert at 0/53 into top-3: a score high enough to put greedy OOV in top-3 also
-steals on the ~1,800 paths where greedy is wrong. Matched 1,000-path union ranking twice was
-86.6%/92.7%. `diagnosticOnly` / `releaseEligible` false. Production vocabulary, scoring,
-beam 64, and `CtcSwipeDecoder.kt` are unchanged.
+New reserved hits convert at 0/74 into top-3. Pure OLS reached the same 5,744 membership but
+5,550 top-3. Matched 1,000-path union ranking twice was 86.6%/92.7%. `diagnosticOnly` /
+`releaseEligible` false. Production vocabulary, scoring, beam 64, and `CtcSwipeDecoder.kt`
+are unchanged.
 Evidence: `docs/models/evidence/swipe-published-31-recall.json` and
 `docs/models/evidence/swipe-published-31-1000-{1,2}.json`.
 

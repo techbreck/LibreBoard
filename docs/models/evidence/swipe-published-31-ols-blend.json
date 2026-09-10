@@ -215,8 +215,6 @@
   "modelSha256": "1301f0d076f526fe0b67f2ea86a38abc8448f6de54d2c7191c002dcd4d05d38c",
   "oovBeamWidth": 4,
   "oovCalibrationSha256": "9f295e5e6a09df38c51b55c0c199baf50954dd313498e395a4319f5a2bad496a",
-  "oovConservativeSpatial": false,
-  "oovMapBlend": 0.5,
   "published31Membership": true,
   "qualityClaim": false,
   "ranking": {

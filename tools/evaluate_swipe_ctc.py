@@ -120,6 +120,7 @@ class ScoredLexiconEntry:
     entry: LexiconEntry
     spatial: float
     frequency_free: bool = False
+    source: str = ""
 
     @property
     def word(self) -> str:
@@ -1603,6 +1604,7 @@ def score_reserved_candidate(
     calibration: OovScoreCalibration,
     ctc_spatials: Sequence[float],
     oov_conservative: bool = False,
+    oov_map_blend: float = 0.0,
 ) -> ScoredLexiconEntry:
     """Map a reserved spelling onto the lexicon spatial scale. No fabricated frequency."""
     true_oov = candidate.source in {"greedy", "greedy_alts", "nbest"} and candidate.entry.frequency == 0
@@ -1612,6 +1614,10 @@ def score_reserved_candidate(
         mapped = project_onto_lexicon_scale(
             calibration.to_lexicon_spatial(candidate.forward), ctc_spatials,
         )
+        if oov_map_blend > 0.0:
+            conservative = conservative_lexicon_spatial(ctc_spatials)
+            weight = min(1.0, oov_map_blend)
+            mapped = (1.0 - weight) * mapped + weight * conservative
         spatial = _z_score_against(mapped, ctc_spatials) if ctc_spatials else mapped
     elif true_oov or candidate.forward is None:
         mapped = conservative_lexicon_spatial(ctc_spatials)
@@ -1621,7 +1627,9 @@ def score_reserved_candidate(
             calibration.to_lexicon_spatial(candidate.forward), ctc_spatials,
         )
         spatial = _z_score_against(mapped, ctc_spatials) if ctc_spatials else mapped
-    return ScoredLexiconEntry(candidate.entry, spatial, frequency_free=true_oov)
+    return ScoredLexiconEntry(
+        candidate.entry, spatial, frequency_free=true_oov, source=candidate.source,
+    )
 
 
 def score_reserved_sources(
@@ -1630,6 +1638,7 @@ def score_reserved_sources(
     calibration: OovScoreCalibration,
     ctc_spatials: Sequence[float],
     oov_conservative: bool = False,
+    oov_map_blend: float = 0.0,
     allowed: Sequence[str] | None = None,
     nbest_rank_limit: int | None = None,
     skip_keys: Iterable[tuple[str, str]] = (),
@@ -1640,6 +1649,7 @@ def score_reserved_sources(
             calibration=calibration,
             ctc_spatials=ctc_spatials,
             oov_conservative=oov_conservative,
+            oov_map_blend=oov_map_blend,
         )
         for candidate in flatten_reserved_sources(
             sources, allowed, nbest_rank_limit=nbest_rank_limit, skip_keys=skip_keys,
@@ -1665,6 +1675,7 @@ def reserved_oov_from_logits(
     baseline_merged: Sequence[ScoredLexiconEntry] = (),
     include_truncated: bool = False,
     oov_conservative: bool = False,
+    oov_map_blend: float = 0.0,
     allowed_sources: Sequence[str] | None = None,
     nbest_rank_limit: int | None = None,
 ) -> tuple[list[ScoredLexiconEntry], int]:
@@ -1690,6 +1701,7 @@ def reserved_oov_from_logits(
         calibration=calibration,
         ctc_spatials=ctc_spatials,
         oov_conservative=oov_conservative,
+        oov_map_blend=oov_map_blend,
         allowed=allowed_sources,
         nbest_rank_limit=nbest_rank_limit,
         skip_keys=skip_keys,
@@ -1749,10 +1761,21 @@ def reserved_fusion_values(
 def prioritize_reserved_candidates(
     reserved: Sequence[ScoredLexiconEntry],
 ) -> list[ScoredLexiconEntry]:
-    """Keep one frequency-free OOV (greedy-41) then in-lexicon reserved, then extra OOV."""
-    oov = [candidate for candidate in reserved if candidate.frequency_free]
-    in_lexicon = [candidate for candidate in reserved if not candidate.frequency_free]
-    return [*oov[:1], *in_lexicon, *oov[1:]]
+    """Greedy, then best-spatial alts/n-best, then in-lexicon neighbors/truncated.
+
+    Ablation recovered 110 rows from greedy+alts; those OOV need published slots,
+    not a single greedy slot with neighbors filling the rest.
+    """
+    greedy = [candidate for candidate in reserved if candidate.source == "greedy"]
+    alts = sorted(
+        [candidate for candidate in reserved if candidate.source in {"greedy_alts", "nbest"}],
+        key=lambda candidate: (-candidate.spatial, _normalize(candidate.word)),
+    )
+    other = [
+        candidate for candidate in reserved
+        if candidate.source not in {"greedy", "greedy_alts", "nbest"}
+    ]
+    return [*greedy, *alts, *other]
 
 
 def publish_reserved_slots(
@@ -2090,6 +2113,7 @@ def _evaluate(args: argparse.Namespace, slate_stream=None) -> dict[str, Any]:
     include_neighbors = bool(getattr(args, "include_lexicon_neighbors", False))
     include_truncated = bool(getattr(args, "include_truncated_leftovers", False))
     oov_conservative = bool(getattr(args, "oov_conservative_spatial", False))
+    oov_map_blend = float(getattr(args, "oov_map_blend", 0.0) or 0.0)
     calibration = None
     known_offensive: set[str] = set()
     if oov_nbest:
@@ -2195,7 +2219,7 @@ def _evaluate(args: argparse.Namespace, slate_stream=None) -> dict[str, Any]:
                 layout,
                 calibration=calibration,
                 n_best=oov_nbest,
-                beam_width=max(16, min(32, oov_nbest)),
+                beam_width=int(getattr(args, "oov_beam_width", 0) or max(4, min(16, oov_nbest))),
                 existing=merged,
                 known_offensive=known_offensive,
                 lexicon_by_word=lexicon_by_language.get(row.language, {}),
@@ -2206,6 +2230,7 @@ def _evaluate(args: argparse.Namespace, slate_stream=None) -> dict[str, Any]:
                 geometric=geometric,
                 include_truncated=include_truncated,
                 oov_conservative=oov_conservative,
+                oov_map_blend=oov_map_blend,
             )
             known_offensive_rejected += rejected
             reserved_added += len(reserved)
@@ -2364,6 +2389,7 @@ def _evaluate(args: argparse.Namespace, slate_stream=None) -> dict[str, Any]:
             "includeLexiconNeighbors": include_neighbors,
             "includeTruncatedLeftovers": include_truncated,
             "oovConservativeSpatial": oov_conservative,
+            "oovMapBlend": oov_map_blend,
             "reservedOovCandidatesAdded": reserved_added,
             "knownOffensiveRejected": known_offensive_rejected,
         },
@@ -2485,6 +2511,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--oov-conservative-spatial",
         action="store_true",
         help="Diagnostic: score true OOV at the 25th-percentile lexicon spatial instead of the OLS map",
+    )
+    parser.add_argument(
+        "--oov-beam-width",
+        type=int,
+        default=0,
+        help="Diagnostic: unconstrained n-best beam (0 = min 4, at most 16, matching n-best)",
+    )
+    parser.add_argument(
+        "--oov-map-blend",
+        type=float,
+        default=0.0,
+        help="Diagnostic: blend train-fit OOV spatial toward the 25th-percentile (0 = OLS map only)",
     )
     return parser.parse_args(argv)
 

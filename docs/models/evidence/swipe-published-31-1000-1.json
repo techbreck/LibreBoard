@@ -1,7 +1,7 @@
 {
   "artifacts": {
     "evaluationDataSha256": "bc11f707c849b9c9daec5a5ffef06108771887f1c9d019b4c123f4bf8714be6e",
-    "evaluatorSha256": "c684137ccc419fd778c72d21cf429595c18b89ef86827a88fa09e35b666a6633",
+    "evaluatorSha256": "5e285daac32e550f21894c70a0238188b988708318f36fa2d8b9c25e18ef0f7c",
     "exportReportSha256": "04a261eef7db4adf18b7342fe4421326321a6cb674076b4915ff50c817d6342b",
     "model": {
       "path": "swipe-latin-v1.onnx",
@@ -59,14 +59,14 @@
   },
   "candidateRecall": {
     "clean": {
-      "recall": 0.9537037037037037,
+      "recall": 0.9576719576719577,
       "rows": 756,
-      "targetPresent": 721
+      "targetPresent": 724
     },
     "double_letter": {
-      "recall": 0.8557692307692307,
+      "recall": 0.8653846153846154,
       "rows": 104,
-      "targetPresent": 89
+      "targetPresent": 90
     },
     "long": {
       "recall": 0.8617886178861789,
@@ -74,14 +74,14 @@
       "targetPresent": 106
     },
     "medium": {
-      "recall": 0.9447852760736196,
+      "recall": 0.9488752556237219,
       "rows": 489,
-      "targetPresent": 462
+      "targetPresent": 464
     },
     "overall": {
-      "recall": 0.954,
+      "recall": 0.956,
       "rows": 1000,
-      "targetPresent": 954
+      "targetPresent": 956
     },
     "return_trip": {
       "recall": 0.9128919860627178,
@@ -94,14 +94,14 @@
       "targetPresent": 386
     },
     "sloppy": {
-      "recall": 0.9549180327868853,
+      "recall": 0.9508196721311475,
       "rows": 244,
-      "targetPresent": 233
+      "targetPresent": 232
     },
     "very_sloppy": {
-      "recall": 0.94,
+      "recall": 0.93,
       "rows": 100,
-      "targetPresent": 94
+      "targetPresent": 93
     }
   },
   "ctcGeometricFusionMetrics": {
@@ -215,12 +215,13 @@
     "greedyExactAccuracy": 0.662,
     "includeLexiconNeighbors": true,
     "includeTruncatedLeftovers": true,
-    "knownOffensiveRejected": 11,
-    "oovConservativeSpatial": true,
+    "knownOffensiveRejected": 12,
+    "oovConservativeSpatial": false,
+    "oovMapBlend": 0.5,
     "published31Membership": true,
     "reservedBudget": 4,
-    "reservedOovCandidatesAdded": 105381,
-    "reservedOovNBest": 1,
+    "reservedOovCandidatesAdded": 106277,
+    "reservedOovNBest": 4,
     "stratumAdaptiveMerge": false
   },
   "diagnosticOnly": true,
@@ -327,30 +328,30 @@
   },
   "latencyMs": {
     "ctcGeometricFusionTotal": {
-      "p50": 140.488667,
-      "p95": 324.4605,
-      "p99": 371.459917
+      "p50": 146.841792,
+      "p95": 341.776666,
+      "p99": 395.946167
     },
     "hostDiagnosticOnly": true,
     "inference": {
-      "p50": 1.898375,
-      "p95": 1.970333,
-      "p99": 2.0895
+      "p50": 1.949334,
+      "p95": 2.09075,
+      "p99": 2.475667
     },
     "prefixBeam": {
-      "p50": 8.409167,
-      "p95": 10.641666,
-      "p99": 77.4915
+      "p50": 8.635625,
+      "p95": 11.049,
+      "p99": 77.339083
     },
     "total": {
-      "p50": 10.344917,
-      "p95": 12.653333,
-      "p99": 79.37775
+      "p50": 10.607541,
+      "p95": 13.081583,
+      "p99": 79.279333
     },
     "vectorizedGeometricAndFusion": {
-      "p50": 129.079959,
-      "p95": 314.268834,
-      "p99": 337.164
+      "p50": 135.05775,
+      "p95": 329.650667,
+      "p99": 361.58975
     }
   },
   "lexicon": {

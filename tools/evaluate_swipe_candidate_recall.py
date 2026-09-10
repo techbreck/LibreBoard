@@ -178,6 +178,8 @@ def ranking_1000(args: argparse.Namespace) -> dict[str, Any]:
         "--known-offensive-lexicon", str(args.known_offensive_lexicon),
         "--beam-width", str(args.beam_width),
         "--reserved-budget", str(args.reserved_budget),
+        "--oov-beam-width", str(args.oov_beam_width),
+        "--oov-map-blend", str(args.oov_map_blend),
     ]
     if args.stratum_adaptive_merge:
         argv.append("--stratum-adaptive-merge")
@@ -547,6 +549,7 @@ def recall_6000(args: argparse.Namespace) -> dict[str, Any]:
             baseline_merged=scored(slate["merged"]),
             include_truncated=include_truncated,
             oov_conservative=bool(args.oov_conservative_spatial),
+            oov_map_blend=float(args.oov_map_blend),
             allowed_sources=allowed_sources,
             nbest_rank_limit=nbest_limit if "nbest" in allowed_sources else None,
         )
@@ -596,6 +599,8 @@ def recall_6000(args: argparse.Namespace) -> dict[str, Any]:
         "reservedBudget": reserved_budget,
         "reservedSources": list(allowed_sources),
         "stratumAdaptiveMerge": bool(args.stratum_adaptive_merge),
+        "oovConservativeSpatial": bool(args.oov_conservative_spatial),
+        "oovMapBlend": float(args.oov_map_blend),
         "published31Membership": True,
         "counts": {
             "rows": 6000,
@@ -754,15 +759,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--oov-calibration", type=pathlib.Path)
     parser.add_argument("--slates", type=pathlib.Path, default=DEFAULT_SLATES)
     parser.add_argument("--calibration-rows", type=int, default=512)
-    parser.add_argument("--reserved-oov-nbest", type=int, default=1)
-    parser.add_argument("--oov-beam-width", type=int, default=32)
+    parser.add_argument("--reserved-oov-nbest", type=int, default=4)
+    parser.add_argument("--oov-beam-width", type=int, default=4)
     parser.add_argument("--beam-width", type=int, default=64)
     parser.add_argument("--stratum-adaptive-merge", action="store_true")
     parser.add_argument("--reserved-budget", type=int, default=4)
-    parser.add_argument("--reserved-sources", type=str, default="greedy,greedy_alts")
+    parser.add_argument(
+        "--reserved-sources",
+        type=str,
+        default="greedy,greedy_alts,nbest,neighbors,truncated_ctc,truncated_geometry",
+    )
     parser.add_argument("--include-lexicon-neighbors", action="store_true")
     parser.add_argument("--include-truncated-leftovers", action="store_true")
     parser.add_argument("--oov-conservative-spatial", action="store_true")
+    parser.add_argument("--oov-map-blend", type=float, default=0.0)
     return parser.parse_args(argv)
 
 
