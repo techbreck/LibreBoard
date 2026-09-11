@@ -420,6 +420,11 @@ budget 11 did not recover the remaining convertingFillLoss (5,774 present / 5,56
 Truncated leftovers raise competing membership and still publish 0. Not promoted. Evidence:
 `docs/models/evidence/swipe-published-31-pref-trunc.json`.
 
+Keep-20 leftover-converting append on the unparked blend-0.5 scorer (budget 8, 11
+occupants) is 5,774 present / 5,567 top-3, convertingFillLoss still 13. Not promoted
+over spatial budget 11. Evidence:
+`docs/models/evidence/swipe-published-31-cfl-unpark.json`.
+
 The 1,000-row ranking follow-up assigned frequency 1 to the 4,089 supplemental words. Adding them
 to both CTC and geometry lowered combined top-1/top-3 from 86.6%/92.7% to 85.0%/91.9%. Replaying
 only supplemented CTC with the original geometric candidates yielded 84.8%/92.3%. Both scoring

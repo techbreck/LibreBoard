@@ -1329,6 +1329,59 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
         self.assertNotIn("target", inspect.signature(evaluator.converting_fill_loss_append_fill).parameters)
         self.assertNotIn("target", inspect.signature(evaluator.reserved_occupants).parameters)
 
+    def test_converting_fill_loss_append_unparked_keeps_bound_when_greedy_misses(self):
+        lexicon = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cat", "en", (1,), 50), 2.0),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("car", "en", (2,), 40), 1.5),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("can", "en", (3,), 30), 1.0),
+        ] + [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"zz{index}", "en", (10 + index,), 1), -1.0,
+            )
+            for index in range(28)
+        ]
+        greedy = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (5,), 0), -3.0, frequency_free=True, source="greedy",
+        )
+        converting = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"wa{index}", "en", (20 + index,), 0),
+                1.2 - 0.02 * index,
+                frequency_free=True,
+                source="greedy_alts",
+                oov_map_blend=0.5,
+            )
+            for index in range(10)
+        ]
+        nbest = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caa", "en", (70,), 0), 0.4, frequency_free=True, source="nbest",
+            oov_map_blend=0.5,
+        )
+        reserved = [greedy, *converting, nbest]
+        appended = evaluator.reserved_occupants(
+            reserved, lexicon, reserved_budget=8, converting_fill_loss_append=True,
+        )
+        self.assertGreater(len(appended), 8)
+        self.assertLessEqual(len(appended), 11)
+        self.assertIn("wa8", [item.word for item in appended])
+        published = evaluator.publish_reserved_slots(
+            lexicon, reserved, reserved_budget=8, converting_fill_loss_append=True,
+        )
+        self.assertEqual(31, len(published))
+        unblended = evaluator.unblend_greedy_alts_when_greedy_misses_top3(
+            published, reserved, lexicon,
+        )
+        ranked = [
+            entry.word
+            for entry in evaluator.published_ranking(
+                unblended, reserved, lexicon_reference=lexicon, park_min_rank=0,
+            )
+        ]
+        self.assertEqual(31, len(ranked))
+        self.assertEqual(1, sum(1 for word in ranked[:3] if word == "cax" or word.startswith("wa") or word == "caa"))
+        self.assertNotIn("target", inspect.signature(evaluator.converting_fill_loss_append_fill).parameters)
+        self.assertNotIn("target", inspect.signature(evaluator.unblend_greedy_alts_when_greedy_misses_top3).parameters)
+
     def test_converting_fill_loss_append_displaces_nonconverting_extra_oov_nbest(self):
         lexicon = [
             evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cat", "en", (1,), 50), 5.0),
