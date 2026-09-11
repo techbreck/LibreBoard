@@ -1760,6 +1760,40 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
         self.assertEqual(evaluator.median_lexicon_spatial(merged_scale), scored.spatial)
         self.assertEqual(80, scored.entry.frequency)
 
+    def test_in_lexicon_neighbor_fusion_uses_real_frequency_and_is_not_parked(self):
+        lexicon = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("rare", "en", (1,), 1), 2.0),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("mid", "en", (2,), 10), 1.5),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("low", "en", (3,), 5), 1.0),
+        ]
+        calibration = evaluator.fit_oov_score_calibration([-0.40, -0.10], [-0.40, -0.10])
+        neighbor = evaluator.ReservedCandidate(
+            evaluator.LexiconEntry("the", "en", (4,), 10_000), "neighbors", decoder_spatial=1.5,
+        )
+        scored = evaluator.score_reserved_candidate(
+            neighbor,
+            calibration=calibration,
+            ctc_spatials=[-0.8, -0.2],
+            lexicon_spatials=[2.0, 1.5, 1.0],
+        )
+        self.assertFalse(scored.frequency_free)
+        self.assertEqual(10_000, scored.entry.frequency)
+        oov = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (5,), 0), scored.spatial, frequency_free=True, source="greedy",
+        )
+        in_lex_fusion, oov_fusion = evaluator.reserved_fusion_values(lexicon, [scored, oov])
+        self.assertGreater(in_lex_fusion, oov_fusion)
+        published = evaluator.publish_reserved_slots(lexicon, [scored, oov], reserved_budget=2)
+        ranked = [
+            entry.word
+            for entry in evaluator.published_ranking(
+                published, [scored, oov], lexicon_reference=lexicon, park_min_rank=0,
+            )
+        ]
+        self.assertEqual("the", ranked[0])
+        self.assertNotIn("target", inspect.signature(evaluator.score_reserved_candidate).parameters)
+        self.assertNotIn("target", inspect.signature(evaluator.reserved_fusion_values).parameters)
+
     def test_greedy_oov_keeps_full_ols_while_alts_keep_the_blend(self):
         greedy = evaluator.ReservedCandidate(
             evaluator.LexiconEntry("cax", "en", (1,), 0), "greedy", forward=-0.05,

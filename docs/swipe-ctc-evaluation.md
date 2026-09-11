@@ -392,6 +392,17 @@ vocabulary, scoring, beam 64, and `CtcSwipeDecoder.kt` are unchanged. Evidence:
 `docs/models/evidence/swipe-published-31-conv-best.json`, and
 `docs/models/evidence/swipe-published-31-swap-gated.json`.
 
+In-lexicon reserved neighbors stay ordinary lexicon entries (decoder spatial when that
+spelling is already on the CTC/geometry slate, otherwise the merged median, plus real
+`log1p(frequency)`). True OOV stay frequency-free on the train-fit map with no top-3
+floor clamp. Four unparked OLS extra seats dropped 6k top-3 to 5,550; the score fix
+is greedy full OLS and extra OOV blended 0.5 toward the 25th-percentile spatial, still
+unparked. 1k twice 878/929; frozen 6k 5,754 present / 5,235 / 5,566 top-3; neighbors
+publish 0 (extra_oov fills the four seats); return_trip present 1,568; reserved p95
+19.4 ms. `diagnosticOnly` / `releaseEligible` false. Evidence:
+`docs/models/evidence/swipe-published-31-score-fix.json` and
+`docs/models/evidence/swipe-published-31-score-blend.json`.
+
 The 1,000-row ranking follow-up assigned frequency 1 to the 4,089 supplemental words. Adding them
 to both CTC and geometry lowered combined top-1/top-3 from 86.6%/92.7% to 85.0%/91.9%. Replaying
 only supplemented CTC with the original geometric candidates yielded 84.8%/92.3%. Both scoring
