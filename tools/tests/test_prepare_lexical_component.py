@@ -27,6 +27,8 @@ class LexicalComponentTest(unittest.TestCase):
             self.assertNotEqual(row["raw"], row["target"])
             self.assertEqual("project_authored", row["collectionMethod"])
             self.assertTrue(row["target"].isalpha())
+            if len(row["raw"]) != len(row["target"]):
+                self.assertTrue(row["target"].startswith(row["raw"]))
 
     def test_compound_rows_are_typo_or_split_form_variants(self):
         rng = random.Random(2)

@@ -60,7 +60,8 @@ PROTOCOL = (
     "Project-authored lexical cases. Personal targets are invented synthetic names generated from "
     "a fixed syllable list and carried in each row's bounded personalWords fixture; no real "
     "personal data or device dictionary contents are used. Compound targets are common English "
-    "compound words; raw text is a deterministic adjacent-key typo or a split-form variant. "
+    "compound words; raw text is a deterministic adjacent-key typo, a prefix-completion prefix "
+    "of the learned name, or a split-form variant. "
     "Preceding contexts are fixed synthetic prompt fragments. Rows are grouped into "
     "project-authored sessions so whole sessions share one salted split."
 )
@@ -83,10 +84,16 @@ def personal_rows(session, rng):
     for index in range(SESSION_ROWS):
         target = synthetic_name(rng)
         fixture = list(dict.fromkeys([target] + [synthetic_name(rng) for _ in range(4)]))[:4]
+        # Personal suggestions surface by prefix or exact match only; a substitution typo can
+        # never be completed, so half the rows are genuine prefix-completion cases.
+        if rng.random() < 0.5:
+            raw = target[:rng.randint(2, len(target) - 2)]
+        else:
+            raw = typo(target, rng)
         yield {"schemaVersion": 1,
                "id": hashlib.sha256(f"project-lexical:personal:{session}:{index}".encode()).hexdigest(),
                "sessionId": f"project-lexical:v1:personal:{session:03d}", "category": "lexical",
-               "lexicalKind": "personal", "raw": typo(target, rng), "target": target,
+               "lexicalKind": "personal", "raw": raw, "target": target,
                "languageTag": "en-US", "precedingContext": rng.choice(PERSONAL_CONTEXTS),
                "fieldClass": "plain", "collectionMethod": "project_authored", "touchPoints": [],
                "personalWords": fixture}

@@ -186,8 +186,10 @@ keystroke-level; no touch coordinates are claimed.
 `tools/prepare_lexical_component.py` emits deterministic (seeded) `project_authored` rows for the
 two lexical strata no human source supplies. Personal targets are invented names generated from a
 fixed syllable list and carried in each row's `personalWords` fixture — never real personal data.
-Compound targets are common English compounds; raw text is an adjacent-key typo or a split-form
-variant (`news paper` for `newspaper`). Contexts are fixed synthetic prompt fragments.
+Half the personal raws are strict prefixes of the learned name so the prefix-completion path is
+measured; the other half are adjacent-key typos. Compound targets are common English compounds;
+raw text is an adjacent-key typo or a split-form variant (`news paper` for `newspaper`).
+Contexts are fixed synthetic prompt fragments.
 
 ```sh
 python3 tools/prepare_lexical_component.py
