@@ -2099,12 +2099,12 @@ def tiny_nbest_truncated_leftover_fill(
     extra_oov: int = EXTRA_OOV_FILL,
     nbest_hold: int = TINY_NBEST_HOLD,
 ) -> list[ScoredLexiconEntry]:
-    """Hold extra_oov greedy_alts and n-best rank<=4; leftover seats truncated then n-best 5+.
+    """Hold extra_oov greedy_alts and n-best rank<=4; leftover extra_oov then truncated then n-best 5+.
 
-    Tiny extra n-best 5-8 and truncated CTC/geometry leftovers occupy leftover
-    32-slot seats after unique extra_oov/n-best. Not an unbounded bag, leftover-
-    greedy-alts-append, extra OLS, or frozen rank 1-23 raise. Construction never
-    reads evaluation targets.
+    Extra_oov[:7] unique extra_oov/n-best stay. Spatial leftover mix of leftover
+    n-best/truncated with leftover extra_oov stole unique extra_oov 49→45. Leftover
+    extra_oov greedy_alts stay first. leftover-greedy-alts-append, extra OLS, and
+    frozen rank 1-23 raises stay off. Construction never reads evaluation targets.
     """
     extra_oov = max(0, extra_oov)
     greedy = [candidate for candidate in ordered if candidate.source == "greedy"]

@@ -506,6 +506,12 @@ truncated_ctc unique 1, neighbors 3→0, frozenLost 2, top-3 5,567, p95 34.0 ms.
 over the budget-11 keeper. leftover-greedy-alts-append off. Evidence:
 `docs/models/evidence/swipe-published-31-tiny-nbest.json`.
 
+Spatial leftover mix of leftover n-best/truncated with leftover extra_oov greedy_alts
+seats leftover n-best 5→14 but steals unique extra_oov 49→45. Published-31 5,778,
+top-3 5,567, frozenLost 2, truncated unique 0. 1k twice 878/929. Not promoted:
+unique extra_oov must stay. Leftover extra_oov-first restored. Evidence:
+`docs/models/evidence/swipe-published-31-leftover-mix.json`.
+
 The 1,000-row ranking follow-up assigned frequency 1 to the 4,089 supplemental words. Adding them
 to both CTC and geometry lowered combined top-1/top-3 from 86.6%/92.7% to 85.0%/91.9%. Replaying
 only supplemented CTC with the original geometric candidates yielded 84.8%/92.3%. Both scoring
