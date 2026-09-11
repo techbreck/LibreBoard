@@ -75,6 +75,7 @@ class CandidateRecallDiagnosticTest(unittest.TestCase):
         self.assertFalse(args.leftover_greedy_alts_append)
         self.assertFalse(args.protect_frozen_ranks)
         self.assertFalse(args.length_changing_extra_oov)
+        self.assertFalse(args.leftover_converting_after_extra_oov)
         self.assertFalse(args.oov_conservative_spatial)
         self.assertEqual(
             ("greedy", "greedy_alts"),

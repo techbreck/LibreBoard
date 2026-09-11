@@ -1,0 +1,22 @@
+{
+  "diagnosticOnly": true,
+  "keeperEvidence": "docs/models/evidence/swipe-published-31-alt-unblend.json",
+  "lengthChangingEvidence": "docs/models/evidence/swipe-published-31-len-change.json",
+  "limitations": [
+    "Labels only. Construction does not read targets.",
+    "Keeper inPublishedBudget is 0: unpublished leftover converting all have fillRank>11.",
+    "Length-changing extra_oov made inPublishedBudget 2 by dropping a unique extra_oov greedy_alt (fillRank 8, oovCtcRank 7) and a unique neighbor (fillRank 9).",
+    "That seated convertingFillLoss oovCtcRank 11; remaining leftover converting starts at oovCtcRank 16.",
+    "Leftover converting after spatial extra_oov uses leftover in-lex seats (budget 11 minus greedy minus extra_oov 7). Unique extra_oov/n-best stay. leftover-greedy-alts-append and protect-drop stay off."
+  ],
+  "qualityClaim": false,
+  "releaseEligible": false,
+  "schemaVersion": 1,
+  "summary": {
+    "keeperConvertingFillLoss": 13,
+    "keeperFillRankLe11": 0,
+    "keeperMinConvertingOovCtcRank": 11,
+    "lengthChangingFillRankLe11": 2,
+    "lengthChangingMinConvertingOovCtcRankRemaining": 16
+  }
+}

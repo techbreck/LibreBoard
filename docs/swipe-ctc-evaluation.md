@@ -490,6 +490,14 @@ nbest 5/0 held, greedy_alts 49/1 held, frozenLost 2 held, 6k 5,775 present /
 blend 0.5. Not promoted. Evidence:
 `docs/models/evidence/swipe-published-31-len-change.json`.
 
+Putting leftover converting greedy_alts in leftover seats after spatial extra_oov
+(unique extra_oov/n-best held) does not seat convertingFillLoss: remaining CFL
+still starts at oovCtcRank 11 (4th leftover converting; leftover seats only hold
+ranks 8–10). Published-31 5,775, neighbors 3→2, nbest 5/0 held, CFL 13, frozenLost
+2. 1k twice 878/929. Length-changing’s inPublishedBudget 2 were unique extra_oov
+(oovCtcRank 7) and unique neighbor drops. Not promoted. Evidence:
+`docs/models/evidence/swipe-published-31-leftover-after.json`.
+
 The 1,000-row ranking follow-up assigned frequency 1 to the 4,089 supplemental words. Adding them
 to both CTC and geometry lowered combined top-1/top-3 from 86.6%/92.7% to 85.0%/91.9%. Replaying
 only supplemented CTC with the original geometric candidates yielded 84.8%/92.3%. Both scoring

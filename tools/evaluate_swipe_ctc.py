@@ -2045,6 +2045,51 @@ def length_changing_converting_extra_oov(
     return result
 
 
+def leftover_converting_after_extra_oov(
+    ordered: Sequence[ScoredLexiconEntry],
+    lexicon: Sequence[ScoredLexiconEntry],
+    *,
+    extra_oov: int = EXTRA_OOV_FILL,
+) -> list[ScoredLexiconEntry]:
+    """Keep spatial extra_oov/n-best; leftover seats prefer leftover converting greedy_alts.
+
+    Length-changing extra_oov dropped unique extra_oov (oovCtcRank 7) and a unique
+    neighbor to seat oovCtcRank 11. Leftover in-lex seats after extra_oov can hold
+    window-losing converting greedy_alts without unclamping extras, raising budget,
+    leftover-greedy-alts-append, or protect-drop. Construction never reads targets.
+    """
+    extra_oov = max(0, extra_oov)
+    greedy = [candidate for candidate in ordered if candidate.source == "greedy"]
+    oov_ctc = [
+        candidate for candidate in ordered
+        if candidate.source in {"greedy_alts", "nbest"} and candidate.frequency_free
+    ]
+    oov_ctc.sort(key=lambda candidate: (-candidate.spatial, _normalize(candidate.word)))
+    spatial_extra = oov_ctc[:extra_oov]
+    leftover = window_losing_converting_greedy_alts(
+        ordered, lexicon, extra_oov=extra_oov,
+    )
+    seen: set[tuple[str, str]] = set()
+    result: list[ScoredLexiconEntry] = []
+
+    def take(candidate: ScoredLexiconEntry) -> None:
+        key = (_normalize(candidate.word), candidate.entry.language)
+        if key in seen:
+            return
+        seen.add(key)
+        result.append(candidate)
+
+    for candidate in greedy:
+        take(candidate)
+    for candidate in spatial_extra:
+        take(candidate)
+    for candidate in leftover:
+        take(candidate)
+    for candidate in ordered:
+        take(candidate)
+    return result
+
+
 def converting_inlex_after_extra_oov(
     ordered: Sequence[ScoredLexiconEntry],
     lexicon: Sequence[ScoredLexiconEntry],
@@ -2573,6 +2618,7 @@ def reserved_occupants(
     leftover_greedy_alts_append: bool = False,
     protect_frozen_ranks: bool = False,
     length_changing_extra_oov: bool = False,
+    leftover_converting_after_extra_oov_fill: bool = False,
 ) -> list[ScoredLexiconEntry]:
     """Fill-order reserved occupants not already in ``skip_keys``. No targets.
 
@@ -2614,6 +2660,10 @@ def reserved_occupants(
         return protect_frozen_converting_32_fill(ordered, lexicon, extra_oov=extra_oov)
     elif length_changing_extra_oov:
         ordered = length_changing_converting_extra_oov(
+            ordered, lexicon, extra_oov=extra_oov,
+        )
+    elif leftover_converting_after_extra_oov_fill:
+        ordered = leftover_converting_after_extra_oov(
             ordered, lexicon, extra_oov=extra_oov,
         )
     if prefer_converting_greedy_alts:
@@ -2664,6 +2714,7 @@ def extra_reserved_occupant_keys(
     leftover_greedy_alts_append: bool = False,
     protect_frozen_ranks: bool = False,
     length_changing_extra_oov: bool = False,
+    leftover_converting_after_extra_oov_fill: bool = False,
 ) -> set[tuple[str, str]]:
     """Keys of fill-order occupants after the first reserved seat. No targets."""
     occupants = reserved_occupants(
@@ -2682,6 +2733,7 @@ def extra_reserved_occupant_keys(
         leftover_greedy_alts_append=leftover_greedy_alts_append,
         protect_frozen_ranks=protect_frozen_ranks,
         length_changing_extra_oov=length_changing_extra_oov,
+        leftover_converting_after_extra_oov_fill=leftover_converting_after_extra_oov_fill,
     )
     return {
         (_normalize(candidate.word), candidate.entry.language)
@@ -2845,6 +2897,7 @@ def publish_reserved_slots(
     leftover_greedy_alts_append: bool = False,
     protect_frozen_ranks: bool = False,
     length_changing_extra_oov: bool = False,
+    leftover_converting_after_extra_oov_fill: bool = False,
 ) -> list[ScoredLexiconEntry]:
     """Replace the worst ``reserved_budget`` of the ranked 31 with reserved spellings.
 
@@ -2900,6 +2953,7 @@ def publish_reserved_slots(
         leftover_greedy_alts_append=leftover_greedy_alts_append,
         protect_frozen_ranks=protect_frozen_ranks,
         length_changing_extra_oov=length_changing_extra_oov,
+        leftover_converting_after_extra_oov_fill=leftover_converting_after_extra_oov_fill,
     )
     if converting_alt_expand or converting_fill_loss_append or leftover_greedy_alts_append:
         budget = min(bound, max(budget, len(occupants)))
@@ -3564,6 +3618,9 @@ def _evaluate(args: argparse.Namespace, slate_stream=None) -> dict[str, Any]:
             )
             protect_frozen_ranks = bool(getattr(args, "protect_frozen_ranks", False))
             length_changing_extra_oov = bool(getattr(args, "length_changing_extra_oov", False))
+            leftover_converting_after_extra_oov_fill = bool(
+                getattr(args, "leftover_converting_after_extra_oov", False)
+            )
             published = publish_reserved_slots(
                 merged,
                 reserved,
@@ -3579,6 +3636,7 @@ def _evaluate(args: argparse.Namespace, slate_stream=None) -> dict[str, Any]:
                 leftover_greedy_alts_append=leftover_greedy_alts_append,
                 protect_frozen_ranks=protect_frozen_ranks,
                 length_changing_extra_oov=length_changing_extra_oov,
+                leftover_converting_after_extra_oov_fill=leftover_converting_after_extra_oov_fill,
             )
             skip_keys = {(_normalize(candidate.word), candidate.entry.language) for candidate in merged}
             extra_park_keys = extra_reserved_occupant_keys(
@@ -3597,6 +3655,7 @@ def _evaluate(args: argparse.Namespace, slate_stream=None) -> dict[str, Any]:
                 leftover_greedy_alts_append=leftover_greedy_alts_append,
                 protect_frozen_ranks=protect_frozen_ranks,
                 length_changing_extra_oov=length_changing_extra_oov,
+                leftover_converting_after_extra_oov_fill=leftover_converting_after_extra_oov_fill,
             )
             park_min_rank = int(getattr(args, "park_extra_reserved_min_rank", 0) or 0)
             published = lift_near_top3_frequency_free(
@@ -3968,6 +4027,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--length-changing-extra-oov",
         action="store_true",
         help="Diagnostic: extra_oov leftover seats prefer length-changing converting greedy_alts; hold spatial n-best",
+    )
+    parser.add_argument(
+        "--leftover-converting-after-extra-oov",
+        action="store_true",
+        help="Diagnostic: leftover seats after spatial extra_oov prefer leftover converting greedy_alts; hold extra_oov/n-best",
     )
     parser.add_argument(
         "--leftover-greedy-alts-append",
