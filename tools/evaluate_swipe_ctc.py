@@ -1983,6 +1983,56 @@ def prioritize_reserved_candidates(
     ]
 
 
+def converting_inlex_after_extra_oov(
+    ordered: Sequence[ScoredLexiconEntry],
+    lexicon: Sequence[ScoredLexiconEntry],
+    *,
+    extra_oov: int = EXTRA_OOV_FILL,
+) -> list[ScoredLexiconEntry]:
+    """Keep spatial extra_oov; leftover seats prefer in-lex that clear top-3.
+
+    Neighbors of greedy/alts plus truncated leftovers grew competing 5,798→5,818
+    but published-31 5,776→5,775, top-3 5,567→5,566, frozenLost 2→5. Not the
+    default fill. Construction never reads evaluation targets.
+    """
+    extra_oov = max(0, extra_oov)
+    greedy = [candidate for candidate in ordered if candidate.source == "greedy"]
+    spatial_extra = [
+        candidate for candidate in ordered
+        if candidate.source in {"greedy_alts", "nbest"} and candidate.frequency_free
+    ][:extra_oov]
+    converting_inlex = [
+        candidate for candidate in ordered
+        if candidate.source != "greedy"
+        and not candidate.frequency_free
+        and reserved_clears_lexicon_top3(candidate, lexicon)
+    ]
+    converting_inlex.sort(
+        key=lambda candidate: (
+            -candidate.spatial, -candidate.entry.frequency, _normalize(candidate.word),
+        )
+    )
+    seen: set[tuple[str, str]] = set()
+    result: list[ScoredLexiconEntry] = []
+
+    def take(candidate: ScoredLexiconEntry) -> None:
+        key = (_normalize(candidate.word), candidate.entry.language)
+        if key in seen:
+            return
+        seen.add(key)
+        result.append(candidate)
+
+    for candidate in greedy:
+        take(candidate)
+    for candidate in spatial_extra:
+        take(candidate)
+    for candidate in converting_inlex:
+        take(candidate)
+    for candidate in ordered:
+        take(candidate)
+    return result
+
+
 def ablation_extra_fill(
     reserved: Sequence[ScoredLexiconEntry],
 ) -> list[ScoredLexiconEntry]:

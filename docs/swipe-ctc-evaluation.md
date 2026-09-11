@@ -462,6 +462,13 @@ unclamping extras, but published-31 fell 5,776→5,773 and 6k top-3 5,567→5,55
 promoted. Geometry limits stay 8/8/12/16/16. Evidence:
 `docs/models/evidence/swipe-published-31-tight-geo.json`.
 
+Neighbors of greedy_alts plus truncated leftovers in the leftover in-lex seats
+(spatial extra_oov held) grew competing 5,798→5,818. Published-31 5,775 present /
+5,566 top-3, neighbors 3→7 / 0 top-3, truncated published 0, greedy_alts 49→44,
+frozenLost 2→5. 1k twice 878/929. Not promoted: bag membership, not converting
+published-31, and it stole frozen ranks 21–23. Evidence:
+`docs/models/evidence/swipe-published-31-alt-neighbors.json`.
+
 The 1,000-row ranking follow-up assigned frequency 1 to the 4,089 supplemental words. Adding them
 to both CTC and geometry lowered combined top-1/top-3 from 86.6%/92.7% to 85.0%/91.9%. Replaying
 only supplemented CTC with the original geometric candidates yielded 84.8%/92.3%. Both scoring
