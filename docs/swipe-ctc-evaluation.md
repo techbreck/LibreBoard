@@ -518,6 +518,29 @@ only supplemented CTC with the original geometric candidates yielded 84.8%/92.3%
 variants were rejected; coverage gains did not translate to ranking gains. The frequency prior was
 experimental and uncalibrated. See `docs/models/evidence/swipe-supplement-ranking-comparison.json`.
 
+Occupancy and conversion search closed, 2026-09-11. The budget-11 spatial keeper is the
+final bound: published-31 5,776 present (96.27%), top-1 5,235, top-3 5,567, return_trip
+1,577 present / 1,507 top-3, 1k twice 878/929, reserved-decode p95 19.5 ms, frozenLost 2.
+The 5,822 membership floor and the 5,700 top-3 gate are not reachable inside the allowed
+lever set, for two measured reasons. Occupancy: budget 11 minus greedy minus spatial
+extra_oov 7 leaves 3 leftover seats, and unique extra_oov (49/1) and leftover n-best cannot
+share them; every measured alternative (leftover mix, budget 12, keep-23, protect-drop,
+greedy-alts append, tighter geometry, leftover-converting orderings) seats one side only by
+evicting the other or frozen ranks 1–23. Conversion: new reserved hits convert 16 of 106
+(~15%), not the 97.9% frozen-lexicon rate the 5,822 floor assumed; 25 frequency-free rows
+reached top-3 but displaced 9 frozen top-3, and granting all 46 OLS-capable frequency-free
+rows top-3 with zero frozen loss still yields only 5,613 < 5,700. Every promotion lever
+measured (extra OLS unclamp, OLS-if-clears, rank 4–10 lift, neighbor path-fit spatial,
+single-occupant gates) either failed a ranking floor or parked the extras it promoted. The
+perfect-ranker ceiling on the keeper slate is its own membership 5,776, so the remaining
+deficit is a ranking problem on already-published rows, not a membership problem; closing it
+needs a scoring signal static fusion does not have and is out of scope for this goal. The
+competing-slate 5,823 is bag membership truncated at ranked[:31] and is not a quality claim.
+`diagnosticOnly` / `releaseEligible` false. Production vocabulary, scoring, beam 64, and
+`CtcSwipeDecoder.kt` are unchanged. Keeper evidence:
+`docs/models/evidence/swipe-published-31-alt-unblend.json`; occupancy rejects are recorded
+above and under `docs/models/evidence/occupancy-search/`.
+
 ### Reference-prefix context validation
 
 `tools/evaluate_swipe_context.py` scores the frozen merged slates with a checked context export.
