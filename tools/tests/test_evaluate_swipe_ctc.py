@@ -350,6 +350,7 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
             evaluator.ablation_first_source_fill,
             evaluator.leftover_converting_greedy_neighbors,
             evaluator.converting_fill_loss_append_fill,
+            evaluator.protect_frozen_converting_32_fill,
             evaluator.window_losing_converting_greedy_alts,
             evaluator.prefer_window_losing_converting_alts,
             evaluator.reserved_fill_ranks,
@@ -581,6 +582,53 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
             self.assertIn(f"lex{index:02d}", words)
         for index in range(20, 23):
             self.assertNotIn(f"lex{index:02d}", words)
+        self.assertNotIn("target", inspect.signature(evaluator.publish_reserved_slots).parameters)
+
+    def test_protect_frozen_32_fill_keeps_ranks_1_to_23_and_seats_leftover_converting(self):
+        lexicon = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"lex{index:02d}", "en", (index,), 50 - index),
+                2.0 - 0.05 * index,
+            )
+            for index in range(32)
+        ]
+        greedy = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (40,), 0), 8.0, frequency_free=True, source="greedy",
+        )
+        extra_oov = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"wa{index}", "en", (50 + index,), 0),
+                7.5 - 0.05 * index,
+                frequency_free=True,
+                source="greedy_alts",
+            )
+            for index in range(7)
+        ]
+        leftover = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caz", "en", (70,), 0), 6.9, frequency_free=True, source="greedy_alts",
+        )
+        reserved = [greedy, *extra_oov, leftover]
+        self.assertEqual(8, evaluator.reserved_oov_ctc_ranks(reserved)[("caz", "en")])
+        self.assertTrue(evaluator.reserved_clears_lexicon_top3(leftover, lexicon))
+        occupants = evaluator.reserved_occupants(
+            reserved, lexicon, reserved_budget=11, protect_frozen_ranks=True,
+        )
+        self.assertEqual(9, len(occupants))
+        self.assertEqual("cax", occupants[0].word)
+        self.assertEqual("caz", occupants[8].word)
+        published = evaluator.publish_reserved_slots(
+            lexicon, reserved, reserved_budget=11, protect_frozen_ranks=True,
+        )
+        self.assertEqual(32, len(published))
+        words = {item.word for item in published}
+        for index in range(23):
+            self.assertIn(f"lex{index:02d}", words)
+        self.assertIn("caz", words)
+        ranked = evaluator.published_ranking(
+            published, reserved, lexicon_reference=lexicon, park_min_rank=0,
+        )[: evaluator.PUBLISHED_RANKING_BOUND]
+        self.assertEqual(31, len(ranked))
+        self.assertNotIn("target", inspect.signature(evaluator.protect_frozen_converting_32_fill).parameters)
         self.assertNotIn("target", inspect.signature(evaluator.publish_reserved_slots).parameters)
 
     def test_train_path_loader_does_not_return_targets(self):

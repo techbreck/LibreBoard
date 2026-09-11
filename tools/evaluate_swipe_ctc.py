@@ -2248,6 +2248,47 @@ def converting_alt_expand_fill(
 
 
 CONVERTING_FILL_LOSS_MIN_LEXICON = 20
+FROZEN_PROTECTED_RANKS = 23
+
+
+def protect_frozen_converting_32_fill(
+    ordered: Sequence[ScoredLexiconEntry],
+    lexicon: Sequence[ScoredLexiconEntry],
+    *,
+    extra_oov: int = EXTRA_OOV_FILL,
+) -> list[ScoredLexiconEntry]:
+    """32-slot occupants: greedy, spatial extra_oov, leftover converting alts.
+
+    Keeper unpublished hits are fillRank>11 converting greedy_alts and frozenLost
+    adaptive_merged in ranks 21-23. Nine reserved seats occupy merged ranks 24-32
+    so lexicon fusion ranks 1-23 stay in the 32-set. Spatial extra_oov keeps unique
+    n-best; leftover converting greedy_alts take the ninth seat. Ranking publishes
+    [:31]. leftover-greedy-alts-append stays off. No evaluation targets.
+    """
+    maximum = PUBLISHED_SLATE_BOUND - FROZEN_PROTECTED_RANKS
+    extra_oov = max(0, extra_oov)
+    spatial = list(ordered[: min(maximum, extra_oov + 1)])
+    seen = {
+        (_normalize(candidate.word), candidate.entry.language) for candidate in spatial
+    }
+    result = list(spatial)
+
+    def take(candidate: ScoredLexiconEntry) -> None:
+        if len(result) >= maximum:
+            return
+        key = (_normalize(candidate.word), candidate.entry.language)
+        if key in seen:
+            return
+        seen.add(key)
+        result.append(candidate)
+
+    for candidate in window_losing_converting_greedy_alts(
+        ordered, lexicon, extra_oov=extra_oov,
+    ):
+        take(candidate)
+    for candidate in ordered:
+        take(candidate)
+    return result[:maximum]
 
 
 def leftover_converting_greedy_neighbors(
@@ -2468,6 +2509,7 @@ def reserved_occupants(
     ablation_first_source_fill_sources: bool = False,
     converting_fill_loss_append: bool = False,
     leftover_greedy_alts_append: bool = False,
+    protect_frozen_ranks: bool = False,
 ) -> list[ScoredLexiconEntry]:
     """Fill-order reserved occupants not already in ``skip_keys``. No targets.
 
@@ -2505,6 +2547,8 @@ def reserved_occupants(
         )
     elif leftover_greedy_alts_append:
         return leftover_greedy_alts_append_fill(ordered, base_budget=reserved_budget)
+    elif protect_frozen_ranks:
+        return protect_frozen_converting_32_fill(ordered, lexicon, extra_oov=extra_oov)
     if prefer_converting_greedy_alts:
         converting_alt_keys = {
             (_normalize(candidate.word), candidate.entry.language)
@@ -2551,6 +2595,7 @@ def extra_reserved_occupant_keys(
     ablation_first_source_fill_sources: bool = False,
     converting_fill_loss_append: bool = False,
     leftover_greedy_alts_append: bool = False,
+    protect_frozen_ranks: bool = False,
 ) -> set[tuple[str, str]]:
     """Keys of fill-order occupants after the first reserved seat. No targets."""
     occupants = reserved_occupants(
@@ -2567,6 +2612,7 @@ def extra_reserved_occupant_keys(
         ablation_first_source_fill_sources=ablation_first_source_fill_sources,
         converting_fill_loss_append=converting_fill_loss_append,
         leftover_greedy_alts_append=leftover_greedy_alts_append,
+        protect_frozen_ranks=protect_frozen_ranks,
     )
     return {
         (_normalize(candidate.word), candidate.entry.language)
@@ -2728,6 +2774,7 @@ def publish_reserved_slots(
     ablation_first_source_fill_sources: bool = False,
     converting_fill_loss_append: bool = False,
     leftover_greedy_alts_append: bool = False,
+    protect_frozen_ranks: bool = False,
 ) -> list[ScoredLexiconEntry]:
     """Replace the worst ``reserved_budget`` of the ranked 31 with reserved spellings.
 
@@ -2735,10 +2782,16 @@ def publish_reserved_slots(
     publishes 31 words. Membership is this 31-list. Extra spellings always
     replace the lowest-fusion baseline candidates, matching the greedy-41 31/32
     proof; ranking of these 31 items cannot then drop the replacement.
+    Protect-frozen fills the 32-slot union while keeping lexicon fusion ranks
+    1-23; ranking still publishes [:31].
     """
     if reserved_budget < 0:
         raise SwipeEvaluationError("reserved budget must not be negative")
-    budget = min(reserved_budget, bound)
+    if protect_frozen_ranks:
+        bound = PUBLISHED_SLATE_BOUND
+        budget = min(reserved_budget, bound - FROZEN_PROTECTED_RANKS)
+    else:
+        budget = min(reserved_budget, bound)
     ordered_base = [
         candidate for candidate, _fusion in sorted(
             zip(base, static_fusion_values(base), strict=True),
@@ -2775,6 +2828,7 @@ def publish_reserved_slots(
         ablation_first_source_fill_sources=ablation_first_source_fill_sources,
         converting_fill_loss_append=converting_fill_loss_append,
         leftover_greedy_alts_append=leftover_greedy_alts_append,
+        protect_frozen_ranks=protect_frozen_ranks,
     )
     if converting_alt_expand or converting_fill_loss_append or leftover_greedy_alts_append:
         budget = min(bound, max(budget, len(occupants)))
@@ -3360,6 +3414,7 @@ def _evaluate(args: argparse.Namespace, slate_stream=None) -> dict[str, Any]:
             leftover_greedy_alts_append = bool(
                 getattr(args, "leftover_greedy_alts_append", False)
             )
+            protect_frozen_ranks = bool(getattr(args, "protect_frozen_ranks", False))
             published = publish_reserved_slots(
                 merged,
                 reserved,
@@ -3373,6 +3428,7 @@ def _evaluate(args: argparse.Namespace, slate_stream=None) -> dict[str, Any]:
                 ablation_first_source_fill_sources=ablation_first_source_fill_sources,
                 converting_fill_loss_append=converting_fill_loss_append,
                 leftover_greedy_alts_append=leftover_greedy_alts_append,
+                protect_frozen_ranks=protect_frozen_ranks,
             )
             skip_keys = {(_normalize(candidate.word), candidate.entry.language) for candidate in merged}
             extra_park_keys = extra_reserved_occupant_keys(
@@ -3389,6 +3445,7 @@ def _evaluate(args: argparse.Namespace, slate_stream=None) -> dict[str, Any]:
                 ablation_first_source_fill_sources=ablation_first_source_fill_sources,
                 converting_fill_loss_append=converting_fill_loss_append,
                 leftover_greedy_alts_append=leftover_greedy_alts_append,
+                protect_frozen_ranks=protect_frozen_ranks,
             )
             park_min_rank = int(getattr(args, "park_extra_reserved_min_rank", 0) or 0)
             published = lift_near_top3_frequency_free(
@@ -3410,7 +3467,7 @@ def _evaluate(args: argparse.Namespace, slate_stream=None) -> dict[str, Any]:
                 lexicon_reference=merged,
                 extra_park_keys=extra_park_keys,
                 park_min_rank=park_min_rank,
-            )
+            )[:PUBLISHED_RANKING_BOUND]
             competing = published
         else:
             competing = competing_slate(merged, reserved)
@@ -3749,6 +3806,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--converting-fill-loss-append",
         action="store_true",
         help="Diagnostic: append leftover converting greedy_alts after spatial occupants",
+    )
+    parser.add_argument(
+        "--protect-frozen-ranks",
+        action="store_true",
+        help="Diagnostic: 32-slot fill keeps lexicon fusion ranks 1-23; leftover converting alts occupy 24-32",
     )
     parser.add_argument(
         "--leftover-greedy-alts-append",

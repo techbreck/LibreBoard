@@ -469,6 +469,13 @@ frozenLost 2→5. 1k twice 878/929. Not promoted: bag membership, not converting
 published-31, and it stole frozen ranks 21–23. Evidence:
 `docs/models/evidence/swipe-published-31-alt-neighbors.json`.
 
+A 32-slot fill that keeps lexicon fusion ranks 1–23 and puts leftover converting
+greedy_alts in seats 24–32 (spatial extra_oov prefix held; leftover-greedy-alts-append
+off) recovers frozenLost 2→0 and holds 6k top-3 5,567. Published-31 is 5,772
+(alts 49→44); six unpublished occupied the 32-set then lost at ranked[:31]. 1k
+twice 878/929. Not promoted over the budget-11 keeper. Evidence:
+`docs/models/evidence/swipe-published-31-protect-frozen.json`.
+
 The 1,000-row ranking follow-up assigned frequency 1 to the 4,089 supplemental words. Adding them
 to both CTC and geometry lowered combined top-1/top-3 from 86.6%/92.7% to 85.0%/91.9%. Replaying
 only supplemented CTC with the original geometric candidates yielded 84.8%/92.3%. Both scoring

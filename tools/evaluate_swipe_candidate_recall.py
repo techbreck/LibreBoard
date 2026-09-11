@@ -398,6 +398,8 @@ def ranking_1000(args: argparse.Namespace) -> dict[str, Any]:
         argv.append("--converting-fill-loss-append")
     if args.leftover_greedy_alts_append:
         argv.append("--leftover-greedy-alts-append")
+    if args.protect_frozen_ranks:
+        argv.append("--protect-frozen-ranks")
     parsed = evaluator.parse_args(argv)
     report = evaluator.evaluate(parsed)
     report["diagnosticOnly"] = True
@@ -799,6 +801,7 @@ def recall_6000(args: argparse.Namespace) -> dict[str, Any]:
             ablation_first_source_fill_sources=bool(args.ablation_first_source_fill),
             converting_fill_loss_append=bool(args.converting_fill_loss_append),
             leftover_greedy_alts_append=bool(args.leftover_greedy_alts_append),
+            protect_frozen_ranks=bool(args.protect_frozen_ranks),
         )
         skip_keys = {
             (evaluator._normalize(item.word), item.entry.language) for item in merged
@@ -817,6 +820,7 @@ def recall_6000(args: argparse.Namespace) -> dict[str, Any]:
             ablation_first_source_fill_sources=bool(args.ablation_first_source_fill),
             converting_fill_loss_append=bool(args.converting_fill_loss_append),
             leftover_greedy_alts_append=bool(args.leftover_greedy_alts_append),
+            protect_frozen_ranks=bool(args.protect_frozen_ranks),
         )
         park_min_rank = int(args.park_extra_reserved_min_rank)
         published = evaluator.lift_near_top3_frequency_free(
@@ -832,7 +836,7 @@ def recall_6000(args: argparse.Namespace) -> dict[str, Any]:
         published = evaluator.unblend_greedy_alts_when_greedy_misses_top3(
             published, reserved, merged,
         )
-        if len(published) > evaluator.PUBLISHED_RANKING_BOUND:
+        if len(published) > evaluator.PUBLISHED_SLATE_BOUND:
             over_bound += 1
         added += min(reserved_budget, len(published))
         ranked = evaluator.published_ranking(
@@ -842,7 +846,7 @@ def recall_6000(args: argparse.Namespace) -> dict[str, Any]:
             extra_park_keys=extra_park_keys,
             park_min_rank=park_min_rank,
         )
-        ranked_list = [entry.word for entry in ranked]
+        ranked_list = [entry.word for entry in ranked][: evaluator.PUBLISHED_RANKING_BOUND]
         if row.target in {item.word for item in merged} and row.target not in ranked_list:
             lost_at_publish += 1
         finished = time.perf_counter_ns()
@@ -965,6 +969,7 @@ def recall_6000(args: argparse.Namespace) -> dict[str, Any]:
         "ablationFirstSourceFill": bool(args.ablation_first_source_fill),
         "convertingFillLossAppend": bool(args.converting_fill_loss_append),
         "leftoverGreedyAltsAppend": bool(args.leftover_greedy_alts_append),
+        "protectFrozenRanks": bool(args.protect_frozen_ranks),
         "published31Membership": True,
         "newHits": new_hits,
         "conversionOutsideTop3": _conversion_outside_report(outside_top3),
@@ -1192,6 +1197,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--leftover-greedy-alts-append",
         action="store_true",
         help="Append leftover greedy_alts after spatial occupants; do not park extras",
+    )
+    parser.add_argument(
+        "--protect-frozen-ranks",
+        action="store_true",
+        help="32-slot fill keeping lexicon fusion ranks 1-23; leftover converting alts occupy 24-32; count ranked[:31]",
     )
     return parser.parse_args(argv)
 
