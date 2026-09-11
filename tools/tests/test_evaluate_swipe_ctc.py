@@ -353,6 +353,7 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
             evaluator.protect_frozen_converting_32_fill,
             evaluator.length_changing_converting_extra_oov,
             evaluator.leftover_converting_after_extra_oov,
+            evaluator.tiny_nbest_truncated_leftover_fill,
             evaluator.drop_nonconverting_extra_for_published_31,
             evaluator.protected_lexicon_fusion_keys,
             evaluator.window_losing_converting_greedy_alts,
@@ -561,6 +562,64 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
         self.assertEqual([item.word for item in extra_oov], [item.word for item in spatial[1:8]])
         self.assertNotIn("target", inspect.signature(evaluator.converting_inlex_after_extra_oov).parameters)
         self.assertNotIn("target", inspect.signature(evaluator.reserved_occupants).parameters)
+
+    def test_tiny_nbest_truncated_holds_nbest_rank_le4_and_seats_truncated(self):
+        lexicon = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"lex{index}", "en", (index,), 50 - index), 2.0 - 0.05 * index,
+            )
+            for index in range(31)
+        ]
+        greedy = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (40,), 0), 8.0, frequency_free=True, source="greedy",
+        )
+        extra_alts = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"wa{index}", "en", (50 + index,), 0),
+                7.5 - 0.05 * index,
+                frequency_free=True,
+                source="greedy_alts",
+            )
+            for index in range(6)
+        ]
+        nbest4 = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caa", "en", (60,), 0),
+            7.2,
+            frequency_free=True,
+            source="nbest",
+            nbest_rank=4,
+        )
+        nbest8 = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cab", "en", (61,), 0),
+            7.4,
+            frequency_free=True,
+            source="nbest",
+            nbest_rank=8,
+        )
+        truncated = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cad", "en", (8,), 80), 3.5, frequency_free=False, source="truncated_ctc",
+        )
+        reserved = [greedy, *extra_alts, nbest4, nbest8, truncated]
+        occupants = evaluator.reserved_occupants(
+            reserved, lexicon, reserved_budget=11, tiny_nbest_truncated=True,
+        )
+        extra_oov_words = [item.word for item in occupants[1:8]]
+        self.assertIn("caa", extra_oov_words)
+        self.assertNotIn("cab", extra_oov_words)
+        for item in extra_alts:
+            self.assertIn(item.word, extra_oov_words)
+        leftover_words = [item.word for item in occupants[8:]]
+        self.assertEqual("cad", leftover_words[0])
+        self.assertIn("cab", leftover_words)
+        published = evaluator.publish_reserved_slots(
+            lexicon, reserved, reserved_budget=11, tiny_nbest_truncated=True,
+        )
+        self.assertEqual(31, len(published))
+        words = {item.word for item in published}
+        self.assertIn("caa", words)
+        self.assertIn("cad", words)
+        self.assertNotIn("target", inspect.signature(evaluator.tiny_nbest_truncated_leftover_fill).parameters)
+        self.assertNotIn("target", inspect.signature(evaluator.score_reserved_candidate).parameters)
 
     def test_leftover_converting_after_extra_oov_holds_extra_oov_and_seats_window_loser(self):
         lexicon = [

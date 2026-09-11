@@ -498,6 +498,14 @@ ranks 8–10). Published-31 5,775, neighbors 3→2, nbest 5/0 held, CFL 13, froz
 (oovCtcRank 7) and unique neighbor drops. Not promoted. Evidence:
 `docs/models/evidence/swipe-published-31-leftover-after.json`.
 
+Tiny extra n-best 16 (beam 16) plus truncated leftovers as leftover-seat
+displacement, extra_oov holding greedy_alts and n-best rank≤4: competing 5,823
+(≥ 5,822). Unique extra_oov 49/1 and n-best 5/0 held. Published-31 5,774,
+truncated_ctc unique 1, neighbors 3→0, frozenLost 2, top-3 5,567, p95 34.0 ms.
+1k twice 878/929. Competing reopens 5,822; published-31 does not. Not promoted
+over the budget-11 keeper. leftover-greedy-alts-append off. Evidence:
+`docs/models/evidence/swipe-published-31-tiny-nbest.json`.
+
 The 1,000-row ranking follow-up assigned frequency 1 to the 4,089 supplemental words. Adding them
 to both CTC and geometry lowered combined top-1/top-3 from 86.6%/92.7% to 85.0%/91.9%. Replaying
 only supplemented CTC with the original geometric candidates yielded 84.8%/92.3%. Both scoring

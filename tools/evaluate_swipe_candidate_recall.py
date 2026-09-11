@@ -404,6 +404,8 @@ def ranking_1000(args: argparse.Namespace) -> dict[str, Any]:
         argv.append("--length-changing-extra-oov")
     if args.leftover_converting_after_extra_oov:
         argv.append("--leftover-converting-after-extra-oov")
+    if args.tiny_nbest_truncated:
+        argv.append("--tiny-nbest-truncated")
     parsed = evaluator.parse_args(argv)
     report = evaluator.evaluate(parsed)
     report["diagnosticOnly"] = True
@@ -808,6 +810,7 @@ def recall_6000(args: argparse.Namespace) -> dict[str, Any]:
             protect_frozen_ranks=bool(args.protect_frozen_ranks),
             length_changing_extra_oov=bool(args.length_changing_extra_oov),
             leftover_converting_after_extra_oov_fill=bool(args.leftover_converting_after_extra_oov),
+            tiny_nbest_truncated=bool(args.tiny_nbest_truncated),
         )
         skip_keys = {
             (evaluator._normalize(item.word), item.entry.language) for item in merged
@@ -829,6 +832,7 @@ def recall_6000(args: argparse.Namespace) -> dict[str, Any]:
             protect_frozen_ranks=bool(args.protect_frozen_ranks),
             length_changing_extra_oov=bool(args.length_changing_extra_oov),
             leftover_converting_after_extra_oov_fill=bool(args.leftover_converting_after_extra_oov),
+            tiny_nbest_truncated=bool(args.tiny_nbest_truncated),
         )
         park_min_rank = int(args.park_extra_reserved_min_rank)
         published = evaluator.lift_near_top3_frequency_free(
@@ -981,6 +985,7 @@ def recall_6000(args: argparse.Namespace) -> dict[str, Any]:
         "protectFrozenRanks": bool(args.protect_frozen_ranks),
         "lengthChangingExtraOov": bool(args.length_changing_extra_oov),
         "leftoverConvertingAfterExtraOov": bool(args.leftover_converting_after_extra_oov),
+        "tinyNbestTruncated": bool(args.tiny_nbest_truncated),
         "published31Membership": True,
         "newHits": new_hits,
         "conversionOutsideTop3": _conversion_outside_report(outside_top3),
@@ -1223,6 +1228,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--leftover-converting-after-extra-oov",
         action="store_true",
         help="leftover seats after spatial extra_oov prefer leftover converting greedy_alts; hold extra_oov/n-best",
+    )
+    parser.add_argument(
+        "--tiny-nbest-truncated",
+        action="store_true",
+        help="extra_oov holds n-best rank<=4 and greedy_alts; leftover seats truncated then n-best 5+",
     )
     return parser.parse_args(argv)
 
