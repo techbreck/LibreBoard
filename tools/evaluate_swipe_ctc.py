@@ -121,6 +121,7 @@ class ScoredLexiconEntry:
     spatial: float
     frequency_free: bool = False
     source: str = ""
+    oov_map_blend: float = 0.0
 
     @property
     def word(self) -> str:
@@ -1383,6 +1384,14 @@ RESERVED_SOURCE_ORDER = (
 )
 PUBLISHED_SLATE_BOUND = 32
 PUBLISHED_RANKING_BOUND = 31
+EXTRA_OOV_FILL = 7
+ABLATION_EXTRA_SOURCES = (
+    "greedy_alts",
+    "neighbors",
+    "nbest",
+    "truncated_ctc",
+    "truncated_geometry",
+)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1461,6 +1470,16 @@ def collect_reserved_sources(
             return
         spellings.append(normalized)
 
+    decoder_spatial_by_key: dict[tuple[str, str], float] = {}
+    for slate in (ctc, geometric):
+        if not slate:
+            continue
+        for item, score in zip(slate, _z_normalize([entry.spatial for entry in slate]), strict=True):
+            key = (_normalize(item.word), item.entry.language)
+            previous = decoder_spatial_by_key.get(key)
+            if previous is None or score > previous:
+                decoder_spatial_by_key[key] = score
+
     def accept(candidate: ReservedCandidate | None, offensive: int) -> None:
         nonlocal rejected
         rejected += offensive
@@ -1470,13 +1489,23 @@ def collect_reserved_sources(
         bucket = per_source_keys[candidate.source]
         if key in bucket:
             return
+        if candidate.decoder_spatial is None and candidate.entry.frequency > 0:
+            spatial = decoder_spatial_by_key.get(key)
+            if spatial is not None:
+                candidate = dataclasses.replace(candidate, decoder_spatial=spatial)
         bucket.add(key)
         sources[candidate.source].append(candidate)
 
     greedy_emissions: set[tuple[int, ...]] = set()
+    greedy_spellings: list[str] = []
     empty_skip: set[tuple[str, str]] = set()
     for emissions, forward in greedy_unconstrained_emissions(logits):
         greedy_emissions.add(emissions)
+        spelling = emissions_to_spelling(emissions, layout)
+        if spelling is not None:
+            normalized = _normalize(spelling)
+            if normalized not in known_offensive:
+                greedy_spellings.append(normalized)
         note_spelling(emissions)
         candidate, offensive = _reserved_from_emissions(
             emissions, forward, "greedy", layout,
@@ -1503,17 +1532,8 @@ def collect_reserved_sources(
                 language=language, skip_keys=empty_skip, nbest_rank=rank,
             )
             accept(candidate, offensive)
-    decoder_spatial_by_key: dict[tuple[str, str], float] = {}
-    for slate in (ctc, geometric):
-        if not slate:
-            continue
-        for candidate, score in zip(slate, _z_normalize([item.spatial for item in slate]), strict=True):
-            key = (_normalize(candidate.word), candidate.entry.language)
-            previous = decoder_spatial_by_key.get(key)
-            if previous is None or score > previous:
-                decoder_spatial_by_key[key] = score
     if include_lexicon_neighbors:
-        for spelling in dict.fromkeys(spellings):
+        for spelling in dict.fromkeys(greedy_spellings):
             for entry in lexicon_neighbors(spelling, lexicon_by_word):
                 if _normalize(entry.word) in known_offensive:
                     rejected += 1
@@ -1674,7 +1694,11 @@ def score_reserved_candidate(
     else:
         spatial = median_lexicon_spatial(dest)
     return ScoredLexiconEntry(
-        candidate.entry, spatial, frequency_free=true_oov, source=candidate.source,
+        candidate.entry,
+        spatial,
+        frequency_free=true_oov,
+        source=candidate.source,
+        oov_map_blend=oov_map_blend if true_oov else 0.0,
     )
 
 
@@ -1682,25 +1706,15 @@ def _oov_blend_by_margin(
     candidates: Sequence[ReservedCandidate],
     base_blend: float,
 ) -> dict[int, float]:
-    """Unique-best unconstrained OOV gets more of the OLS map. No targets."""
+    """Greedy true OOV use the full OLS map; alts/n-best keep ``base_blend``. No targets.
+
+    Unclamped OLS on a second reserved alt stole converting greedy (21→15) and
+    frozen top-3 (5,566→5,551). Alts stay blended; they are not unique-best OLS.
+    """
     weights = {id(candidate): base_blend for candidate in candidates}
-    oov = [
-        candidate for candidate in candidates
-        if candidate.source in {"greedy", "greedy_alts", "nbest"}
-        and candidate.entry.frequency == 0
-        and candidate.forward is not None
-    ]
-    if not oov:
-        return weights
-    primary = [
-        candidate for candidate in oov if candidate.source in {"greedy", "greedy_alts"}
-    ] or oov
-    ranked = sorted(primary, key=lambda candidate: (-candidate.forward, _normalize(candidate.entry.word)))
-    gap = ranked[0].forward - ranked[1].forward if len(ranked) > 1 else 1.0
-    if gap >= 0.08:
-        weights[id(ranked[0])] = 0.0
-    elif gap >= 0.03:
-        weights[id(ranked[0])] = min(base_blend, 0.25)
+    for candidate in candidates:
+        if candidate.source == "greedy" and candidate.entry.frequency == 0:
+            weights[id(candidate)] = 0.0
     return weights
 
 
@@ -1836,6 +1850,94 @@ def reserved_fusion_values(
     return values
 
 
+def lexicon_top3_fusion_floor(lexicon: Sequence[ScoredLexiconEntry]) -> float:
+    """Third-best lexicon static fusion. No evaluation targets."""
+    values = sorted(static_fusion_values(lexicon), reverse=True)
+    if not values:
+        return 0.0
+    return values[min(2, len(values) - 1)]
+
+
+def reserved_gap_to_lexicon_top3(
+    candidate: ScoredLexiconEntry,
+    lexicon: Sequence[ScoredLexiconEntry],
+) -> float:
+    """Reserved fusion minus the lexicon top-3 floor. No evaluation targets."""
+    gaps = reserved_fusion_values(lexicon, [candidate])
+    if not gaps:
+        return 0.0
+    return gaps[0] - lexicon_top3_fusion_floor(lexicon)
+
+
+def ols_reserved_candidate(
+    candidate: ScoredLexiconEntry,
+    lexicon: Sequence[ScoredLexiconEntry],
+) -> ScoredLexiconEntry:
+    """Unblend a frequency-free reserved spatial onto the train-fit map. No targets."""
+    if not candidate.frequency_free:
+        return candidate
+    dest = [item.spatial for item in lexicon]
+    spatial = unblend_oov_spatial(candidate.spatial, dest, candidate.oov_map_blend)
+    return ScoredLexiconEntry(
+        candidate.entry, spatial, frequency_free=True, source=candidate.source,
+        oov_map_blend=0.0,
+    )
+
+
+def reserved_clears_lexicon_top3(
+    candidate: ScoredLexiconEntry,
+    lexicon: Sequence[ScoredLexiconEntry],
+) -> bool:
+    """True if OLS (frequency-free) or current fusion (in-lexicon) meets the floor.
+
+    Construction never reads evaluation targets. In-lexicon reserved use real
+    frequency; true OOV unblend to the train-fit map with no floor clamp.
+    """
+    scored = ols_reserved_candidate(candidate, lexicon) if candidate.frequency_free else candidate
+    return reserved_gap_to_lexicon_top3(scored, lexicon) >= 0.0
+
+
+def converting_best_reserved(
+    ordered: Sequence[ScoredLexiconEntry],
+    lexicon: Sequence[ScoredLexiconEntry],
+) -> ScoredLexiconEntry | None:
+    """Highest-OLS frequency-free occupant that clears the lexicon top-3 floor.
+
+    One converting OOV seat: pick the leftover alt/n-best when its OLS fusion
+    beats converting greedy, without a second OOV in top-3. No targets.
+    """
+    best: tuple[float, str, str, ScoredLexiconEntry] | None = None
+    for candidate in ordered:
+        if not candidate.frequency_free:
+            continue
+        ols = ols_reserved_candidate(candidate, lexicon)
+        gap = reserved_gap_to_lexicon_top3(ols, lexicon)
+        if gap < 0.0:
+            continue
+        fusion = reserved_fusion_values(lexicon, [ols])[0]
+        key = (
+            fusion,
+            1 if candidate.source == "greedy" else 0,
+            _normalize(candidate.word),
+            candidate.entry.language,
+            candidate,
+        )
+        if best is None or (key[0], key[1], key[2], key[3]) > (best[0], best[1], best[2], best[3]):
+            best = key
+    return None if best is None else best[4]
+
+
+def unblend_oov_spatial(spatial: float, dest: Sequence[float], blend: float) -> float:
+    """Undo a blend toward the 25th-percentile spatial. No evaluation targets."""
+    if blend <= 0.0 or not dest:
+        return spatial
+    weight = min(1.0, blend)
+    if weight >= 1.0:
+        return conservative_lexicon_spatial(dest)
+    conservative = conservative_lexicon_spatial(dest)
+    return (spatial - weight * conservative) / (1.0 - weight)
+
+
 def prioritize_reserved_candidates(
     reserved: Sequence[ScoredLexiconEntry],
 ) -> list[ScoredLexiconEntry]:
@@ -1866,7 +1968,7 @@ def prioritize_reserved_candidates(
     in_lexicon_ctc.sort(key=in_lexicon_key)
     other_in_lexicon.sort(key=in_lexicon_key)
     oov_ctc.sort(key=lambda candidate: (-candidate.spatial, _normalize(candidate.word)))
-    extra_oov = 7
+    extra_oov = EXTRA_OOV_FILL
     return [
         *greedy,
         *oov_ctc[:extra_oov],
@@ -1876,12 +1978,695 @@ def prioritize_reserved_candidates(
     ]
 
 
+def ablation_extra_fill(
+    reserved: Sequence[ScoredLexiconEntry],
+) -> list[ScoredLexiconEntry]:
+    """Greedy first, then round-robin extras in ablation source order. No targets.
+
+    Budget-8 spatial fill leaves neighbors at fill rank 9 and leftover greedy_alts
+    at 19+ because extra_oov[:7] saturates the 8-slot tail. Round-robin after
+    greedy seats unpublished neighbors/truncated without a second greedy slot.
+    """
+    greedy = [candidate for candidate in reserved if candidate.source == "greedy"]
+    buckets = {source: [] for source in ABLATION_EXTRA_SOURCES}
+    other: list[ScoredLexiconEntry] = []
+    for candidate in reserved:
+        if candidate.source == "greedy":
+            continue
+        if candidate.source in buckets:
+            buckets[candidate.source].append(candidate)
+        else:
+            other.append(candidate)
+    extras: list[ScoredLexiconEntry] = []
+    while any(buckets.values()):
+        for source in ABLATION_EXTRA_SOURCES:
+            if buckets[source]:
+                extras.append(buckets[source].pop(0))
+    return [*greedy, *extras, *other]
+
+
+def ablation_first_source_fill(
+    reserved: Sequence[ScoredLexiconEntry],
+    *,
+    extra_oov: int = EXTRA_OOV_FILL,
+) -> list[ScoredLexiconEntry]:
+    """Greedy, leftover converting greedy_alts, then neighbors/truncated, n-best last.
+
+    Ablation first-source of the 184: greedy 41, greedy_alts 69, n-best 33,
+    neighbors 36, truncated 5. Spatial extra_oov mixes n-best into the 7 extra
+    seats so neighbors publish 0. Length-changing greedy_alts (insert/delete)
+    are preferred over same-length substitutions so unpublished converting
+    recoveries can occupy extra_oov. One extra_oov seat is left for in-lex
+    neighbors when those sources are present. No evaluation targets.
+    """
+    greedy = [candidate for candidate in reserved if candidate.source == "greedy"]
+    greedy_len = len(_normalize(greedy[0].word)) if greedy else 0
+    alts = [
+        candidate for candidate in reserved
+        if candidate.source == "greedy_alts" and candidate.frequency_free
+    ]
+    alts.sort(
+        key=lambda candidate: (
+            0 if greedy_len and len(_normalize(candidate.word)) != greedy_len else 1,
+            -candidate.spatial,
+            _normalize(candidate.word),
+        )
+    )
+    neighbors = [
+        candidate for candidate in reserved
+        if candidate.source in {"neighbors", "truncated_ctc", "truncated_geometry"}
+    ]
+    neighbors.sort(
+        key=lambda candidate: (
+            -candidate.spatial, -candidate.entry.frequency, _normalize(candidate.word),
+        )
+    )
+    nbest = [
+        candidate for candidate in reserved
+        if candidate.source == "nbest" and candidate.frequency_free
+    ]
+    nbest.sort(key=lambda candidate: (-candidate.spatial, _normalize(candidate.word)))
+    alt_window = extra_oov - 1 if neighbors else extra_oov
+    alt_window = max(1, alt_window)
+    seen: set[tuple[str, str]] = set()
+    result: list[ScoredLexiconEntry] = []
+
+    def take(items: Sequence[ScoredLexiconEntry]) -> None:
+        for candidate in items:
+            key = (_normalize(candidate.word), candidate.entry.language)
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(candidate)
+
+    take(greedy)
+    take(alts[:alt_window])
+    take(neighbors)
+    take(nbest)
+    take(alts[alt_window:])
+    take(reserved)
+    return result
+
+
+def leftover_inlex_after_converting_oov(
+    ordered: Sequence[ScoredLexiconEntry],
+    lexicon: Sequence[ScoredLexiconEntry],
+    *,
+    extra_oov: int = EXTRA_OOV_FILL,
+) -> list[ScoredLexiconEntry]:
+    """Greedy, converting extra-OOV, leftover extra seats to in-lex neighbors/truncated.
+
+    extra_oov spatial OOV saturates budget 8, so neighbors publish 0. Converting
+    OOV keep up to extra_oov extra seats; unused extra_oov slots go to in-lex
+    ablation winners before non-converting n-best. No evaluation targets.
+    """
+    greedy = [candidate for candidate in ordered if candidate.source == "greedy"]
+    converting_oov = [
+        candidate for candidate in ordered
+        if candidate.source in {"greedy_alts", "nbest"}
+        and candidate.frequency_free
+        and reserved_clears_lexicon_top3(candidate, lexicon)
+    ]
+    converting_oov.sort(key=lambda candidate: (-candidate.spatial, _normalize(candidate.word)))
+    in_lex = [
+        candidate for candidate in ordered
+        if not candidate.frequency_free and candidate.source != "greedy"
+    ]
+    in_lex.sort(
+        key=lambda candidate: (
+            -candidate.spatial, -candidate.entry.frequency, _normalize(candidate.word),
+        )
+    )
+    seen: set[tuple[str, str]] = set()
+    result: list[ScoredLexiconEntry] = []
+
+    def take(items: Sequence[ScoredLexiconEntry]) -> None:
+        for candidate in items:
+            key = (_normalize(candidate.word), candidate.entry.language)
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(candidate)
+
+    take(greedy)
+    take(converting_oov[:extra_oov])
+    take(in_lex)
+    take(converting_oov[extra_oov:])
+    take(ordered)
+    return result
+
+
+def converting_leftover_extras(
+    ordered: Sequence[ScoredLexiconEntry],
+    lexicon: Sequence[ScoredLexiconEntry],
+) -> list[ScoredLexiconEntry]:
+    """Greedy first; leftover extra seats only converting frequency-free OOV. No targets.
+
+    Neighbors, truncated leftovers, and non-converting n-best did not enter top-3
+    on spatial budget-8 park. Extra seats keep OLS-clearing greedy_alts/nbest.
+    Unused extra budget stays lexicon tail.
+    """
+    greedy = [candidate for candidate in ordered if candidate.source == "greedy"]
+    converting = [
+        candidate for candidate in ordered
+        if candidate.source in {"greedy_alts", "nbest"}
+        and candidate.frequency_free
+        and reserved_clears_lexicon_top3(candidate, lexicon)
+    ]
+    converting.sort(key=lambda candidate: (-candidate.spatial, _normalize(candidate.word)))
+    seen: set[tuple[str, str]] = set()
+    result: list[ScoredLexiconEntry] = []
+
+    def take(items: Sequence[ScoredLexiconEntry]) -> None:
+        for candidate in items:
+            key = (_normalize(candidate.word), candidate.entry.language)
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(candidate)
+
+    take(greedy)
+    take(converting)
+    return result
+
+
+def converting_alt_expand_fill(
+    ordered: Sequence[ScoredLexiconEntry],
+    lexicon: Sequence[ScoredLexiconEntry],
+    *,
+    base_budget: int,
+    extra_oov: int = EXTRA_OOV_FILL,
+) -> list[ScoredLexiconEntry]:
+    """Fill extra reserved seats with converting greedy_alts without evicting frozen ranks.
+
+    Unconstrained expand (keep 3 lexicon ranks) frozeLost 7 / targetsLostAtPublish 10.
+    Frozen published-31 targets sit in ranks 1-23, so extra converting-alt seats cannot
+    grow past ``base_budget`` (8 reserved / 23 lexicon). Extra seats prefer converting
+    greedy_alts over non-converting n-best. OLS-if-clears and leftover in-lex are unused.
+    No evaluation targets.
+    """
+    greedy = [candidate for candidate in ordered if candidate.source == "greedy"]
+    converting = [
+        candidate for candidate in ordered
+        if candidate.source == "greedy_alts"
+        and candidate.frequency_free
+        and reserved_clears_lexicon_top3(candidate, lexicon)
+    ]
+    converting.sort(key=lambda candidate: (-candidate.spatial, _normalize(candidate.word)))
+    seen: set[tuple[str, str]] = set()
+    result: list[ScoredLexiconEntry] = []
+
+    def take(items: Sequence[ScoredLexiconEntry]) -> None:
+        for candidate in items:
+            key = (_normalize(candidate.word), candidate.entry.language)
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(candidate)
+
+    take(greedy)
+    take(converting)
+    take(ordered)
+    protected = PUBLISHED_RANKING_BOUND - base_budget
+    maximum = PUBLISHED_RANKING_BOUND - protected
+    return result[: min(base_budget, maximum)]
+
+
+CONVERTING_FILL_LOSS_MIN_LEXICON = 20
+
+
+def leftover_converting_greedy_neighbors(
+    ordered: Sequence[ScoredLexiconEntry],
+    lexicon: Sequence[ScoredLexiconEntry],
+    *,
+    skip_keys: Iterable[tuple[str, str]] = (),
+) -> list[ScoredLexiconEntry]:
+    """In-lexicon neighbors-of-greedy that clear the lexicon floor. No targets.
+
+    Neighbors are not frequency-free and are not parked, so a floor-clearing
+    neighbor can convert. Construction never CTC-forwards neighbors.
+    """
+    skipped = set(skip_keys)
+    leftover: list[ScoredLexiconEntry] = []
+    for candidate in ordered:
+        key = (_normalize(candidate.word), candidate.entry.language)
+        if key in skipped:
+            continue
+        if candidate.source != "neighbors" or candidate.frequency_free:
+            continue
+        if reserved_clears_lexicon_top3(candidate, lexicon):
+            leftover.append(candidate)
+    leftover.sort(
+        key=lambda candidate: (
+            -candidate.spatial, -candidate.entry.frequency, _normalize(candidate.word),
+        )
+    )
+    return leftover
+
+
+def converting_fill_loss_append_fill(
+    ordered: Sequence[ScoredLexiconEntry],
+    lexicon: Sequence[ScoredLexiconEntry],
+    *,
+    base_budget: int,
+    extra_oov: int = EXTRA_OOV_FILL,
+) -> list[ScoredLexiconEntry]:
+    """Window-losers take non-converting extra_oov seats, then leftover converting append.
+
+    Keep-20 (at most 11 reserved). ``prefer_window_losing_converting_alts`` reorders
+    the spatial prefix so converting extra_oov greedy_alts/nbest keep their seats
+    and only non-converting extra_oov (typically nbest) give way to window-losing
+    converting greedy_alts. Leftover converting neighbors-of-greedy, then leftover
+    converting greedy_alts, fill the keep-20 remainder. Extra FF stay parked. No
+    leftover-greedy-alts-append, unparking, CTC-forward neighbors, OLS-if-clears,
+    or floor clamp. Construction never reads evaluation targets.
+    """
+    reordered = prefer_window_losing_converting_alts(
+        ordered, lexicon, extra_oov=extra_oov,
+    )
+    spatial = list(reordered[: max(0, base_budget)])
+    seen = {
+        (_normalize(candidate.word), candidate.entry.language) for candidate in spatial
+    }
+    result = list(spatial)
+    maximum = PUBLISHED_RANKING_BOUND - CONVERTING_FILL_LOSS_MIN_LEXICON
+
+    def take(candidate: ScoredLexiconEntry) -> None:
+        if len(result) >= maximum:
+            return
+        key = (_normalize(candidate.word), candidate.entry.language)
+        if key in seen:
+            return
+        seen.add(key)
+        result.append(candidate)
+
+    for candidate in leftover_converting_greedy_neighbors(ordered, lexicon):
+        take(candidate)
+    for candidate in window_losing_converting_greedy_alts(
+        ordered, lexicon, extra_oov=extra_oov,
+    ):
+        take(candidate)
+    return result
+
+
+LEFTOVER_GREEDY_ALTS_MIN_LEXICON = 3
+
+
+def leftover_greedy_alts_append_fill(
+    ordered: Sequence[ScoredLexiconEntry],
+    *,
+    base_budget: int,
+) -> list[ScoredLexiconEntry]:
+    """Spatial occupants first, then leftover frequency-free greedy_alts. No targets.
+
+    Unpublished competing greedy_alts sit after extra_oov (fillRank > 11 on
+    keep-20). This keeps the spatial ``base_budget`` prefix (unique n-best
+    seats) and appends leftover greedy_alts up to 3 lexicon ranks so those
+    unpublished alts can occupy the published 31. Caller must not park extras
+    or floor-clamp if they should convert. No evaluation targets.
+    """
+    spatial = list(ordered[: max(0, base_budget)])
+    seen = {
+        (_normalize(candidate.word), candidate.entry.language) for candidate in spatial
+    }
+    leftover = [
+        candidate for candidate in ordered
+        if candidate.source == "greedy_alts"
+        and candidate.frequency_free
+        and (_normalize(candidate.word), candidate.entry.language) not in seen
+    ]
+    leftover.sort(key=lambda candidate: (-candidate.spatial, _normalize(candidate.word)))
+    maximum = PUBLISHED_RANKING_BOUND - LEFTOVER_GREEDY_ALTS_MIN_LEXICON
+    result = list(spatial)
+    for candidate in leftover:
+        if len(result) >= maximum:
+            break
+        key = (_normalize(candidate.word), candidate.entry.language)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(candidate)
+    return result
+
+
+def window_losing_converting_greedy_alts(
+    reserved: Sequence[ScoredLexiconEntry],
+    lexicon: Sequence[ScoredLexiconEntry],
+    *,
+    extra_oov: int = EXTRA_OOV_FILL,
+    skip_keys: Iterable[tuple[str, str]] = (),
+) -> list[ScoredLexiconEntry]:
+    """Converting greedy_alts with oovCtcRank > extra_oov. No targets."""
+    skipped = set(skip_keys)
+    ranks = reserved_oov_ctc_ranks(reserved)
+    losers: list[ScoredLexiconEntry] = []
+    for candidate in reserved:
+        key = (_normalize(candidate.word), candidate.entry.language)
+        if key in skipped:
+            continue
+        if candidate.source != "greedy_alts" or not candidate.frequency_free:
+            continue
+        rank = ranks.get(key)
+        if rank is None or rank <= extra_oov:
+            continue
+        if reserved_clears_lexicon_top3(candidate, lexicon):
+            losers.append(candidate)
+    losers.sort(
+        key=lambda candidate: (
+            -reserved_gap_to_lexicon_top3(
+                ols_reserved_candidate(candidate, lexicon), lexicon,
+            ),
+            -candidate.spatial,
+            _normalize(candidate.word),
+        )
+    )
+    return losers
+
+
+def prefer_window_losing_converting_alts(
+    ordered: Sequence[ScoredLexiconEntry],
+    lexicon: Sequence[ScoredLexiconEntry],
+    *,
+    extra_oov: int = EXTRA_OOV_FILL,
+) -> list[ScoredLexiconEntry]:
+    """Window-losing converting greedy_alts displace non-converting extras. No targets.
+
+    Converting extra_oov winners (greedy_alts or nbest with oovCtcRank <= extra_oov
+    that clear the lexicon floor) keep their extra seats. Non-converting extra_oov
+    (typically nbest) give those seats to converting greedy_alts that lost the
+    extra_oov window. Construction never reads evaluation targets.
+    """
+    greedy = [candidate for candidate in ordered if candidate.source == "greedy"]
+    extras = [candidate for candidate in ordered if candidate.source != "greedy"]
+    losers = window_losing_converting_greedy_alts(ordered, lexicon, extra_oov=extra_oov)
+    ranks = reserved_oov_ctc_ranks(ordered)
+    seen: set[tuple[str, str]] = set()
+    result: list[ScoredLexiconEntry] = []
+
+    def take(candidate: ScoredLexiconEntry) -> None:
+        key = (_normalize(candidate.word), candidate.entry.language)
+        if key in seen:
+            return
+        seen.add(key)
+        result.append(candidate)
+
+    for candidate in greedy:
+        take(candidate)
+    loser_index = 0
+    for candidate in extras:
+        key = (_normalize(candidate.word), candidate.entry.language)
+        extra_oov_winner = (ranks.get(key) or 0) <= extra_oov
+        converting_winner = (
+            candidate.source in {"greedy_alts", "nbest"}
+            and candidate.frequency_free
+            and extra_oov_winner
+            and reserved_clears_lexicon_top3(candidate, lexicon)
+        )
+        if converting_winner:
+            take(candidate)
+            continue
+        if loser_index < len(losers):
+            take(losers[loser_index])
+            loser_index += 1
+            continue
+        take(candidate)
+    for candidate in losers[loser_index:]:
+        take(candidate)
+    for candidate in extras:
+        take(candidate)
+    return result
+
+
+def reserved_occupants(
+    reserved: Sequence[ScoredLexiconEntry],
+    lexicon: Sequence[ScoredLexiconEntry],
+    *,
+    reserved_budget: int,
+    skip_keys: Iterable[tuple[str, str]] = (),
+    converting_best: bool = False,
+    prefer_converting_greedy_alts: bool = False,
+    ablation_extra_fill_sources: bool = False,
+    leftover_inlex_fill: bool = False,
+    converting_leftover_extras_fill: bool = False,
+    converting_alt_expand: bool = False,
+    ablation_first_source_fill_sources: bool = False,
+    converting_fill_loss_append: bool = False,
+    leftover_greedy_alts_append: bool = False,
+) -> list[ScoredLexiconEntry]:
+    """Fill-order reserved occupants not already in ``skip_keys``. No targets.
+
+    One seat stays greedy-first unless ``converting_best``. Extra seats stay
+    spatial unless leftover in-lex, converting leftover extras, converting-alt
+    expand, converting-fill-loss append, ``prefer_converting_greedy_alts``, or
+    ``ablation_extra_fill_sources``. A second converting OOV in top-3 stole
+    6k 5,567→5,551.
+    """
+    skipped = set(skip_keys)
+    ordered = [
+        candidate for candidate in prioritize_reserved_candidates(reserved)
+        if (_normalize(candidate.word), candidate.entry.language) not in skipped
+    ]
+    if reserved_budget <= 0:
+        return []
+    if ablation_extra_fill_sources:
+        ordered = ablation_extra_fill(ordered)
+    elif ablation_first_source_fill_sources:
+        ordered = ablation_first_source_fill(ordered)
+    elif leftover_inlex_fill:
+        ordered = leftover_inlex_after_converting_oov(ordered, lexicon)
+    elif converting_leftover_extras_fill:
+        ordered = converting_leftover_extras(ordered, lexicon)
+    elif converting_alt_expand:
+        return converting_alt_expand_fill(ordered, lexicon, base_budget=reserved_budget)
+    elif converting_fill_loss_append:
+        return converting_fill_loss_append_fill(
+            ordered, lexicon, base_budget=reserved_budget,
+        )
+    elif leftover_greedy_alts_append:
+        return leftover_greedy_alts_append_fill(ordered, base_budget=reserved_budget)
+    if prefer_converting_greedy_alts:
+        converting_alt_keys = {
+            (_normalize(candidate.word), candidate.entry.language)
+            for candidate in ordered
+            if candidate.source == "greedy_alts"
+            and candidate.frequency_free
+            and reserved_clears_lexicon_top3(candidate, lexicon)
+        }
+        greedy = [candidate for candidate in ordered if candidate.source == "greedy"]
+        converting_alts = [
+            candidate for candidate in ordered
+            if (_normalize(candidate.word), candidate.entry.language) in converting_alt_keys
+        ]
+        rest = [
+            candidate for candidate in ordered
+            if candidate.source != "greedy"
+            and (_normalize(candidate.word), candidate.entry.language) not in converting_alt_keys
+        ]
+        ordered = [*greedy, *converting_alts, *rest]
+    if converting_best:
+        best = converting_best_reserved(ordered, lexicon)
+        if best is not None:
+            best_key = (_normalize(best.word), best.entry.language)
+            rest = [
+                candidate for candidate in ordered
+                if (_normalize(candidate.word), candidate.entry.language) != best_key
+            ]
+            return [best, *rest][:reserved_budget]
+    return ordered[:reserved_budget]
+
+
+def extra_reserved_occupant_keys(
+    reserved: Sequence[ScoredLexiconEntry],
+    lexicon: Sequence[ScoredLexiconEntry],
+    *,
+    reserved_budget: int,
+    skip_keys: Iterable[tuple[str, str]] = (),
+    converting_best: bool = False,
+    prefer_converting_greedy_alts: bool = False,
+    ablation_extra_fill_sources: bool = False,
+    leftover_inlex_fill: bool = False,
+    converting_leftover_extras_fill: bool = False,
+    converting_alt_expand: bool = False,
+    ablation_first_source_fill_sources: bool = False,
+    converting_fill_loss_append: bool = False,
+    leftover_greedy_alts_append: bool = False,
+) -> set[tuple[str, str]]:
+    """Keys of fill-order occupants after the first reserved seat. No targets."""
+    occupants = reserved_occupants(
+        reserved,
+        lexicon,
+        reserved_budget=reserved_budget,
+        skip_keys=skip_keys,
+        converting_best=converting_best,
+        prefer_converting_greedy_alts=prefer_converting_greedy_alts,
+        ablation_extra_fill_sources=ablation_extra_fill_sources,
+        leftover_inlex_fill=leftover_inlex_fill,
+        converting_leftover_extras_fill=converting_leftover_extras_fill,
+        converting_alt_expand=converting_alt_expand,
+        ablation_first_source_fill_sources=ablation_first_source_fill_sources,
+        converting_fill_loss_append=converting_fill_loss_append,
+        leftover_greedy_alts_append=leftover_greedy_alts_append,
+    )
+    return {
+        (_normalize(candidate.word), candidate.entry.language)
+        for candidate in occupants[1:]
+    }
+
+
+def park_extra_reserved_below_rank(
+    ranked: Sequence[tuple[ScoredLexiconEntry, float]],
+    extra_keys: Iterable[tuple[str, str]],
+    *,
+    min_rank: int = 4,
+) -> list[tuple[ScoredLexiconEntry, float]]:
+    """Keep extra reserved occupants at ``min_rank`` or worse. No targets.
+
+    Hard 2-slot OLS stole frozen top-3 (5,567→5,557). Extra occupants still
+    publish in the 31; they cannot occupy top-3, including after other extras
+    are demoted. The greedy-first occupant is not in ``extra_keys`` and may
+    still convert.
+    """
+    if min_rank < 2 or not ranked:
+        return list(ranked)
+    extras = set(extra_keys)
+    if not extras:
+        return list(ranked)
+    rest: list[tuple[ScoredLexiconEntry, float]] = []
+    extra_items: list[tuple[ScoredLexiconEntry, float]] = []
+    for candidate, fusion in ranked:
+        key = (_normalize(candidate.word), candidate.entry.language)
+        if key in extras:
+            extra_items.append((candidate, fusion))
+        else:
+            rest.append((candidate, fusion))
+    if not extra_items:
+        return list(ranked)
+    keep_top = min_rank - 1
+    if len(rest) >= keep_top:
+        cap = rest[keep_top - 1][1] - 1e-6
+    elif rest:
+        cap = rest[-1][1] - 1e-6
+    else:
+        return list(ranked)
+    extra_items.sort(
+        key=lambda item: (
+            -item[1],
+            _normalize(item[0].word),
+            item[0].entry.language,
+        )
+    )
+    parked = list(rest)
+    for index, (candidate, fusion) in enumerate(extra_items):
+        parked.append((candidate, min(fusion, cap - 1e-6 * index)))
+    parked.sort(
+        key=lambda item: (
+            -item[1],
+            _normalize(item[0].word),
+            item[0].entry.language,
+        )
+    )
+    return parked
+
+
+def park_extra_frequency_free_to_protect_top3(
+    ranked: Sequence[tuple[ScoredLexiconEntry, float]],
+    extra_keys: Iterable[tuple[str, str]],
+    *,
+    min_rank: int = 4,
+) -> list[tuple[ScoredLexiconEntry, float]]:
+    """Park extra frequency-free occupants only to keep one FF in top-3. No targets.
+
+    Always parking extras forbade conversion of OLS-capable published alts.
+    Unparking every extra stole frozen top-3 (5,567→5,551). Unparking one
+    converting extra into rank 1 stole 5,566→5,556. Letting one converting
+    extra occupy ranks 2-3 stole 5,566→5,547 (below frozen 5,551). In-lexicon
+    extras are not frequency-free and are not parked. If greedy already occupies
+    top-3, extra FF stay at ``min_rank`` or worse. If greedy does not convert,
+    the best extra FF may enter top-3; additional extra FF are still parked.
+    """
+    if min_rank < 2 or not ranked:
+        return list(ranked)
+    extras = set(extra_keys)
+    if not extras:
+        return list(ranked)
+    top_n = min_rank - 1
+    top = ranked[:top_n]
+    extra_ff_keys = {
+        (_normalize(candidate.word), candidate.entry.language)
+        for candidate, _fusion in ranked
+        if candidate.frequency_free
+        and (_normalize(candidate.word), candidate.entry.language) in extras
+    }
+    if not extra_ff_keys:
+        return list(ranked)
+
+    def key_of(candidate: ScoredLexiconEntry) -> tuple[str, str]:
+        return (_normalize(candidate.word), candidate.entry.language)
+
+    without_extras = [
+        (candidate, fusion) for candidate, fusion in ranked
+        if key_of(candidate) not in extras
+    ]
+    primary_converts = any(
+        candidate.frequency_free and key_of(candidate) not in extras
+        for candidate, _fusion in without_extras[:top_n]
+    )
+    if primary_converts:
+        return park_extra_reserved_below_rank(ranked, extra_ff_keys, min_rank=min_rank)
+    extra_ff_in_top = [
+        candidate for candidate, _fusion in top
+        if candidate.frequency_free and key_of(candidate) in extras
+    ]
+    if len(extra_ff_in_top) <= 1:
+        return list(ranked)
+    keep = key_of(extra_ff_in_top[0])
+    return park_extra_reserved_below_rank(
+        ranked, extra_ff_keys - {keep}, min_rank=min_rank,
+    )
+
+
+def reserved_fill_ranks(
+    reserved: Sequence[ScoredLexiconEntry],
+) -> dict[tuple[str, str], int]:
+    """1-based order in ``prioritize_reserved_candidates``. No evaluation targets."""
+    ranks: dict[tuple[str, str], int] = {}
+    for index, candidate in enumerate(prioritize_reserved_candidates(reserved), 1):
+        key = (_normalize(candidate.word), candidate.entry.language)
+        ranks.setdefault(key, index)
+    return ranks
+
+
+def reserved_oov_ctc_ranks(
+    reserved: Sequence[ScoredLexiconEntry],
+) -> dict[tuple[str, str], int]:
+    """1-based spatial rank among frequency-free greedy_alts/nbest. No evaluation targets."""
+    oov_ctc = [
+        candidate for candidate in reserved
+        if candidate.source in {"greedy_alts", "nbest"} and candidate.frequency_free
+    ]
+    oov_ctc.sort(key=lambda candidate: (-candidate.spatial, _normalize(candidate.word)))
+    ranks: dict[tuple[str, str], int] = {}
+    for index, candidate in enumerate(oov_ctc, 1):
+        key = (_normalize(candidate.word), candidate.entry.language)
+        ranks.setdefault(key, index)
+    return ranks
+
+
 def publish_reserved_slots(
     base: Sequence[ScoredLexiconEntry],
     reserved: Sequence[ScoredLexiconEntry],
     *,
     reserved_budget: int,
     bound: int = PUBLISHED_RANKING_BOUND,
+    converting_best: bool = False,
+    prefer_converting_greedy_alts: bool = False,
+    ablation_extra_fill_sources: bool = False,
+    leftover_inlex_fill: bool = False,
+    converting_leftover_extras_fill: bool = False,
+    converting_alt_expand: bool = False,
+    ablation_first_source_fill_sources: bool = False,
+    converting_fill_loss_append: bool = False,
+    leftover_greedy_alts_append: bool = False,
 ) -> list[ScoredLexiconEntry]:
     """Replace the worst ``reserved_budget`` of the ranked 31 with reserved spellings.
 
@@ -1914,13 +2699,32 @@ def publish_reserved_slots(
         seen.add(key)
         return True
 
+    skip_keys = {(_normalize(candidate.word), candidate.entry.language) for candidate in ordered_base}
+    occupants = reserved_occupants(
+        reserved,
+        base,
+        reserved_budget=budget,
+        skip_keys=skip_keys,
+        converting_best=converting_best,
+        prefer_converting_greedy_alts=prefer_converting_greedy_alts,
+        ablation_extra_fill_sources=ablation_extra_fill_sources,
+        leftover_inlex_fill=leftover_inlex_fill,
+        converting_leftover_extras_fill=converting_leftover_extras_fill,
+        converting_alt_expand=converting_alt_expand,
+        ablation_first_source_fill_sources=ablation_first_source_fill_sources,
+        converting_fill_loss_append=converting_fill_loss_append,
+        leftover_greedy_alts_append=leftover_greedy_alts_append,
+    )
+    if converting_alt_expand or converting_fill_loss_append or leftover_greedy_alts_append:
+        budget = min(bound, max(budget, len(occupants)))
+        budget = len(occupants)
     keep = bound - budget
     for candidate in ordered_base:
         if len(published) >= keep:
             break
         take(candidate)
     added = 0
-    for candidate in prioritize_reserved_candidates(reserved):
+    for candidate in occupants:
         if added >= budget:
             break
         if take(candidate):
@@ -2022,15 +2826,12 @@ def rank_static_fusion_with_reserved(
     return [item[0].entry for item in ranked[:PUBLISHED_RANKING_BOUND]]
 
 
-def published_ranking(
+def published_ranking_scored(
     published: Sequence[ScoredLexiconEntry],
     reserved: Sequence[ScoredLexiconEntry],
     lexicon_reference: Sequence[ScoredLexiconEntry] | None = None,
-) -> list[LexiconEntry]:
-    """Reorder the published 31. Lexicon fusions stay those of ``lexicon_reference``.
-
-    The counted list is this result (length of ``published``, at most 31).
-    """
+) -> list[tuple[ScoredLexiconEntry, float]]:
+    """Published 31 with fusion values. Lexicon fusions stay those of ``lexicon_reference``."""
     reserved_keys = {(_normalize(candidate.word), candidate.entry.language) for candidate in reserved}
     if not published:
         return []
@@ -2039,7 +2840,12 @@ def published_ranking(
         if (_normalize(candidate.word), candidate.entry.language) not in reserved_keys
     ]
     if not reference:
-        return rank_static_fusion(published)[:PUBLISHED_RANKING_BOUND]
+        values = static_fusion_values(published)
+        ranked = sorted(
+            zip(published, values, strict=True),
+            key=lambda item: (-item[1], _normalize(item[0].word), item[0].entry.language),
+        )
+        return list(ranked)
     spatials = [candidate.spatial for candidate in reference]
     log_freq = [math.log1p(candidate.entry.frequency) for candidate in reference]
     reference_fusion = {
@@ -2059,7 +2865,7 @@ def published_ranking(
                 + 0.65 * _z_score_against(math.log1p(candidate.entry.frequency), log_freq)
             )
         scored.append((candidate, fusion))
-    ranked = sorted(
+    return sorted(
         scored,
         key=lambda item: (
             -item[1],
@@ -2067,7 +2873,93 @@ def published_ranking(
             item[0].entry.language,
         ),
     )
-    return [item[0].entry for item in ranked]
+
+
+def published_ranking(
+    published: Sequence[ScoredLexiconEntry],
+    reserved: Sequence[ScoredLexiconEntry],
+    lexicon_reference: Sequence[ScoredLexiconEntry] | None = None,
+    *,
+    extra_park_keys: Iterable[tuple[str, str]] = (),
+    park_min_rank: int = 0,
+) -> list[LexiconEntry]:
+    """Reorder the published 31. Lexicon fusions stay those of ``lexicon_reference``.
+
+    The counted list is this result (length of ``published``, at most 31).
+    Extra frequency-free occupants in ``extra_park_keys`` are demoted to
+    ``park_min_rank`` or worse only when another frequency-free occupant
+    already occupies top-3. In-lexicon extras are not parked.
+    """
+    scored = published_ranking_scored(published, reserved, lexicon_reference)
+    if park_min_rank >= 2 and extra_park_keys:
+        scored = park_extra_frequency_free_to_protect_top3(
+            scored, extra_park_keys, min_rank=park_min_rank,
+        )
+    return [item[0].entry for item in scored]
+
+
+def lift_near_top3_frequency_free(
+    published: Sequence[ScoredLexiconEntry],
+    reserved: Sequence[ScoredLexiconEntry],
+    lexicon_reference: Sequence[ScoredLexiconEntry],
+    *,
+    blend: float = 0.5,
+    optimism_offset: float = 0.0,
+    max_rank: int = 6,
+    extra_park_keys: Iterable[tuple[str, str]] = (),
+    park_min_rank: int = 0,
+) -> list[ScoredLexiconEntry]:
+    """Raise greedy frequency-free reserved in published ranks 4-max_rank. No targets.
+
+    Unblend when the OLS map was mixed toward the 25th percentile. Restore the
+    train-fit optimism offset when those greedy already sit next to top-3.
+    Ranks are the parked published list when extra-FF parking is on. Lifting
+    parked greedy_alts/nbest with the same map was 6k 5,770 / 5,565 (wash, −1
+    top-3). Extra FF stay parked. Default max_rank is 6; 4-10 unblend stole
+    1k 928→926 on the 11-slot path.
+    """
+    if not published or not lexicon_reference:
+        return list(published)
+    if blend <= 0.0 and optimism_offset <= 0.0:
+        return list(published)
+    dest = [candidate.spatial for candidate in lexicon_reference]
+    ranked = published_ranking_scored(published, reserved, lexicon_reference)
+    if park_min_rank >= 2 and extra_park_keys:
+        ranked = park_extra_frequency_free_to_protect_top3(
+            ranked, extra_park_keys, min_rank=park_min_rank,
+        )
+    high = max(4, max_rank)
+    lift_keys = {
+        (_normalize(candidate.word), candidate.entry.language)
+        for rank, (candidate, _fusion) in enumerate(ranked, 1)
+        if 4 <= rank <= high
+        and candidate.frequency_free
+        and candidate.source == "greedy"
+        and (candidate.oov_map_blend > 0.0 or optimism_offset > 0.0)
+    }
+    if not lift_keys:
+        return list(published)
+    lifted = []
+    for candidate in published:
+        key = (_normalize(candidate.word), candidate.entry.language)
+        if key not in lift_keys:
+            lifted.append(candidate)
+            continue
+        spatial = candidate.spatial
+        if blend > 0.0 and candidate.oov_map_blend > 0.0:
+            spatial = unblend_oov_spatial(spatial, dest, candidate.oov_map_blend or blend)
+        if optimism_offset > 0.0:
+            spatial += optimism_offset
+        lifted.append(
+            ScoredLexiconEntry(
+                candidate.entry,
+                spatial,
+                frequency_free=True,
+                source=candidate.source,
+                oov_map_blend=0.0,
+            )
+        )
+    return lifted
 
 
 def collect_oov_calibration_observations(
@@ -2333,8 +3225,75 @@ def _evaluate(args: argparse.Namespace, slate_stream=None) -> dict[str, Any]:
             known_offensive_rejected += rejected
             reserved_added += len(reserved)
         if reserved_budget > 0:
-            published = publish_reserved_slots(merged, reserved, reserved_budget=reserved_budget)
-            ctc_geometric_fusion = published_ranking(published, reserved, lexicon_reference=merged)
+            converting_best = bool(getattr(args, "converting_best_occupant", False))
+            prefer_converting_greedy_alts = bool(
+                getattr(args, "prefer_converting_greedy_alts", False)
+            )
+            ablation_extra_fill_sources = bool(
+                getattr(args, "ablation_extra_fill", False)
+            )
+            leftover_inlex_fill = bool(getattr(args, "leftover_inlex_fill", False))
+            converting_leftover_extras_fill = bool(
+                getattr(args, "converting_leftover_extras", False)
+            )
+            converting_alt_expand = bool(getattr(args, "converting_alt_expand", False))
+            ablation_first_source_fill_sources = bool(
+                getattr(args, "ablation_first_source_fill", False)
+            )
+            converting_fill_loss_append = bool(
+                getattr(args, "converting_fill_loss_append", False)
+            )
+            leftover_greedy_alts_append = bool(
+                getattr(args, "leftover_greedy_alts_append", False)
+            )
+            published = publish_reserved_slots(
+                merged,
+                reserved,
+                reserved_budget=reserved_budget,
+                converting_best=converting_best,
+                prefer_converting_greedy_alts=prefer_converting_greedy_alts,
+                ablation_extra_fill_sources=ablation_extra_fill_sources,
+                leftover_inlex_fill=leftover_inlex_fill,
+                converting_leftover_extras_fill=converting_leftover_extras_fill,
+                converting_alt_expand=converting_alt_expand,
+                ablation_first_source_fill_sources=ablation_first_source_fill_sources,
+                converting_fill_loss_append=converting_fill_loss_append,
+                leftover_greedy_alts_append=leftover_greedy_alts_append,
+            )
+            skip_keys = {(_normalize(candidate.word), candidate.entry.language) for candidate in merged}
+            extra_park_keys = extra_reserved_occupant_keys(
+                reserved,
+                merged,
+                reserved_budget=reserved_budget,
+                skip_keys=skip_keys,
+                converting_best=converting_best,
+                prefer_converting_greedy_alts=prefer_converting_greedy_alts,
+                ablation_extra_fill_sources=ablation_extra_fill_sources,
+                leftover_inlex_fill=leftover_inlex_fill,
+                converting_leftover_extras_fill=converting_leftover_extras_fill,
+                converting_alt_expand=converting_alt_expand,
+                ablation_first_source_fill_sources=ablation_first_source_fill_sources,
+                converting_fill_loss_append=converting_fill_loss_append,
+                leftover_greedy_alts_append=leftover_greedy_alts_append,
+            )
+            park_min_rank = int(getattr(args, "park_extra_reserved_min_rank", 0) or 0)
+            published = lift_near_top3_frequency_free(
+                published,
+                reserved,
+                merged,
+                blend=oov_map_blend,
+                optimism_offset=calibration.optimism_offset if calibration is not None else 0.0,
+                max_rank=int(getattr(args, "oov_lift_max_rank", 6) or 6),
+                extra_park_keys=extra_park_keys,
+                park_min_rank=park_min_rank,
+            )
+            ctc_geometric_fusion = published_ranking(
+                published,
+                reserved,
+                lexicon_reference=merged,
+                extra_park_keys=extra_park_keys,
+                park_min_rank=park_min_rank,
+            )
             competing = published
         else:
             competing = competing_slate(merged, reserved)
@@ -2621,6 +3580,63 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=float,
         default=0.0,
         help="Diagnostic: blend train-fit OOV spatial toward the 25th-percentile (0 = OLS map only)",
+    )
+    parser.add_argument(
+        "--oov-lift-max-rank",
+        type=int,
+        default=6,
+        help="Diagnostic: restore train optimism on greedy FF reserved through this published rank (default 6)",
+    )
+    parser.add_argument(
+        "--park-extra-reserved-min-rank",
+        type=int,
+        default=0,
+        help="Diagnostic: demote extra reserved occupants (after greedy-first) to this rank or worse (0 = off)",
+    )
+    parser.add_argument(
+        "--converting-best-occupant",
+        action="store_true",
+        help="Diagnostic: first reserved seat is the highest-OLS converting OOV, not greedy-first",
+    )
+    parser.add_argument(
+        "--prefer-converting-greedy-alts",
+        action="store_true",
+        help="Diagnostic: extra reserved seats prefer OLS-converting greedy_alts over non-converting n-best/alts",
+    )
+    parser.add_argument(
+        "--ablation-extra-fill",
+        action="store_true",
+        help="Diagnostic: extra reserved seats round-robin greedy_alts, neighbors, n-best, truncated",
+    )
+    parser.add_argument(
+        "--leftover-inlex-fill",
+        action="store_true",
+        help="Diagnostic: leftover extra_oov seats after converting OOV go to neighbors/truncated",
+    )
+    parser.add_argument(
+        "--converting-leftover-extras",
+        action="store_true",
+        help="Diagnostic: leftover extra seats only OLS-converting greedy_alts/nbest",
+    )
+    parser.add_argument(
+        "--converting-alt-expand",
+        action="store_true",
+        help="Diagnostic: expand extra converting greedy_alt seats when they overflow extra_oov",
+    )
+    parser.add_argument(
+        "--ablation-first-source-fill",
+        action="store_true",
+        help="Diagnostic: extra seats follow ablation first-source (length-changing greedy_alts, neighbors, n-best last)",
+    )
+    parser.add_argument(
+        "--converting-fill-loss-append",
+        action="store_true",
+        help="Diagnostic: append leftover converting greedy_alts after spatial occupants",
+    )
+    parser.add_argument(
+        "--leftover-greedy-alts-append",
+        action="store_true",
+        help="Diagnostic: append leftover greedy_alts after spatial occupants without extra parking",
     )
     return parser.parse_args(argv)
 

@@ -93,6 +93,187 @@ def metric_tables(rows: list[dict[str, Any]], present: list[bool], ranked: list[
     return decorate(membership), decorate(ranking)
 
 
+def _gap_stats(values: list[float]) -> dict[str, int | float]:
+    if not values:
+        return {"n": 0, "mean": 0.0, "p50": 0.0, "positive": 0, "within0.10": 0, "within0.25": 0, "within0.50": 0}
+    ordered = sorted(values)
+
+    def at(percentile: float) -> float:
+        index = min(len(ordered) - 1, max(0, round((len(ordered) - 1) * percentile)))
+        return ordered[index]
+
+    return {
+        "n": len(values),
+        "mean": sum(values) / len(values),
+        "p50": at(0.5),
+        "positive": sum(1 for value in values if value >= 0.0),
+        "within0.10": sum(1 for value in values if -0.10 <= value < 0.0),
+        "within0.25": sum(1 for value in values if -0.25 <= value < 0.0),
+        "within0.50": sum(1 for value in values if -0.50 <= value < 0.0),
+    }
+
+
+def _conversion_outside_report(outside: dict[str, Any]) -> dict[str, Any]:
+    """Summarize published-31 reserved recoveries that sit outside top-3. Labels only."""
+    ols = _gap_stats(outside["olsGaps"])
+    return {
+        "count": outside["count"],
+        "frequencyFree": outside["frequencyFree"],
+        "inLexicon": outside["inLexicon"],
+        "bySource": dict(outside["bySource"]),
+        "rank": dict(outside["rank"]),
+        "blendedGap": _gap_stats(outside["blendedGaps"]),
+        "olsGap": ols,
+        "inLexiconGap": _gap_stats(outside["inLexiconGaps"]),
+        "olsWouldEnterTop3": ols["positive"],
+        "limitations": [
+            "olsGap inverts oovMapBlend on frequency-free rows; unique-best rows already at OLS are overstated.",
+            "Gaps are reserved fusion minus the 3rd lexicon fusion. Construction does not read targets.",
+        ],
+    }
+
+
+def _empty_unpublished_competing() -> dict[str, Any]:
+    sources = {name: 0 for name in evaluator.RESERVED_SOURCE_ORDER}
+    sources["adaptive_merged"] = 0
+    return {
+        "count": 0,
+        "frozenLost": 0,
+        "newUnpublished": 0,
+        "inReserved": 0,
+        "inAdaptiveMergedOnly": 0,
+        "frequencyFree": 0,
+        "inLexicon": 0,
+        "firstSource": sources,
+        "fillRank": {"le11": 0, "gt11": 0, "none": 0},
+        "oovCtcRank": {"le7": 0, "gt7": 0, "none": 0},
+        "inPublishedBudget": 0,
+        "olsWouldEnterTop3": 0,
+        "convertingFillLoss": 0,
+        "blendedGaps": [],
+        "olsGaps": [],
+        "inLexiconGaps": [],
+        "rows": [],
+    }
+
+
+def _record_unpublished_competing(
+    unpublished: dict[str, Any],
+    *,
+    match: evaluator.ScoredLexiconEntry | None,
+    fill_rank: int | None,
+    oov_ctc_rank: int | None,
+    in_frozen: bool,
+    in_merged: bool,
+    reserved_budget: int,
+    extra_oov: int,
+    lexicon: list[evaluator.ScoredLexiconEntry],
+    blend: float,
+) -> None:
+    """Label a competing-but-unpublished row. Construction never calls this."""
+    unpublished["count"] += 1
+    unpublished["frozenLost"] += int(in_frozen)
+    unpublished["newUnpublished"] += int(not in_frozen)
+    if match is None:
+        unpublished["inAdaptiveMergedOnly"] += 1
+        unpublished["firstSource"]["adaptive_merged"] += 1
+        unpublished["fillRank"]["none"] += 1
+        unpublished["oovCtcRank"]["none"] += 1
+        unpublished["rows"].append({
+            "firstSource": "adaptive_merged",
+            "fillRank": None,
+            "oovCtcRank": None,
+            "inFrozen": in_frozen,
+            "inAdaptiveMerged": in_merged,
+            "frequencyFree": False,
+            "olsGap": None,
+            "blendedGap": None,
+        })
+        return
+    unpublished["inReserved"] += 1
+    source_name = match.source if match.source else "greedy"
+    if source_name in unpublished["firstSource"]:
+        unpublished["firstSource"][source_name] += 1
+    if fill_rank is None:
+        unpublished["fillRank"]["none"] += 1
+    elif fill_rank <= reserved_budget:
+        unpublished["fillRank"]["le11"] += 1
+        unpublished["inPublishedBudget"] += 1
+    else:
+        unpublished["fillRank"]["gt11"] += 1
+    if oov_ctc_rank is None:
+        unpublished["oovCtcRank"]["none"] += 1
+    elif oov_ctc_rank <= extra_oov:
+        unpublished["oovCtcRank"]["le7"] += 1
+    else:
+        unpublished["oovCtcRank"]["gt7"] += 1
+    dest = [item.spatial for item in lexicon]
+    blended_gap = evaluator.reserved_gap_to_lexicon_top3(match, lexicon)
+    ols_gap = None
+    if match.frequency_free:
+        unpublished["frequencyFree"] += 1
+        unpublished["blendedGaps"].append(blended_gap)
+        ols_spatial = evaluator.unblend_oov_spatial(match.spatial, dest, blend)
+        ols_candidate = evaluator.ScoredLexiconEntry(
+            match.entry, ols_spatial, frequency_free=True, source=match.source,
+        )
+        ols_gap = evaluator.reserved_gap_to_lexicon_top3(ols_candidate, lexicon)
+        unpublished["olsGaps"].append(ols_gap)
+        unpublished["olsWouldEnterTop3"] += int(ols_gap >= 0.0)
+        lost_on_fill = (fill_rank is not None and fill_rank > reserved_budget) or (
+            oov_ctc_rank is not None and oov_ctc_rank > extra_oov
+        )
+        if (
+            not in_frozen
+            and lost_on_fill
+            and ols_gap >= 0.0
+            and source_name in {"greedy", "greedy_alts"}
+        ):
+            unpublished["convertingFillLoss"] += 1
+    else:
+        unpublished["inLexicon"] += 1
+        unpublished["inLexiconGaps"].append(blended_gap)
+    unpublished["rows"].append({
+        "firstSource": source_name,
+        "fillRank": fill_rank,
+        "oovCtcRank": oov_ctc_rank,
+        "inFrozen": in_frozen,
+        "inAdaptiveMerged": in_merged,
+        "frequencyFree": match.frequency_free,
+        "olsGap": ols_gap,
+        "blendedGap": blended_gap,
+    })
+
+
+def _unpublished_competing_report(unpublished: dict[str, Any]) -> dict[str, Any]:
+    """Summarize competing-slate hits that missed ranked[:31]. Labels only."""
+    ols = _gap_stats(unpublished["olsGaps"])
+    return {
+        "count": unpublished["count"],
+        "frozenLost": unpublished["frozenLost"],
+        "newUnpublished": unpublished["newUnpublished"],
+        "inReserved": unpublished["inReserved"],
+        "inAdaptiveMergedOnly": unpublished["inAdaptiveMergedOnly"],
+        "frequencyFree": unpublished["frequencyFree"],
+        "inLexicon": unpublished["inLexicon"],
+        "firstSource": dict(unpublished["firstSource"]),
+        "fillRank": dict(unpublished["fillRank"]),
+        "oovCtcRank": dict(unpublished["oovCtcRank"]),
+        "inPublishedBudget": unpublished["inPublishedBudget"],
+        "olsWouldEnterTop3": unpublished["olsWouldEnterTop3"],
+        "convertingFillLoss": unpublished["convertingFillLoss"],
+        "blendedGap": _gap_stats(unpublished["blendedGaps"]),
+        "olsGap": ols,
+        "inLexiconGap": _gap_stats(unpublished["inLexiconGaps"]),
+        "rows": list(unpublished["rows"]),
+        "limitations": [
+            "Rows are competing-slate membership minus ranked[:31]. Construction does not read targets.",
+            "convertingFillLoss is new unpublished frequency-free greedy/alts that lose the 11-slot or extra_oov=7 window and whose unblended OLS fusion would clear lexicon top-3.",
+            "A non-zero convertingFillLoss is the only justification for a bounded extra_oov reorder.",
+        ],
+    }
+
+
 def open_session(export_report: pathlib.Path):
     export, model_path, export_hash = evaluator.load_export(export_report, development=False)
     numpy, onnxruntime, versions = evaluator._dependencies()
@@ -180,15 +361,36 @@ def ranking_1000(args: argparse.Namespace) -> dict[str, Any]:
         "--reserved-budget", str(args.reserved_budget),
         "--oov-beam-width", str(args.oov_beam_width),
         "--oov-map-blend", str(args.oov_map_blend),
+        "--oov-lift-max-rank", str(args.oov_lift_max_rank),
+        "--park-extra-reserved-min-rank", str(args.park_extra_reserved_min_rank),
     ]
+    allowed_sources = parse_reserved_sources(args.reserved_sources)
     if args.stratum_adaptive_merge:
         argv.append("--stratum-adaptive-merge")
-    if args.include_lexicon_neighbors:
+    if args.include_lexicon_neighbors or "neighbors" in allowed_sources:
         argv.append("--include-lexicon-neighbors")
-    if args.include_truncated_leftovers:
+    if args.include_truncated_leftovers or any(name.startswith("truncated_") for name in allowed_sources):
         argv.append("--include-truncated-leftovers")
     if args.oov_conservative_spatial:
         argv.append("--oov-conservative-spatial")
+    if args.converting_best_occupant:
+        argv.append("--converting-best-occupant")
+    if args.prefer_converting_greedy_alts:
+        argv.append("--prefer-converting-greedy-alts")
+    if args.ablation_extra_fill:
+        argv.append("--ablation-extra-fill")
+    if args.leftover_inlex_fill:
+        argv.append("--leftover-inlex-fill")
+    if args.converting_leftover_extras:
+        argv.append("--converting-leftover-extras")
+    if args.converting_alt_expand:
+        argv.append("--converting-alt-expand")
+    if args.ablation_first_source_fill:
+        argv.append("--ablation-first-source-fill")
+    if args.converting_fill_loss_append:
+        argv.append("--converting-fill-loss-append")
+    if args.leftover_greedy_alts_append:
+        argv.append("--leftover-greedy-alts-append")
     parsed = evaluator.parse_args(argv)
     report = evaluator.evaluate(parsed)
     report["diagnosticOnly"] = True
@@ -526,6 +728,18 @@ def recall_6000(args: argparse.Namespace) -> dict[str, Any]:
             name: {"present": 0, "top3": 0} for name in evaluator.RESERVED_SOURCE_ORDER
         },
     }
+    outside_top3 = {
+        "count": 0,
+        "frequencyFree": 0,
+        "inLexicon": 0,
+        "bySource": {name: 0 for name in evaluator.RESERVED_SOURCE_ORDER},
+        "rank": {"4-6": 0, "7-10": 0, "11-20": 0, "21-31": 0},
+        "blendedGaps": [],
+        "olsGaps": [],
+        "inLexiconGaps": [],
+    }
+    unpublished = _empty_unpublished_competing()
+    competing_present = 0
     for index, slate in enumerate(slates, 1):
         row = by_id[slate["id"]]
         if slate["sessionId"] != row.session_id or slate["target"] != row.target:
@@ -565,11 +779,59 @@ def recall_6000(args: argparse.Namespace) -> dict[str, Any]:
             nbest_rank_limit=nbest_limit if "nbest" in allowed_sources else None,
         )
         rejected += offensive
-        published = evaluator.publish_reserved_slots(merged, reserved, reserved_budget=reserved_budget)
+        published = evaluator.publish_reserved_slots(
+            merged,
+            reserved,
+            reserved_budget=reserved_budget,
+            converting_best=bool(args.converting_best_occupant),
+            prefer_converting_greedy_alts=bool(args.prefer_converting_greedy_alts),
+            ablation_extra_fill_sources=bool(args.ablation_extra_fill),
+            leftover_inlex_fill=bool(args.leftover_inlex_fill),
+            converting_leftover_extras_fill=bool(args.converting_leftover_extras),
+            converting_alt_expand=bool(args.converting_alt_expand),
+            ablation_first_source_fill_sources=bool(args.ablation_first_source_fill),
+            converting_fill_loss_append=bool(args.converting_fill_loss_append),
+            leftover_greedy_alts_append=bool(args.leftover_greedy_alts_append),
+        )
+        skip_keys = {
+            (evaluator._normalize(item.word), item.entry.language) for item in merged
+        }
+        extra_park_keys = evaluator.extra_reserved_occupant_keys(
+            reserved,
+            merged,
+            reserved_budget=reserved_budget,
+            skip_keys=skip_keys,
+            converting_best=bool(args.converting_best_occupant),
+            prefer_converting_greedy_alts=bool(args.prefer_converting_greedy_alts),
+            ablation_extra_fill_sources=bool(args.ablation_extra_fill),
+            leftover_inlex_fill=bool(args.leftover_inlex_fill),
+            converting_leftover_extras_fill=bool(args.converting_leftover_extras),
+            converting_alt_expand=bool(args.converting_alt_expand),
+            ablation_first_source_fill_sources=bool(args.ablation_first_source_fill),
+            converting_fill_loss_append=bool(args.converting_fill_loss_append),
+            leftover_greedy_alts_append=bool(args.leftover_greedy_alts_append),
+        )
+        park_min_rank = int(args.park_extra_reserved_min_rank)
+        published = evaluator.lift_near_top3_frequency_free(
+            published,
+            reserved,
+            merged,
+            blend=float(args.oov_map_blend),
+            optimism_offset=calibration.optimism_offset,
+            max_rank=int(args.oov_lift_max_rank),
+            extra_park_keys=extra_park_keys,
+            park_min_rank=park_min_rank,
+        )
         if len(published) > evaluator.PUBLISHED_RANKING_BOUND:
             over_bound += 1
         added += min(reserved_budget, len(published))
-        ranked = evaluator.published_ranking(published, reserved, lexicon_reference=merged)
+        ranked = evaluator.published_ranking(
+            published,
+            reserved,
+            lexicon_reference=merged,
+            extra_park_keys=extra_park_keys,
+            park_min_rank=park_min_rank,
+        )
         ranked_list = [entry.word for entry in ranked]
         if row.target in {item.word for item in merged} and row.target not in ranked_list:
             lost_at_publish += 1
@@ -580,6 +842,28 @@ def recall_6000(args: argparse.Namespace) -> dict[str, Any]:
         ranked_words.append(ranked_list)
         frozen_words = {item["word"] for item in slate["merged"]}
         baseline_present.append(row.target in frozen_words)
+        competing = evaluator.competing_slate(merged, reserved)
+        competing_words = {item.word for item in competing}
+        merged_words = {item.word for item in merged}
+        in_competing = row.target in competing_words
+        competing_present += int(in_competing)
+        if in_competing and row.target not in ranked_list:
+            match = next((item for item in reserved if item.word == row.target), None)
+            key = (evaluator._normalize(row.target), row.language)
+            fill_ranks = evaluator.reserved_fill_ranks(reserved)
+            oov_ranks = evaluator.reserved_oov_ctc_ranks(reserved)
+            _record_unpublished_competing(
+                unpublished,
+                match=match,
+                fill_rank=fill_ranks.get(key),
+                oov_ctc_rank=oov_ranks.get(key),
+                in_frozen=row.target in frozen_words,
+                in_merged=row.target in merged_words,
+                reserved_budget=reserved_budget,
+                extra_oov=evaluator.EXTRA_OOV_FILL,
+                lexicon=merged,
+                blend=float(args.oov_map_blend),
+            )
         if row.target in ranked_list and row.target not in frozen_words:
             match = next((item for item in published if item.word == row.target), None)
             in_top3 = row.target in ranked_list[:3]
@@ -593,6 +877,36 @@ def recall_6000(args: argparse.Namespace) -> dict[str, Any]:
             if source_name in new_hits["bySource"]:
                 new_hits["bySource"][source_name]["present"] += 1
                 new_hits["bySource"][source_name]["top3"] += int(in_top3)
+            if match is not None and not in_top3:
+                rank = ranked_list.index(row.target) + 1
+                gap = evaluator.reserved_gap_to_lexicon_top3(match, merged)
+                dest = [item.spatial for item in merged]
+                outside_top3["count"] += 1
+                if match.frequency_free:
+                    outside_top3["frequencyFree"] += 1
+                    outside_top3["blendedGaps"].append(gap)
+                    ols_spatial = evaluator.unblend_oov_spatial(
+                        match.spatial, dest, float(args.oov_map_blend),
+                    )
+                    ols_candidate = evaluator.ScoredLexiconEntry(
+                        match.entry, ols_spatial, frequency_free=True, source=match.source,
+                    )
+                    outside_top3["olsGaps"].append(
+                        evaluator.reserved_gap_to_lexicon_top3(ols_candidate, merged)
+                    )
+                else:
+                    outside_top3["inLexicon"] += 1
+                    outside_top3["inLexiconGaps"].append(gap)
+                if source_name in outside_top3["bySource"]:
+                    outside_top3["bySource"][source_name] += 1
+                if rank <= 6:
+                    outside_top3["rank"]["4-6"] += 1
+                elif rank <= 10:
+                    outside_top3["rank"]["7-10"] += 1
+                elif rank <= 20:
+                    outside_top3["rank"]["11-20"] += 1
+                else:
+                    outside_top3["rank"]["21-31"] += 1
         baseline_ranked.append(
             [entry.word for entry in evaluator.rank_static_fusion(scored(slate["merged"]))]
         )
@@ -626,11 +940,24 @@ def recall_6000(args: argparse.Namespace) -> dict[str, Any]:
         "stratumAdaptiveMerge": bool(args.stratum_adaptive_merge),
         "oovConservativeSpatial": bool(args.oov_conservative_spatial),
         "oovMapBlend": float(args.oov_map_blend),
+        "parkExtraReservedMinRank": int(args.park_extra_reserved_min_rank),
+        "convertingBestOccupant": bool(args.converting_best_occupant),
+        "preferConvertingGreedyAlts": bool(args.prefer_converting_greedy_alts),
+        "ablationExtraFill": bool(args.ablation_extra_fill),
+        "leftoverInlexFill": bool(args.leftover_inlex_fill),
+        "convertingLeftoverExtras": bool(args.converting_leftover_extras),
+        "convertingAltExpand": bool(args.converting_alt_expand),
+        "ablationFirstSourceFill": bool(args.ablation_first_source_fill),
+        "convertingFillLossAppend": bool(args.converting_fill_loss_append),
+        "leftoverGreedyAltsAppend": bool(args.leftover_greedy_alts_append),
         "published31Membership": True,
         "newHits": new_hits,
+        "conversionOutsideTop3": _conversion_outside_report(outside_top3),
+        "unpublishedCompeting": _unpublished_competing_report(unpublished),
         "counts": {
             "rows": 6000,
             "baselineTargetPresent": baseline_membership["overall"]["targetPresent"],
+            "competingTargetPresent": competing_present,
             "published31TargetPresent": membership["overall"]["targetPresent"],
             "newTargetsRecovered": membership["overall"]["targetPresent"] - baseline_membership["overall"]["targetPresent"],
             "targetsLostAtPublish": lost_at_publish,
@@ -785,20 +1112,72 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--oov-calibration", type=pathlib.Path)
     parser.add_argument("--slates", type=pathlib.Path, default=DEFAULT_SLATES)
     parser.add_argument("--calibration-rows", type=int, default=512)
-    parser.add_argument("--reserved-oov-nbest", type=int, default=16)
-    parser.add_argument("--oov-beam-width", type=int, default=16)
+    parser.add_argument("--reserved-oov-nbest", type=int, default=1)
+    parser.add_argument("--oov-beam-width", type=int, default=4)
     parser.add_argument("--beam-width", type=int, default=64)
     parser.add_argument("--stratum-adaptive-merge", action="store_true")
-    parser.add_argument("--reserved-budget", type=int, default=11)
+    parser.add_argument("--reserved-budget", type=int, default=1)
     parser.add_argument(
         "--reserved-sources",
         type=str,
-        default="greedy,greedy_alts,nbest,neighbors,truncated_ctc,truncated_geometry",
+        default="greedy,greedy_alts",
     )
     parser.add_argument("--include-lexicon-neighbors", action="store_true")
     parser.add_argument("--include-truncated-leftovers", action="store_true")
     parser.add_argument("--oov-conservative-spatial", action="store_true")
     parser.add_argument("--oov-map-blend", type=float, default=0.0)
+    parser.add_argument("--oov-lift-max-rank", type=int, default=6)
+    parser.add_argument(
+        "--park-extra-reserved-min-rank",
+        type=int,
+        default=0,
+        help="Demote extra reserved occupants after greedy-first to this rank or worse (0 = off)",
+    )
+    parser.add_argument(
+        "--converting-best-occupant",
+        action="store_true",
+        help="First reserved seat is the highest-OLS converting OOV, not greedy-first",
+    )
+    parser.add_argument(
+        "--prefer-converting-greedy-alts",
+        action="store_true",
+        help="Extra reserved seats prefer OLS-converting greedy_alts over non-converting n-best/alts",
+    )
+    parser.add_argument(
+        "--ablation-extra-fill",
+        action="store_true",
+        help="Extra reserved seats round-robin greedy_alts, neighbors, n-best, truncated",
+    )
+    parser.add_argument(
+        "--leftover-inlex-fill",
+        action="store_true",
+        help="Leftover extra_oov seats after converting OOV go to neighbors/truncated",
+    )
+    parser.add_argument(
+        "--converting-leftover-extras",
+        action="store_true",
+        help="Leftover extra seats only OLS-converting greedy_alts/nbest",
+    )
+    parser.add_argument(
+        "--converting-alt-expand",
+        action="store_true",
+        help="Expand extra converting greedy_alt seats when they overflow extra_oov",
+    )
+    parser.add_argument(
+        "--ablation-first-source-fill",
+        action="store_true",
+        help="Extra seats follow ablation first-source (length-changing greedy_alts, neighbors, n-best last)",
+    )
+    parser.add_argument(
+        "--converting-fill-loss-append",
+        action="store_true",
+        help="Append leftover converting greedy_alts after spatial occupants; keep unique n-best seats",
+    )
+    parser.add_argument(
+        "--leftover-greedy-alts-append",
+        action="store_true",
+        help="Append leftover greedy_alts after spatial occupants; do not park extras",
+    )
     return parser.parse_args(argv)
 
 

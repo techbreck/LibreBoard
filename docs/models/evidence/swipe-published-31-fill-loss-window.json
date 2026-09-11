@@ -1,0 +1,683 @@
+{
+  "ablationExtraFill": false,
+  "ablationFirstSourceFill": false,
+  "baselineCandidateRecall": {
+    "clean": {
+      "recall": 0.9496166484118291,
+      "rows": 4565,
+      "targetPresent": 4335
+    },
+    "double_letter": {
+      "recall": 0.8915470494417863,
+      "rows": 627,
+      "targetPresent": 559
+    },
+    "long": {
+      "recall": 0.8579465541490858,
+      "rows": 711,
+      "targetPresent": 610
+    },
+    "medium": {
+      "recall": 0.9317732366512854,
+      "rows": 3034,
+      "targetPresent": 2827
+    },
+    "overall": {
+      "recall": 0.945,
+      "rows": 6000,
+      "targetPresent": 5670
+    },
+    "return_trip": {
+      "recall": 0.8941520467836257,
+      "rows": 1710,
+      "targetPresent": 1529
+    },
+    "short": {
+      "recall": 0.9902439024390244,
+      "rows": 2255,
+      "targetPresent": 2233
+    },
+    "sloppy": {
+      "recall": 0.9303135888501742,
+      "rows": 1435,
+      "targetPresent": 1335
+    },
+    "very_sloppy": {
+      "recall": 0.9133333333333333,
+      "rows": 600,
+      "targetPresent": 548
+    }
+  },
+  "baselineRanking": {
+    "clean": {
+      "rows": 4565,
+      "top1": 4050,
+      "top1Accuracy": 0.8871851040525739,
+      "top3": 4283,
+      "top3Accuracy": 0.9382256297918948
+    },
+    "double_letter": {
+      "rows": 627,
+      "top1": 449,
+      "top1Accuracy": 0.7161084529505582,
+      "top3": 524,
+      "top3Accuracy": 0.835725677830941
+    },
+    "long": {
+      "rows": 711,
+      "top1": 562,
+      "top1Accuracy": 0.790436005625879,
+      "top3": 599,
+      "top3Accuracy": 0.8424753867791842
+    },
+    "medium": {
+      "rows": 3034,
+      "top1": 2507,
+      "top1Accuracy": 0.8263019116677653,
+      "top3": 2740,
+      "top3Accuracy": 0.9030982201713909
+    },
+    "overall": {
+      "rows": 6000,
+      "top1": 5200,
+      "top1Accuracy": 0.8666666666666667,
+      "top3": 5551,
+      "top3Accuracy": 0.9251666666666667
+    },
+    "return_trip": {
+      "rows": 1710,
+      "top1": 1398,
+      "top1Accuracy": 0.8175438596491228,
+      "top3": 1498,
+      "top3Accuracy": 0.8760233918128655
+    },
+    "short": {
+      "rows": 2255,
+      "top1": 2131,
+      "top1Accuracy": 0.9450110864745012,
+      "top3": 2212,
+      "top3Accuracy": 0.9809312638580931
+    },
+    "sloppy": {
+      "rows": 1435,
+      "top1": 1150,
+      "top1Accuracy": 0.8013937282229965,
+      "top3": 1268,
+      "top3Accuracy": 0.883623693379791
+    },
+    "very_sloppy": {
+      "rows": 600,
+      "top1": 457,
+      "top1Accuracy": 0.7616666666666667,
+      "top3": 506,
+      "top3Accuracy": 0.8433333333333334
+    }
+  },
+  "candidateRecall": {
+    "clean": {
+      "recall": 0.9677984665936473,
+      "rows": 4565,
+      "targetPresent": 4418
+    },
+    "double_letter": {
+      "recall": 0.9074960127591707,
+      "rows": 627,
+      "targetPresent": 569
+    },
+    "long": {
+      "recall": 0.8776371308016878,
+      "rows": 711,
+      "targetPresent": 624
+    },
+    "medium": {
+      "recall": 0.9581410678971655,
+      "rows": 3034,
+      "targetPresent": 2907
+    },
+    "overall": {
+      "recall": 0.9621666666666666,
+      "rows": 6000,
+      "targetPresent": 5773
+    },
+    "return_trip": {
+      "recall": 0.9210526315789473,
+      "rows": 1710,
+      "targetPresent": 1575
+    },
+    "short": {
+      "recall": 0.9942350332594235,
+      "rows": 2255,
+      "targetPresent": 2242
+    },
+    "sloppy": {
+      "recall": 0.9442508710801394,
+      "rows": 1435,
+      "targetPresent": 1355
+    },
+    "very_sloppy": {
+      "recall": 0.93,
+      "rows": 600,
+      "targetPresent": 558
+    }
+  },
+  "conversionMath": {
+    "historicalLexiconConversion": 0.979,
+    "measuredConversionOfPublished31": 0.9641434262948207,
+    "measuredPublished31TargetPresent": 5773,
+    "measuredTop3": 5566,
+    "newMembershipHits": 103,
+    "newTop3Hits": 15,
+    "note": "Historical 97.9% conversion applies to frozen lexicon membership, not new reserved recoveries.",
+    "phase0Top3Gate": 5700,
+    "published31NeededAtHistoricalConversion": 5822,
+    "returnTripMeasuredTop3": 1506,
+    "returnTripPublished31NeededAtHistoricalConversion": 1572,
+    "returnTripPublished31TargetPresent": 1575,
+    "returnTripTop3Gate": 1539
+  },
+  "conversionOutsideTop3": {
+    "blendedGap": {
+      "mean": -0.10482760652162473,
+      "n": 69,
+      "p50": -0.13417180014653773,
+      "positive": 28,
+      "within0.10": 5,
+      "within0.25": 13,
+      "within0.50": 24
+    },
+    "bySource": {
+      "greedy": 32,
+      "greedy_alts": 46,
+      "nbest": 5,
+      "neighbors": 0,
+      "truncated_ctc": 0,
+      "truncated_geometry": 0
+    },
+    "count": 83,
+    "frequencyFree": 69,
+    "inLexicon": 14,
+    "inLexiconGap": {
+      "mean": -1.7052126569662478,
+      "n": 14,
+      "p50": -1.8394140010415052,
+      "positive": 0,
+      "within0.10": 0,
+      "within0.25": 0,
+      "within0.50": 0
+    },
+    "limitations": [
+      "olsGap inverts oovMapBlend on frequency-free rows; unique-best rows already at OLS are overstated.",
+      "Gaps are reserved fusion minus the 3rd lexicon fusion. Construction does not read targets."
+    ],
+    "olsGap": {
+      "mean": -0.10482760652162473,
+      "n": 69,
+      "p50": -0.13417180014653773,
+      "positive": 28,
+      "within0.10": 5,
+      "within0.25": 13,
+      "within0.50": 24
+    },
+    "olsWouldEnterTop3": 28,
+    "rank": {
+      "11-20": 19,
+      "21-31": 10,
+      "4-6": 32,
+      "7-10": 22
+    }
+  },
+  "convertingAltExpand": false,
+  "convertingBestOccupant": false,
+  "convertingFillLossAppend": true,
+  "convertingLeftoverExtras": false,
+  "counts": {
+    "baselineTargetPresent": 5670,
+    "competingTargetPresent": 5795,
+    "knownOffensiveRejected": 84,
+    "newTargetsRecovered": 103,
+    "published31TargetPresent": 5773,
+    "publishedRankingBound": 31,
+    "publishedSlateBound": 32,
+    "recallCountsPublished31Only": true,
+    "reservedBudget": 8,
+    "rows": 6000,
+    "targetsLostAtPublish": 0
+  },
+  "diagnosticOnly": true,
+  "evaluatorSha256": "725e38d1181713ed31cade30f93ec6b6505a3daf9373d38960b202c25820d289",
+  "exportReportSha256": "04a261eef7db4adf18b7342fe4421326321a6cb674076b4915ff50c817d6342b",
+  "knownOffensiveSourceSha256": "e23644662586f6bcb76f4bc0d9e01e7f38efd89afb823fc2b2a4530177a97525",
+  "latencyMs": {
+    "hostDiagnosticOnly": true,
+    "inference": {
+      "p50": 2.036625,
+      "p95": 2.259584,
+      "p99": 2.593208
+    },
+    "reservedOov": {
+      "p50": 12.428459,
+      "p95": 22.924,
+      "p99": 26.329625
+    },
+    "reservedOovP95BudgetMs": 91.0,
+    "reservedOovP95WithinBudget": true
+  },
+  "leftoverGreedyAltsAppend": false,
+  "leftoverInlexFill": false,
+  "limitations": [
+    "Candidate recall is membership in rank_static_fusion_with_reserved(...)[:31], the published list.",
+    "Reserved merge displaces into the 32-slot bound and does not grow a bag ranking then truncates.",
+    "True OOV stay frequency-free and use the train-fit spatial map; in-lexicon reserved use real frequency.",
+    "This is published-31 membership, not a Phase 0 quality or top-3 win.",
+    "Production vocabulary, scoring, beam, and safety policy were not changed.",
+    "Host timing is not Android device latency."
+  ],
+  "modelSha256": "1301f0d076f526fe0b67f2ea86a38abc8448f6de54d2c7191c002dcd4d05d38c",
+  "newHits": {
+    "bySource": {
+      "greedy": {
+        "present": 55,
+        "top3": 23
+      },
+      "greedy_alts": {
+        "present": 47,
+        "top3": 1
+      },
+      "nbest": {
+        "present": 5,
+        "top3": 0
+      },
+      "neighbors": {
+        "present": 0,
+        "top3": 0
+      },
+      "truncated_ctc": {
+        "present": 0,
+        "top3": 0
+      },
+      "truncated_geometry": {
+        "present": 0,
+        "top3": 0
+      }
+    },
+    "frequencyFree": 93,
+    "inLexicon": 14,
+    "top3FrequencyFree": 24,
+    "top3InLexicon": 0
+  },
+  "oovBeamWidth": 4,
+  "oovCalibrationSha256": "9f295e5e6a09df38c51b55c0c199baf50954dd313498e395a4319f5a2bad496a",
+  "oovConservativeSpatial": false,
+  "oovMapBlend": 0.0,
+  "parkExtraReservedMinRank": 4,
+  "preferConvertingGreedyAlts": false,
+  "published31Membership": true,
+  "qualityClaim": false,
+  "ranking": {
+    "clean": {
+      "rows": 4565,
+      "top1": 4060,
+      "top1Accuracy": 0.8893756845564075,
+      "top3": 4295,
+      "top3Accuracy": 0.940854326396495
+    },
+    "double_letter": {
+      "rows": 627,
+      "top1": 456,
+      "top1Accuracy": 0.7272727272727273,
+      "top3": 519,
+      "top3Accuracy": 0.8277511961722488
+    },
+    "long": {
+      "rows": 711,
+      "top1": 563,
+      "top1Accuracy": 0.7918424753867792,
+      "top3": 596,
+      "top3Accuracy": 0.8382559774964838
+    },
+    "medium": {
+      "rows": 3034,
+      "top1": 2541,
+      "top1Accuracy": 0.8375082399472643,
+      "top3": 2756,
+      "top3Accuracy": 0.9083717864205669
+    },
+    "overall": {
+      "rows": 6000,
+      "top1": 5235,
+      "top1Accuracy": 0.8725,
+      "top3": 5566,
+      "top3Accuracy": 0.9276666666666666
+    },
+    "return_trip": {
+      "rows": 1710,
+      "top1": 1409,
+      "top1Accuracy": 0.8239766081871345,
+      "top3": 1506,
+      "top3Accuracy": 0.8807017543859649
+    },
+    "short": {
+      "rows": 2255,
+      "top1": 2131,
+      "top1Accuracy": 0.9450110864745012,
+      "top3": 2214,
+      "top3Accuracy": 0.9818181818181818
+    },
+    "sloppy": {
+      "rows": 1435,
+      "top1": 1175,
+      "top1Accuracy": 0.818815331010453,
+      "top3": 1271,
+      "top3Accuracy": 0.8857142857142857
+    },
+    "very_sloppy": {
+      "rows": 600,
+      "top1": 469,
+      "top1Accuracy": 0.7816666666666666,
+      "top3": 511,
+      "top3Accuracy": 0.8516666666666667
+    }
+  },
+  "releaseEligible": false,
+  "reservedBudget": 8,
+  "reservedOovNBest": 4,
+  "reservedSources": [
+    "greedy",
+    "greedy_alts",
+    "nbest"
+  ],
+  "schemaVersion": 1,
+  "slatesSha256": "fbbbcd0ef004f651a2e6c698ce6d834d4d2ca8d5f8195a6c9996e5ff2c61776e",
+  "slatesSha256After": "fbbbcd0ef004f651a2e6c698ce6d834d4d2ca8d5f8195a6c9996e5ff2c61776e",
+  "stratumAdaptiveMerge": true,
+  "toolSha256": "a52142589561454e3de2a2010ffd11cd4d125074e85a67941faa5a82130e25ac",
+  "toolchain": {
+    "numpy": "2.2.6",
+    "onnxruntime": "1.26.0"
+  },
+  "unpublishedCompeting": {
+    "blendedGap": {
+      "mean": -0.0907436749759166,
+      "n": 22,
+      "p50": 0.14044224955322293,
+      "positive": 13,
+      "within0.10": 1,
+      "within0.25": 3,
+      "within0.50": 5
+    },
+    "convertingFillLoss": 13,
+    "count": 22,
+    "fillRank": {
+      "gt11": 22,
+      "le11": 0,
+      "none": 0
+    },
+    "firstSource": {
+      "adaptive_merged": 0,
+      "greedy": 0,
+      "greedy_alts": 22,
+      "nbest": 0,
+      "neighbors": 0,
+      "truncated_ctc": 0,
+      "truncated_geometry": 0
+    },
+    "frequencyFree": 22,
+    "frozenLost": 0,
+    "inAdaptiveMergedOnly": 0,
+    "inLexicon": 0,
+    "inLexiconGap": {
+      "mean": 0.0,
+      "n": 0,
+      "p50": 0.0,
+      "positive": 0,
+      "within0.10": 0,
+      "within0.25": 0,
+      "within0.50": 0
+    },
+    "inPublishedBudget": 0,
+    "inReserved": 22,
+    "limitations": [
+      "Rows are competing-slate membership minus ranked[:31]. Construction does not read targets.",
+      "convertingFillLoss is new unpublished frequency-free greedy/alts that lose the 11-slot or extra_oov=7 window and whose unblended OLS fusion would clear lexicon top-3.",
+      "A non-zero convertingFillLoss is the only justification for a bounded extra_oov reorder."
+    ],
+    "newUnpublished": 22,
+    "olsGap": {
+      "mean": -0.0907436749759166,
+      "n": 22,
+      "p50": 0.14044224955322293,
+      "positive": 13,
+      "within0.10": 1,
+      "within0.25": 3,
+      "within0.50": 5
+    },
+    "olsWouldEnterTop3": 13,
+    "oovCtcRank": {
+      "gt7": 22,
+      "le7": 0,
+      "none": 0
+    },
+    "rows": [
+      {
+        "blendedGap": 0.7266797770159283,
+        "fillRank": 12,
+        "firstSource": "greedy_alts",
+        "frequencyFree": true,
+        "inAdaptiveMerged": false,
+        "inFrozen": false,
+        "olsGap": 0.7266797770159283,
+        "oovCtcRank": 11
+      },
+      {
+        "blendedGap": -0.26319830136063493,
+        "fillRank": 11,
+        "firstSource": "greedy_alts",
+        "frequencyFree": true,
+        "inAdaptiveMerged": false,
+        "inFrozen": false,
+        "olsGap": -0.26319830136063493,
+        "oovCtcRank": 10
+      },
+      {
+        "blendedGap": 0.6381005301942253,
+        "fillRank": 36,
+        "firstSource": "greedy_alts",
+        "frequencyFree": true,
+        "inAdaptiveMerged": false,
+        "inFrozen": false,
+        "olsGap": 0.6381005301942253,
+        "oovCtcRank": 35
+      },
+      {
+        "blendedGap": 0.14044224955322293,
+        "fillRank": 34,
+        "firstSource": "greedy_alts",
+        "frequencyFree": true,
+        "inAdaptiveMerged": false,
+        "inFrozen": false,
+        "olsGap": 0.14044224955322293,
+        "oovCtcRank": 33
+      },
+      {
+        "blendedGap": 0.9013123433906784,
+        "fillRank": 17,
+        "firstSource": "greedy_alts",
+        "frequencyFree": true,
+        "inAdaptiveMerged": false,
+        "inFrozen": false,
+        "olsGap": 0.9013123433906784,
+        "oovCtcRank": 16
+      },
+      {
+        "blendedGap": 0.04830723004933013,
+        "fillRank": 21,
+        "firstSource": "greedy_alts",
+        "frequencyFree": true,
+        "inAdaptiveMerged": false,
+        "inFrozen": false,
+        "olsGap": 0.04830723004933013,
+        "oovCtcRank": 20
+      },
+      {
+        "blendedGap": 0.29960346984190966,
+        "fillRank": 30,
+        "firstSource": "greedy_alts",
+        "frequencyFree": true,
+        "inAdaptiveMerged": false,
+        "inFrozen": false,
+        "olsGap": 0.29960346984190966,
+        "oovCtcRank": 29
+      },
+      {
+        "blendedGap": 0.49892825554364184,
+        "fillRank": 17,
+        "firstSource": "greedy_alts",
+        "frequencyFree": true,
+        "inAdaptiveMerged": false,
+        "inFrozen": false,
+        "olsGap": 0.49892825554364184,
+        "oovCtcRank": 16
+      },
+      {
+        "blendedGap": -1.0632041019822163,
+        "fillRank": 15,
+        "firstSource": "greedy_alts",
+        "frequencyFree": true,
+        "inAdaptiveMerged": false,
+        "inFrozen": false,
+        "olsGap": -1.0632041019822163,
+        "oovCtcRank": 14
+      },
+      {
+        "blendedGap": -0.21800931138015978,
+        "fillRank": 14,
+        "firstSource": "greedy_alts",
+        "frequencyFree": true,
+        "inAdaptiveMerged": false,
+        "inFrozen": false,
+        "olsGap": -0.21800931138015978,
+        "oovCtcRank": 13
+      },
+      {
+        "blendedGap": -0.44463351461364753,
+        "fillRank": 10,
+        "firstSource": "greedy_alts",
+        "frequencyFree": true,
+        "inAdaptiveMerged": false,
+        "inFrozen": false,
+        "olsGap": -0.44463351461364753,
+        "oovCtcRank": 9
+      },
+      {
+        "blendedGap": -1.5662264478420096,
+        "fillRank": 39,
+        "firstSource": "greedy_alts",
+        "frequencyFree": true,
+        "inAdaptiveMerged": false,
+        "inFrozen": false,
+        "olsGap": -1.5662264478420096,
+        "oovCtcRank": 39
+      },
+      {
+        "blendedGap": 0.18502397671364879,
+        "fillRank": 37,
+        "firstSource": "greedy_alts",
+        "frequencyFree": true,
+        "inAdaptiveMerged": false,
+        "inFrozen": false,
+        "olsGap": 0.18502397671364879,
+        "oovCtcRank": 36
+      },
+      {
+        "blendedGap": -0.12474482715497937,
+        "fillRank": 16,
+        "firstSource": "greedy_alts",
+        "frequencyFree": true,
+        "inAdaptiveMerged": false,
+        "inFrozen": false,
+        "olsGap": -0.12474482715497937,
+        "oovCtcRank": 15
+      },
+      {
+        "blendedGap": 0.39011563853434716,
+        "fillRank": 31,
+        "firstSource": "greedy_alts",
+        "frequencyFree": true,
+        "inAdaptiveMerged": false,
+        "inFrozen": false,
+        "olsGap": 0.39011563853434716,
+        "oovCtcRank": 30
+      },
+      {
+        "blendedGap": -0.08382671790327301,
+        "fillRank": 12,
+        "firstSource": "greedy_alts",
+        "frequencyFree": true,
+        "inAdaptiveMerged": false,
+        "inFrozen": false,
+        "olsGap": -0.08382671790327301,
+        "oovCtcRank": 11
+      },
+      {
+        "blendedGap": 1.04005576418926,
+        "fillRank": 18,
+        "firstSource": "greedy_alts",
+        "frequencyFree": true,
+        "inAdaptiveMerged": false,
+        "inFrozen": false,
+        "olsGap": 1.04005576418926,
+        "oovCtcRank": 17
+      },
+      {
+        "blendedGap": 0.6971363130172532,
+        "fillRank": 22,
+        "firstSource": "greedy_alts",
+        "frequencyFree": true,
+        "inAdaptiveMerged": false,
+        "inFrozen": false,
+        "olsGap": 0.6971363130172532,
+        "oovCtcRank": 21
+      },
+      {
+        "blendedGap": 0.33886824361503476,
+        "fillRank": 32,
+        "firstSource": "greedy_alts",
+        "frequencyFree": true,
+        "inAdaptiveMerged": false,
+        "inFrozen": false,
+        "olsGap": 0.33886824361503476,
+        "oovCtcRank": 31
+      },
+      {
+        "blendedGap": 1.769728030983255,
+        "fillRank": 29,
+        "firstSource": "greedy_alts",
+        "frequencyFree": true,
+        "inAdaptiveMerged": false,
+        "inFrozen": false,
+        "olsGap": 1.769728030983255,
+        "oovCtcRank": 28
+      },
+      {
+        "blendedGap": -2.937932807142012,
+        "fillRank": 19,
+        "firstSource": "greedy_alts",
+        "frequencyFree": true,
+        "inAdaptiveMerged": false,
+        "inFrozen": false,
+        "olsGap": -2.937932807142012,
+        "oovCtcRank": 18
+      },
+      {
+        "blendedGap": -2.968886642732968,
+        "fillRank": 23,
+        "firstSource": "greedy_alts",
+        "frequencyFree": true,
+        "inAdaptiveMerged": false,
+        "inFrozen": false,
+        "olsGap": -2.968886642732968,
+        "oovCtcRank": 22
+      }
+    ]
+  }
+}

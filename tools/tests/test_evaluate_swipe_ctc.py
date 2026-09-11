@@ -335,6 +335,25 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
             evaluator.score_reserved_sources,
             evaluator.publish_reserved_slots,
             evaluator.prioritize_reserved_candidates,
+            evaluator.reserved_occupants,
+            evaluator.reserved_clears_lexicon_top3,
+            evaluator.ols_reserved_candidate,
+            evaluator.converting_best_reserved,
+            evaluator.extra_reserved_occupant_keys,
+            evaluator.park_extra_reserved_below_rank,
+            evaluator.park_extra_frequency_free_to_protect_top3,
+            evaluator.ablation_extra_fill,
+            evaluator.leftover_inlex_after_converting_oov,
+            evaluator.converting_leftover_extras,
+            evaluator.converting_alt_expand_fill,
+            evaluator.ablation_first_source_fill,
+            evaluator.leftover_converting_greedy_neighbors,
+            evaluator.converting_fill_loss_append_fill,
+            evaluator.window_losing_converting_greedy_alts,
+            evaluator.prefer_window_losing_converting_alts,
+            evaluator.reserved_fill_ranks,
+            evaluator.reserved_oov_ctc_ranks,
+            evaluator.lift_near_top3_frequency_free,
             evaluator.split_published_slate,
             evaluator.published_ranking,
             evaluator.static_fusion_values,
@@ -505,6 +524,1226 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
         self.assertEqual("oovword", published[30].word)
         self.assertNotIn("target", inspect.signature(evaluator.publish_reserved_slots).parameters)
 
+    def test_lift_near_top3_unblends_only_rank_4_to_6_frequency_free(self):
+        lexicon = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("the", "en", (1,), 200), 3.0),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("and", "en", (1,), 180), 2.5),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("for", "en", (1,), 160), 2.2),
+        ] + [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry(f"w{index}", "en", (1,), 10), 0.5 - 0.05 * index)
+            for index in range(27)
+        ]
+        oov = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (2,), 0),
+            1.2,
+            frequency_free=True,
+            source="greedy",
+            oov_map_blend=0.5,
+        )
+        published = [*lexicon, oov]
+        before = [
+            entry.word
+            for entry in evaluator.published_ranking(published, [oov], lexicon_reference=lexicon)
+        ]
+        self.assertEqual(4, before.index("cax") + 1)
+        lifted = evaluator.lift_near_top3_frequency_free(published, [oov], lexicon, blend=0.5)
+        self.assertEqual({item.word for item in published}, {item.word for item in lifted})
+        lifted_cax = next(item for item in lifted if item.word == "cax")
+        self.assertGreater(lifted_cax.spatial, oov.spatial)
+        self.assertEqual(0.0, lifted_cax.oov_map_blend)
+        unique = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (2,), 0),
+            1.2,
+            frequency_free=True,
+            source="greedy",
+            oov_map_blend=0.0,
+        )
+        published_unique = [*lexicon, unique]
+        lifted_unique = evaluator.lift_near_top3_frequency_free(
+            published_unique, [unique], lexicon, blend=0.5,
+        )
+        self.assertEqual(1.2, lifted_unique[-1].spatial)
+        weak = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caz", "en", (3,), 0),
+            -4.0,
+            frequency_free=True,
+            source="greedy_alts",
+            oov_map_blend=0.5,
+        )
+        published_weak = [*lexicon, weak]
+        before_weak = [
+            entry.word
+            for entry in evaluator.published_ranking(published_weak, [weak], lexicon_reference=lexicon)
+        ]
+        lifted_weak = evaluator.lift_near_top3_frequency_free(published_weak, [weak], lexicon, blend=0.5)
+        after_weak = [
+            entry.word
+            for entry in evaluator.published_ranking(lifted_weak, [weak], lexicon_reference=lexicon)
+        ]
+        self.assertEqual(before_weak.index("caz"), after_weak.index("caz"))
+        self.assertNotIn("caz", after_weak[:3])
+        self.assertNotIn("target", inspect.signature(evaluator.lift_near_top3_frequency_free).parameters)
+        self.assertNotIn("target", inspect.signature(evaluator.published_ranking_scored).parameters)
+        offset = 0.12
+        unique_offset = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (2,), 0),
+            1.2,
+            frequency_free=True,
+            source="greedy",
+            oov_map_blend=0.0,
+        )
+        published_offset = [*lexicon, unique_offset]
+        lifted_offset = evaluator.lift_near_top3_frequency_free(
+            published_offset, [unique_offset], lexicon, blend=0.0, optimism_offset=offset,
+        )
+        lifted_offset_cax = next(item for item in lifted_offset if item.word == "cax")
+        self.assertAlmostEqual(1.2 + offset, lifted_offset_cax.spatial)
+        far = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caz", "en", (3,), 0),
+            -4.0,
+            frequency_free=True,
+            source="greedy",
+            oov_map_blend=0.0,
+        )
+        published_far = [*lexicon, far]
+        lifted_far = evaluator.lift_near_top3_frequency_free(
+            published_far, [far], lexicon, blend=0.0, optimism_offset=offset,
+        )
+        self.assertEqual(-4.0, next(item for item in lifted_far if item.word == "caz").spatial)
+        alt_near = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cay", "en", (4,), 0),
+            1.2,
+            frequency_free=True,
+            source="greedy_alts",
+            oov_map_blend=0.0,
+        )
+        published_alt = [*lexicon, alt_near]
+        lifted_alt = evaluator.lift_near_top3_frequency_free(
+            published_alt, [alt_near], lexicon, blend=0.0, optimism_offset=offset,
+        )
+        self.assertEqual(1.2, next(item for item in lifted_alt if item.word == "cay").spatial)
+        mid = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caa", "en", (5,), 0),
+            0.2,
+            frequency_free=True,
+            source="greedy",
+            oov_map_blend=0.0,
+        )
+        published_mid = [*lexicon, mid]
+        before_mid = [
+            entry.word
+            for entry in evaluator.published_ranking(published_mid, [mid], lexicon_reference=lexicon)
+        ]
+        rank_mid = before_mid.index("caa") + 1
+        self.assertGreaterEqual(rank_mid, 7)
+        self.assertLessEqual(rank_mid, 10)
+        no_expand = evaluator.lift_near_top3_frequency_free(
+            published_mid, [mid], lexicon, blend=0.0, optimism_offset=offset, max_rank=6,
+        )
+        self.assertEqual(0.2, next(item for item in no_expand if item.word == "caa").spatial)
+        expanded = evaluator.lift_near_top3_frequency_free(
+            published_mid, [mid], lexicon, blend=0.0, optimism_offset=offset, max_rank=10,
+        )
+        self.assertAlmostEqual(0.2 + offset, next(item for item in expanded if item.word == "caa").spatial)
+        self.assertNotIn("target", inspect.signature(evaluator.lift_near_top3_frequency_free).parameters)
+        extra = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("ex0", "en", (10,), 0),
+            8.0,
+            frequency_free=True,
+            source="greedy_alts",
+        )
+        parked_greedy = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (2,), 0),
+            1.2,
+            frequency_free=True,
+            source="greedy",
+            oov_map_blend=0.0,
+        )
+        published_park = [*lexicon, parked_greedy, extra]
+        extra_keys = {("ex0", "en")}
+        parked = [
+            entry.word
+            for entry in evaluator.published_ranking(
+                published_park,
+                [parked_greedy, extra],
+                lexicon_reference=lexicon,
+                extra_park_keys=extra_keys,
+                park_min_rank=4,
+            )
+        ]
+        self.assertGreaterEqual(parked.index("cax") + 1, 4)
+        self.assertLessEqual(parked.index("cax") + 1, 6)
+        parked_lift = evaluator.lift_near_top3_frequency_free(
+            published_park,
+            [parked_greedy, extra],
+            lexicon,
+            blend=0.0,
+            optimism_offset=offset,
+            extra_park_keys=extra_keys,
+            park_min_rank=4,
+        )
+        self.assertAlmostEqual(
+            1.2 + offset, next(item for item in parked_lift if item.word == "cax").spatial,
+        )
+        self.assertEqual(8.0, next(item for item in parked_lift if item.word == "ex0").spatial)
+        self.assertNotIn("target", inspect.signature(evaluator.lift_near_top3_frequency_free).parameters)
+
+    def test_reserved_fill_ranks_order_greedy_then_spatial_oov(self):
+        greedy = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (2,), 0), -0.5, frequency_free=True, source="greedy",
+        )
+        strong_nbest = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caa", "en", (4,), 0), -0.1, frequency_free=True, source="nbest",
+        )
+        extra_alts = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"ca{index}", "en", (5,), 0),
+                -0.2 - 0.05 * index,
+                frequency_free=True,
+                source="greedy_alts",
+            )
+            for index in range(6)
+        ]
+        weak_alt = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caz", "en", (3,), 0), -2.0, frequency_free=True, source="greedy_alts",
+        )
+        neighbors = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"n{index}", "en", (1,), 50 - index),
+                0.1,
+                frequency_free=False,
+                source="neighbors",
+            )
+            for index in range(4)
+        ]
+        reserved = [weak_alt, *neighbors, strong_nbest, greedy, *extra_alts]
+        fill = evaluator.reserved_fill_ranks(reserved)
+        oov = evaluator.reserved_oov_ctc_ranks(reserved)
+        self.assertEqual(1, fill[("cax", "en")])
+        self.assertEqual(2, fill[("caa", "en")])
+        self.assertGreater(fill[("caz", "en")], 11)
+        self.assertEqual(1, oov[("caa", "en")])
+        self.assertEqual(8, oov[("caz", "en")])
+        self.assertNotIn(("cax", "en"), oov)
+        self.assertNotIn("target", inspect.signature(evaluator.reserved_fill_ranks).parameters)
+        self.assertNotIn("target", inspect.signature(evaluator.reserved_oov_ctc_ranks).parameters)
+        self.assertNotIn("target", inspect.signature(evaluator.prioritize_reserved_candidates).parameters)
+
+    def test_reserved_occupants_skip_lexicon_duplicates_and_keep_greedy_first(self):
+        lexicon = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("the", "en", (1,), 200), 3.0),
+        ]
+        greedy = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (2,), 0), -4.0, frequency_free=True, source="greedy",
+        )
+        alt = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caz", "en", (3,), 0), 8.0, frequency_free=True, source="greedy_alts",
+        )
+        duplicate = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("the", "en", (1,), 200), 9.0, frequency_free=False, source="greedy",
+        )
+        occupants = evaluator.reserved_occupants(
+            [duplicate, greedy, alt], lexicon, reserved_budget=1, skip_keys={("the", "en")},
+        )
+        self.assertEqual(["cax"], [item.word for item in occupants])
+        two = evaluator.reserved_occupants(
+            [greedy, alt], lexicon, reserved_budget=2, skip_keys=(),
+        )
+        self.assertEqual(["cax", "caz"], [item.word for item in two])
+        self.assertNotIn("target", inspect.signature(evaluator.reserved_occupants).parameters)
+
+    def test_ablation_extra_fill_seats_neighbors_before_extra_oov_tail(self):
+        lexicon = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cat", "en", (1,), 50), 2.0),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("car", "en", (2,), 40), 1.5),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("can", "en", (3,), 30), 1.0),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cab", "en", (4,), 20), 0.5),
+        ]
+        greedy = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (5,), 0), 8.0, frequency_free=True, source="greedy",
+        )
+        louder_nbest = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"n{index}", "en", (7 + index,), 0),
+                9.5 - 0.1 * index,
+                frequency_free=True,
+                source="nbest",
+            )
+            for index in range(7)
+        ]
+        neighbor = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cad", "en", (8,), 80), 0.2, frequency_free=False, source="neighbors",
+        )
+        trunc = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cae", "en", (9,), 40), 0.1, frequency_free=False, source="truncated_geometry",
+        )
+        alt = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caz", "en", (6,), 0), 7.5, frequency_free=True, source="greedy_alts",
+        )
+        reserved = [greedy, alt, neighbor, trunc, *louder_nbest]
+        spatial = evaluator.reserved_occupants(reserved, lexicon, reserved_budget=8)
+        self.assertEqual("cax", spatial[0].word)
+        self.assertNotIn("cad", [item.word for item in spatial])
+        ablation = evaluator.reserved_occupants(
+            reserved, lexicon, reserved_budget=8, ablation_extra_fill_sources=True,
+        )
+        words = [item.word for item in ablation]
+        self.assertEqual("cax", words[0])
+        self.assertIn("cad", words)
+        self.assertIn("cae", words)
+        self.assertIn("caz", words)
+        extras = evaluator.extra_reserved_occupant_keys(
+            reserved, lexicon, reserved_budget=8, ablation_extra_fill_sources=True,
+        )
+        self.assertIn(("cad", "en"), extras)
+        published = evaluator.publish_reserved_slots(
+            lexicon, reserved, reserved_budget=8, ablation_extra_fill_sources=True,
+        )
+        ranked = [
+            entry.word
+            for entry in evaluator.published_ranking(
+                published,
+                reserved,
+                lexicon_reference=lexicon,
+                extra_park_keys=extras,
+                park_min_rank=4,
+            )
+        ]
+        self.assertEqual("cax", ranked[0])
+        self.assertIn("cad", ranked)
+        self.assertNotIn("caz", ranked[:3])
+        self.assertNotIn("target", inspect.signature(evaluator.ablation_extra_fill).parameters)
+
+    def test_prefer_converting_greedy_alts_displace_nonconverting_extras(self):
+        lexicon = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cat", "en", (1,), 50), 2.0),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("car", "en", (2,), 40), 1.5),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("can", "en", (3,), 30), 1.0),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cab", "en", (4,), 20), 0.5),
+        ]
+        greedy = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (5,), 0), 8.0, frequency_free=True, source="greedy",
+        )
+        converting_alt = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caz", "en", (6,), 0), 4.0, frequency_free=True, source="greedy_alts",
+        )
+        louder_nbest = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"n{index}", "en", (7 + index,), 0),
+                9.5 - 0.05 * index,
+                frequency_free=True,
+                source="nbest",
+            )
+            for index in range(8)
+        ]
+        reserved = [greedy, converting_alt, *louder_nbest]
+        self.assertGreater(evaluator.reserved_oov_ctc_ranks(reserved)[("caz", "en")], 7)
+        spatial = evaluator.reserved_occupants(
+            reserved, lexicon, reserved_budget=2,
+        )
+        self.assertEqual(["cax", "n0"], [item.word for item in spatial])
+        preferred = evaluator.reserved_occupants(
+            reserved, lexicon, reserved_budget=2, prefer_converting_greedy_alts=True,
+        )
+        self.assertEqual(["cax", "caz"], [item.word for item in preferred])
+        extras = evaluator.extra_reserved_occupant_keys(
+            reserved, lexicon, reserved_budget=2, prefer_converting_greedy_alts=True,
+        )
+        self.assertEqual({("caz", "en")}, extras)
+        published = evaluator.publish_reserved_slots(
+            lexicon, reserved, reserved_budget=2, prefer_converting_greedy_alts=True,
+        )
+        parked = [
+            entry.word
+            for entry in evaluator.published_ranking(
+                published,
+                reserved,
+                lexicon_reference=lexicon,
+                extra_park_keys=extras,
+                park_min_rank=4,
+            )
+        ]
+        self.assertEqual("cax", parked[0])
+        self.assertNotIn("caz", parked[:3])
+        self.assertIn("caz", parked)
+        self.assertNotIn("n0", parked[:3])
+        self.assertNotIn("target", inspect.signature(evaluator.reserved_occupants).parameters)
+        self.assertNotIn("target", inspect.signature(evaluator.window_losing_converting_greedy_alts).parameters)
+        self.assertNotIn("target", inspect.signature(evaluator.prefer_window_losing_converting_alts).parameters)
+
+    def test_prefer_converting_alts_on_budget8_seat_oov_rank11_and_park_extras(self):
+        lexicon = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cat", "en", (1,), 50), 2.0),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("car", "en", (2,), 40), 1.5),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("can", "en", (3,), 30), 1.0),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cab", "en", (4,), 20), 0.5),
+        ]
+        greedy = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (5,), 0), 8.0, frequency_free=True, source="greedy",
+        )
+        converting_alt = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caz", "en", (6,), 0), 4.0, frequency_free=True, source="greedy_alts",
+        )
+        louder = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"n{index}", "en", (10 + index,), 0),
+                9.5 - 0.05 * index,
+                frequency_free=True,
+                source="nbest",
+            )
+            for index in range(10)
+        ]
+        reserved = [greedy, converting_alt, *louder]
+        oov_rank = evaluator.reserved_oov_ctc_ranks(reserved)
+        self.assertGreater(oov_rank[("caz", "en")], 7)
+        spatial = evaluator.reserved_occupants(reserved, lexicon, reserved_budget=8)
+        self.assertNotIn("caz", [item.word for item in spatial])
+        preferred = evaluator.reserved_occupants(
+            reserved, lexicon, reserved_budget=8, prefer_converting_greedy_alts=True,
+        )
+        self.assertEqual("cax", preferred[0].word)
+        self.assertIn("caz", [item.word for item in preferred])
+        extras = evaluator.extra_reserved_occupant_keys(
+            reserved, lexicon, reserved_budget=8, prefer_converting_greedy_alts=True,
+        )
+        self.assertIn(("caz", "en"), extras)
+        published = evaluator.publish_reserved_slots(
+            lexicon, reserved, reserved_budget=8, prefer_converting_greedy_alts=True,
+        )
+        parked = [
+            entry.word
+            for entry in evaluator.published_ranking(
+                published,
+                reserved,
+                lexicon_reference=lexicon,
+                extra_park_keys=extras,
+                park_min_rank=4,
+            )
+        ]
+        self.assertEqual("cax", parked[0])
+        self.assertIn("caz", parked)
+        self.assertNotIn("caz", parked[:3])
+        self.assertEqual(1, sum(1 for word in parked[:3] if word in {"cax", "caz"}))
+        self.assertNotIn("target", inspect.signature(evaluator.reserved_occupants).parameters)
+
+    def test_leftover_extra_seats_go_to_neighbors_after_converting_oov(self):
+        lexicon = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cat", "en", (1,), 50), 2.0),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("car", "en", (2,), 40), 1.5),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("can", "en", (3,), 30), 1.0),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cab", "en", (4,), 20), 0.5),
+        ]
+        greedy = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (5,), 0), 8.0, frequency_free=True, source="greedy",
+        )
+        converting_alt = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caz", "en", (6,), 0), 7.0, frequency_free=True, source="greedy_alts",
+        )
+        neighbor = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cad", "en", (8,), 80), 1.2, frequency_free=False, source="neighbors",
+        )
+        nbest = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"n{index}", "en", (10 + index,), 0),
+                -8.0 - 0.1 * index,
+                frequency_free=True,
+                source="nbest",
+            )
+            for index in range(8)
+        ]
+        reserved = [greedy, converting_alt, neighbor, *nbest]
+        spatial = evaluator.reserved_occupants(
+            reserved, lexicon, reserved_budget=8, leftover_inlex_fill=True,
+        )
+        self.assertEqual("cax", spatial[0].word)
+        self.assertIn("cad", [item.word for item in spatial])
+        self.assertIn("caz", [item.word for item in spatial])
+        winners = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"wa{index}", "en", (20 + index,), 0),
+                7.5 - 0.1 * index,
+                frequency_free=True,
+                source="greedy_alts",
+            )
+            for index in range(7)
+        ]
+        saturated = evaluator.reserved_occupants(
+            [greedy, *winners, neighbor], lexicon, reserved_budget=8, leftover_inlex_fill=True,
+        )
+        self.assertEqual("cax", saturated[0].word)
+        self.assertNotIn("cad", [item.word for item in saturated])
+        extras = evaluator.extra_reserved_occupant_keys(
+            reserved, lexicon, reserved_budget=8, leftover_inlex_fill=True,
+        )
+        published = evaluator.publish_reserved_slots(
+            lexicon, reserved, reserved_budget=8, leftover_inlex_fill=True,
+        )
+        parked = [
+            entry.word
+            for entry in evaluator.published_ranking(
+                published,
+                reserved,
+                lexicon_reference=lexicon,
+                extra_park_keys=extras,
+                park_min_rank=4,
+            )
+        ]
+        self.assertEqual("cax", parked[0])
+        self.assertIn("cad", parked)
+        self.assertEqual(1, sum(1 for word in parked[:3] if word in {"cax", "caz"}))
+        self.assertNotIn("target", inspect.signature(evaluator.leftover_inlex_after_converting_oov).parameters)
+        self.assertNotIn("target", inspect.signature(evaluator.reserved_occupants).parameters)
+
+    def test_converting_leftover_extras_skip_nonconverting_nbest_and_neighbors(self):
+        lexicon = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cat", "en", (1,), 50), 2.0),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("car", "en", (2,), 40), 1.5),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("can", "en", (3,), 30), 1.0),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cab", "en", (4,), 20), 0.5),
+        ]
+        greedy = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (5,), 0), 8.0, frequency_free=True, source="greedy",
+        )
+        converting_alt = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caz", "en", (6,), 0), 7.0, frequency_free=True, source="greedy_alts",
+        )
+        neighbor = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cad", "en", (8,), 80), 1.2, frequency_free=False, source="neighbors",
+        )
+        nbest = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caa", "en", (7,), 0), -9.0, frequency_free=True, source="nbest",
+        )
+        reserved = [greedy, converting_alt, neighbor, nbest]
+        spatial = evaluator.reserved_occupants(reserved, lexicon, reserved_budget=8)
+        self.assertIn("caa", [item.word for item in spatial])
+        converting = evaluator.reserved_occupants(
+            reserved, lexicon, reserved_budget=8, converting_leftover_extras_fill=True,
+        )
+        self.assertEqual(["cax", "caz"], [item.word for item in converting])
+        self.assertNotIn("cad", [item.word for item in converting])
+        self.assertNotIn("caa", [item.word for item in converting])
+        extras = evaluator.extra_reserved_occupant_keys(
+            reserved, lexicon, reserved_budget=8, converting_leftover_extras_fill=True,
+        )
+        self.assertEqual({("caz", "en")}, extras)
+        published = evaluator.publish_reserved_slots(
+            lexicon, reserved, reserved_budget=8, converting_leftover_extras_fill=True,
+        )
+        parked = [
+            entry.word
+            for entry in evaluator.published_ranking(
+                published,
+                reserved,
+                lexicon_reference=lexicon,
+                extra_park_keys=extras,
+                park_min_rank=4,
+            )
+        ]
+        self.assertEqual("cax", parked[0])
+        self.assertIn("caz", parked)
+        self.assertNotIn("caz", parked[:3])
+        self.assertEqual(1, sum(1 for word in parked[:3] if word in {"cax", "caz"}))
+        self.assertNotIn("target", inspect.signature(evaluator.converting_leftover_extras).parameters)
+
+    def test_converting_alt_expand_cannot_evict_frozen_lexicon_ranks(self):
+        lexicon = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry(f"lex{index}", "en", (index,), 50 - index), 2.0 - 0.05 * index)
+            for index in range(31)
+        ]
+        greedy = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (40,), 0), 8.0, frequency_free=True, source="greedy",
+        )
+        converting = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"wa{index}", "en", (50 + index,), 0),
+                7.5 - 0.05 * index,
+                frequency_free=True,
+                source="greedy_alts",
+            )
+            for index in range(10)
+        ]
+        nbest = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caa", "en", (70,), 0), 9.0, frequency_free=True, source="nbest",
+        )
+        reserved = [greedy, *converting, nbest]
+        spatial = evaluator.reserved_occupants(reserved, lexicon, reserved_budget=8)
+        self.assertEqual(8, len(spatial))
+        self.assertIn("caa", [item.word for item in spatial])
+        expanded = evaluator.reserved_occupants(
+            reserved, lexicon, reserved_budget=8, converting_alt_expand=True,
+        )
+        self.assertEqual(8, len(expanded))
+        self.assertEqual("cax", expanded[0].word)
+        self.assertNotIn("wa8", [item.word for item in expanded])
+        self.assertNotIn("caa", [item.word for item in expanded])
+        self.assertIn("wa0", [item.word for item in expanded])
+        extras = evaluator.extra_reserved_occupant_keys(
+            reserved, lexicon, reserved_budget=8, converting_alt_expand=True,
+        )
+        published = evaluator.publish_reserved_slots(
+            lexicon, reserved, reserved_budget=8, converting_alt_expand=True,
+        )
+        self.assertEqual(31, len(published))
+        lexicon_kept = [item.word for item in published if not item.frequency_free]
+        self.assertGreaterEqual(len(lexicon_kept), 23)
+        self.assertIn("lex0", {item.word for item in published})
+        parked = [
+            entry.word
+            for entry in evaluator.published_ranking(
+                published,
+                reserved,
+                lexicon_reference=lexicon,
+                extra_park_keys=extras,
+                park_min_rank=4,
+            )
+        ]
+        self.assertEqual("cax", parked[0])
+        self.assertNotIn("wa8", parked)
+        self.assertEqual(1, sum(1 for word in parked[:3] if word == "cax" or word.startswith("wa")))
+        self.assertNotIn("target", inspect.signature(evaluator.converting_alt_expand_fill).parameters)
+
+    def test_converting_fill_loss_append_keeps_nbest_and_parks_extras(self):
+        lexicon = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"lex{index}", "en", (index,), 50 - index), 2.0 - 0.05 * index,
+            )
+            for index in range(31)
+        ]
+        greedy = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (40,), 0), 8.0, frequency_free=True, source="greedy",
+        )
+        converting = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"wa{index}", "en", (50 + index,), 0),
+                7.5 - 0.05 * index,
+                frequency_free=True,
+                source="greedy_alts",
+            )
+            for index in range(10)
+        ]
+        nbest = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caa", "en", (70,), 0), 9.0, frequency_free=True, source="nbest",
+        )
+        reserved = [greedy, *converting, nbest]
+        spatial = evaluator.reserved_occupants(reserved, lexicon, reserved_budget=8)
+        self.assertEqual("cax", spatial[0].word)
+        self.assertIn("caa", [item.word for item in spatial])
+        self.assertNotIn("wa8", [item.word for item in spatial])
+        appended = evaluator.reserved_occupants(
+            reserved, lexicon, reserved_budget=8, converting_fill_loss_append=True,
+        )
+        words = [item.word for item in appended]
+        self.assertEqual("cax", words[0])
+        self.assertIn("caa", words)
+        self.assertLess(words.index("caa"), 8)
+        self.assertIn("wa8", words)
+        self.assertGreater(len(appended), 8)
+        self.assertLessEqual(len(appended), 11)
+        extras = evaluator.extra_reserved_occupant_keys(
+            reserved, lexicon, reserved_budget=8, converting_fill_loss_append=True,
+        )
+        self.assertIn(("wa8", "en"), extras)
+        self.assertIn(("caa", "en"), extras)
+        published = evaluator.publish_reserved_slots(
+            lexicon, reserved, reserved_budget=8, converting_fill_loss_append=True,
+        )
+        self.assertEqual(31, len(published))
+        lexicon_kept = [item.word for item in published if not item.frequency_free]
+        self.assertGreaterEqual(len(lexicon_kept), 20)
+        self.assertIn("caa", [item.word for item in published])
+        self.assertIn("wa8", [item.word for item in published])
+        parked = [
+            entry.word
+            for entry in evaluator.published_ranking(
+                published,
+                reserved,
+                lexicon_reference=lexicon,
+                extra_park_keys=extras,
+                park_min_rank=4,
+            )
+        ]
+        self.assertEqual("cax", parked[0])
+        self.assertNotIn("wa8", parked[:3])
+        self.assertNotIn("caa", parked[:3])
+        self.assertEqual(1, sum(1 for word in parked[:3] if word == "cax" or word.startswith("wa") or word == "caa"))
+        self.assertNotIn("target", inspect.signature(evaluator.converting_fill_loss_append_fill).parameters)
+        self.assertNotIn("target", inspect.signature(evaluator.reserved_occupants).parameters)
+
+    def test_converting_fill_loss_append_displaces_nonconverting_extra_oov_nbest(self):
+        lexicon = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cat", "en", (1,), 50), 5.0),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("car", "en", (2,), 40), 4.9),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("can", "en", (3,), 30), 4.8),
+        ] + [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"zz{index}", "en", (100 + index,), 1), 0.0,
+            )
+            for index in range(28)
+        ]
+        greedy = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (5,), 0), 13.0, frequency_free=True, source="greedy",
+        )
+        converting = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"wa{index}", "en", (20 + index,), 0),
+                12.0 - 0.05 * index,
+                frequency_free=True,
+                source="greedy_alts",
+            )
+            for index in range(10)
+        ]
+        nbest = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caa", "en", (70,), 0),
+            14.0,
+            frequency_free=True,
+            source="nbest",
+            oov_map_blend=1.0,
+        )
+        reserved = [greedy, *converting, nbest]
+        self.assertFalse(evaluator.reserved_clears_lexicon_top3(nbest, lexicon))
+        self.assertTrue(evaluator.reserved_clears_lexicon_top3(converting[0], lexicon))
+        self.assertTrue(evaluator.reserved_clears_lexicon_top3(converting[8], lexicon))
+        ranks = evaluator.reserved_oov_ctc_ranks(reserved)
+        self.assertLessEqual(ranks[("caa", "en")], 7)
+        self.assertGreater(ranks[("wa8", "en")], 7)
+        spatial = evaluator.reserved_occupants(reserved, lexicon, reserved_budget=8)
+        self.assertEqual("cax", spatial[0].word)
+        self.assertIn("caa", [item.word for item in spatial])
+        self.assertIn("wa0", [item.word for item in spatial])
+        self.assertNotIn("wa8", [item.word for item in spatial])
+        appended = evaluator.reserved_occupants(
+            reserved, lexicon, reserved_budget=8, converting_fill_loss_append=True,
+        )
+        words = [item.word for item in appended]
+        self.assertEqual("cax", words[0])
+        self.assertNotIn("caa", words[:8])
+        self.assertIn("wa0", words[:8])
+        self.assertIn("wa8", words)
+        self.assertGreater(len(appended), 8)
+        self.assertLessEqual(len(appended), 11)
+        extras = evaluator.extra_reserved_occupant_keys(
+            reserved, lexicon, reserved_budget=8, converting_fill_loss_append=True,
+        )
+        self.assertIn(("wa8", "en"), extras)
+        self.assertIn(("wa0", "en"), extras)
+        published = evaluator.publish_reserved_slots(
+            lexicon, reserved, reserved_budget=8, converting_fill_loss_append=True,
+        )
+        self.assertEqual(31, len(published))
+        lexicon_kept = [item.word for item in published if not item.frequency_free]
+        self.assertGreaterEqual(len(lexicon_kept), 20)
+        parked = [
+            entry.word
+            for entry in evaluator.published_ranking(
+                published,
+                reserved,
+                lexicon_reference=lexicon,
+                extra_park_keys=extras,
+                park_min_rank=4,
+            )
+        ]
+        self.assertEqual("cax", parked[0])
+        self.assertNotIn("wa8", parked[:3])
+        self.assertNotIn("caa", parked[:3])
+        self.assertEqual(1, sum(1 for word in parked[:3] if word == "cax" or word.startswith("wa") or word == "caa"))
+        self.assertNotIn("target", inspect.signature(evaluator.prefer_window_losing_converting_alts).parameters)
+        self.assertNotIn("target", inspect.signature(evaluator.converting_fill_loss_append_fill).parameters)
+
+    def test_converting_fill_loss_append_seats_converting_greedy_neighbors_before_leftover_alts(self):
+        lexicon = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"lex{index}", "en", (index,), 50 - index), 2.0 - 0.05 * index,
+            )
+            for index in range(31)
+        ]
+        greedy = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (40,), 0), 8.0, frequency_free=True, source="greedy",
+        )
+        converting = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"wa{index}", "en", (50 + index,), 0),
+                7.5 - 0.05 * index,
+                frequency_free=True,
+                source="greedy_alts",
+            )
+            for index in range(10)
+        ]
+        nbest = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caa", "en", (70,), 0), 9.0, frequency_free=True, source="nbest",
+        )
+        neighbor = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cad", "en", (8,), 80), 7.0, frequency_free=False, source="neighbors",
+        )
+        reserved = [greedy, *converting, nbest, neighbor]
+        self.assertTrue(evaluator.reserved_clears_lexicon_top3(neighbor, lexicon))
+        spatial = evaluator.reserved_occupants(reserved, lexicon, reserved_budget=8)
+        self.assertNotIn("cad", [item.word for item in spatial])
+        self.assertIn("caa", [item.word for item in spatial])
+        appended = evaluator.reserved_occupants(
+            reserved, lexicon, reserved_budget=8, converting_fill_loss_append=True,
+        )
+        words = [item.word for item in appended]
+        self.assertEqual("cax", words[0])
+        self.assertIn("caa", words[:8])
+        self.assertIn("cad", words)
+        self.assertIn("wa6", words)
+        self.assertLess(words.index("cad"), words.index("wa6"))
+        self.assertNotIn("wa8", words)
+        extras = evaluator.extra_reserved_occupant_keys(
+            reserved, lexicon, reserved_budget=8, converting_fill_loss_append=True,
+        )
+        published = evaluator.publish_reserved_slots(
+            lexicon, reserved, reserved_budget=8, converting_fill_loss_append=True,
+        )
+        parked = [
+            entry.word
+            for entry in evaluator.published_ranking(
+                published,
+                reserved,
+                lexicon_reference=lexicon,
+                extra_park_keys=extras,
+                park_min_rank=4,
+            )
+        ]
+        self.assertEqual("cax", parked[0])
+        self.assertIn("cad", parked)
+        self.assertNotIn("wa8", parked[:3])
+        self.assertNotIn("caa", parked[:3])
+        self.assertNotIn("target", inspect.signature(evaluator.leftover_converting_greedy_neighbors).parameters)
+        self.assertNotIn("target", inspect.signature(evaluator.converting_fill_loss_append_fill).parameters)
+
+    def test_leftover_greedy_alts_append_seats_unpublished_alts_without_parking(self):
+        lexicon = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"lex{index}", "en", (index,), 50 - index), 2.0 - 0.05 * index,
+            )
+            for index in range(31)
+        ]
+        greedy = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (40,), 0), 8.0, frequency_free=True, source="greedy",
+        )
+        converting = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"wa{index}", "en", (50 + index,), 0),
+                7.5 - 0.05 * index,
+                frequency_free=True,
+                source="greedy_alts",
+            )
+            for index in range(12)
+        ]
+        nbest = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caa", "en", (70,), 0), 9.0, frequency_free=True, source="nbest",
+        )
+        reserved = [greedy, *converting, nbest]
+        spatial = evaluator.reserved_occupants(reserved, lexicon, reserved_budget=8)
+        self.assertEqual("cax", spatial[0].word)
+        self.assertIn("caa", [item.word for item in spatial])
+        self.assertNotIn("wa8", [item.word for item in spatial])
+        appended = evaluator.reserved_occupants(
+            reserved, lexicon, reserved_budget=8, leftover_greedy_alts_append=True,
+        )
+        words = [item.word for item in appended]
+        self.assertEqual("cax", words[0])
+        self.assertIn("caa", words[:8])
+        self.assertIn("wa8", words)
+        self.assertGreater(len(appended), 8)
+        self.assertLessEqual(len(appended), 28)
+        extras = evaluator.extra_reserved_occupant_keys(
+            reserved, lexicon, reserved_budget=8, leftover_greedy_alts_append=True,
+        )
+        published = evaluator.publish_reserved_slots(
+            lexicon, reserved, reserved_budget=8, leftover_greedy_alts_append=True,
+        )
+        self.assertEqual(31, len(published))
+        self.assertIn("wa8", [item.word for item in published])
+        unparked = [
+            entry.word
+            for entry in evaluator.published_ranking(
+                published,
+                reserved,
+                lexicon_reference=lexicon,
+                extra_park_keys=extras,
+                park_min_rank=0,
+            )
+        ]
+        self.assertIn("wa0", unparked[:3] or unparked)
+        self.assertNotIn("target", inspect.signature(evaluator.leftover_greedy_alts_append_fill).parameters)
+
+    def test_ablation_first_source_fill_seats_length_changing_alts_then_neighbors(self):
+        lexicon = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cat", "en", (1,), 50), 2.0),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("car", "en", (2,), 40), 1.5),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("can", "en", (3,), 30), 1.0),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cab", "en", (4,), 20), 0.5),
+        ]
+        greedy = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (5,), 0), 8.0, frequency_free=True, source="greedy",
+        )
+        same_len = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caz", "en", (6,), 0), 7.5, frequency_free=True, source="greedy_alts",
+        )
+        diff_len = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caxt", "en", (7,), 0), 4.0, frequency_free=True, source="greedy_alts",
+        )
+        nbest = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caa", "en", (8,), 0), 9.0, frequency_free=True, source="nbest",
+        )
+        neighbor = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cad", "en", (9,), 80), 1.2, frequency_free=False, source="neighbors",
+        )
+        reserved = [greedy, same_len, diff_len, nbest, neighbor]
+        spatial = evaluator.reserved_occupants(reserved, lexicon, reserved_budget=8)
+        self.assertEqual("cax", spatial[0].word)
+        self.assertIn("caa", [item.word for item in spatial])
+        filled = evaluator.reserved_occupants(
+            reserved, lexicon, reserved_budget=8, ablation_first_source_fill_sources=True,
+        )
+        words = [item.word for item in filled]
+        self.assertEqual("cax", words[0])
+        self.assertLess(words.index("caxt"), words.index("caz"))
+        self.assertIn("cad", words)
+        self.assertLess(words.index("cad"), words.index("caa"))
+        extras = evaluator.extra_reserved_occupant_keys(
+            reserved, lexicon, reserved_budget=8, ablation_first_source_fill_sources=True,
+        )
+        published = evaluator.publish_reserved_slots(
+            lexicon, reserved, reserved_budget=8, ablation_first_source_fill_sources=True,
+        )
+        parked = [
+            entry.word
+            for entry in evaluator.published_ranking(
+                published,
+                reserved,
+                lexicon_reference=lexicon,
+                extra_park_keys=extras,
+                park_min_rank=4,
+            )
+        ]
+        self.assertEqual("cax", parked[0])
+        self.assertNotIn("caz", parked[:3])
+        self.assertNotIn("caxt", parked[:3])
+        self.assertEqual(1, sum(1 for word in parked[:3] if word in {"cax", "caz", "caxt", "caa"}))
+        self.assertNotIn("target", inspect.signature(evaluator.ablation_first_source_fill).parameters)
+
+    def test_window_losing_converting_alts_do_not_displace_converting_extra_oov_winners(self):
+        lexicon = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cat", "en", (1,), 50), 2.0),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("car", "en", (2,), 40), 1.5),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("can", "en", (3,), 30), 1.0),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cab", "en", (4,), 20), 0.5),
+        ]
+        greedy = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (5,), 0), 8.0, frequency_free=True, source="greedy",
+        )
+        winners = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"wa{index}", "en", (20 + index,), 0),
+                7.5 - 0.1 * index,
+                frequency_free=True,
+                source="greedy_alts",
+            )
+            for index in range(7)
+        ]
+        loser = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caz", "en", (6,), 0), 3.0, frequency_free=True, source="greedy_alts",
+        )
+        reserved = [greedy, *winners, loser]
+        ranks = evaluator.reserved_oov_ctc_ranks(reserved)
+        self.assertLessEqual(ranks[("wa0", "en")], 7)
+        self.assertGreater(ranks[("caz", "en")], 7)
+        spatial = evaluator.reserved_occupants(reserved, lexicon, reserved_budget=8)
+        self.assertEqual("cax", spatial[0].word)
+        self.assertNotIn("caz", [item.word for item in spatial])
+        preferred = evaluator.reserved_occupants(
+            reserved, lexicon, reserved_budget=8, prefer_converting_greedy_alts=True,
+        )
+        self.assertEqual([item.word for item in spatial], [item.word for item in preferred])
+        self.assertNotIn("caz", [item.word for item in preferred])
+        self.assertNotIn("target", inspect.signature(evaluator.prefer_window_losing_converting_alts).parameters)
+
+    def test_budget8_spatial_publishes_fill_rank5_converting_alt_outside_top3(self):
+        lexicon = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cat", "en", (1,), 50), 2.0),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("car", "en", (2,), 40), 1.5),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("can", "en", (3,), 30), 1.0),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cab", "en", (4,), 20), 0.5),
+        ]
+        greedy = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (5,), 0), 8.0, frequency_free=True, source="greedy",
+        )
+        converting_alt = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caz", "en", (6,), 0), 7.5, frequency_free=True, source="greedy_alts",
+        )
+        louder = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"n{index}", "en", (7 + index,), 0),
+                9.5 - 0.1 * index,
+                frequency_free=True,
+                source="nbest",
+            )
+            for index in range(3)
+        ]
+        reserved = [greedy, converting_alt, *louder]
+        fill = evaluator.reserved_fill_ranks(reserved)
+        self.assertEqual(1, fill[("cax", "en")])
+        self.assertEqual(5, fill[("caz", "en")])
+        four = evaluator.reserved_occupants(reserved, lexicon, reserved_budget=4)
+        self.assertNotIn("caz", [item.word for item in four])
+        eight = evaluator.reserved_occupants(reserved, lexicon, reserved_budget=8)
+        self.assertEqual("cax", eight[0].word)
+        self.assertIn("caz", [item.word for item in eight])
+        extras = evaluator.extra_reserved_occupant_keys(
+            reserved, lexicon, reserved_budget=8,
+        )
+        self.assertIn(("caz", "en"), extras)
+        published = evaluator.publish_reserved_slots(
+            lexicon, reserved, reserved_budget=8,
+        )
+        parked = [
+            entry.word
+            for entry in evaluator.published_ranking(
+                published,
+                reserved,
+                lexicon_reference=lexicon,
+                extra_park_keys=extras,
+                park_min_rank=4,
+            )
+        ]
+        self.assertEqual("cax", parked[0])
+        self.assertIn("caz", parked)
+        self.assertNotIn("caz", parked[:3])
+        self.assertEqual(1, sum(1 for word in parked[:3] if word == "cax"))
+        self.assertNotIn("target", inspect.signature(evaluator.reserved_occupants).parameters)
+        self.assertNotIn("target", inspect.signature(evaluator.reserved_fill_ranks).parameters)
+
+    def test_converting_best_occupant_is_highest_ols_clearing_oov(self):
+        lexicon = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cat", "en", (1,), 50), 2.0),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("car", "en", (2,), 40), 1.5),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("can", "en", (3,), 30), 1.0),
+        ]
+        greedy = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (4,), 0), 8.0, frequency_free=True, source="greedy",
+        )
+        stronger_alt = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caz", "en", (5,), 0), 9.0, frequency_free=True, source="greedy_alts",
+        )
+        weaker_alt = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caa", "en", (6,), 0), 8.5, frequency_free=True, source="greedy_alts",
+        )
+        parked_alt = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cab", "en", (7,), 0), -9.0, frequency_free=True, source="greedy_alts",
+        )
+        greedy_first = evaluator.reserved_occupants(
+            [greedy, stronger_alt], lexicon, reserved_budget=1,
+        )
+        self.assertEqual(["cax"], [item.word for item in greedy_first])
+        best = evaluator.reserved_occupants(
+            [greedy, parked_alt, stronger_alt, weaker_alt],
+            lexicon,
+            reserved_budget=1,
+            converting_best=True,
+        )
+        self.assertEqual(["caz"], [item.word for item in best])
+        keep_greedy = evaluator.reserved_occupants(
+            [greedy, parked_alt], lexicon, reserved_budget=1, converting_best=True,
+        )
+        self.assertEqual(["cax"], [item.word for item in keep_greedy])
+        none_convert = evaluator.reserved_occupants(
+            [parked_alt], lexicon, reserved_budget=1, converting_best=True,
+        )
+        self.assertEqual(["cab"], [item.word for item in none_convert])
+        published = evaluator.publish_reserved_slots(
+            lexicon, [greedy, stronger_alt], reserved_budget=1, converting_best=True,
+        )
+        ranked = [
+            entry.word
+            for entry in evaluator.published_ranking(published, [greedy, stronger_alt], lexicon_reference=lexicon)
+        ]
+        self.assertEqual("caz", ranked[0])
+        self.assertNotIn("cax", ranked[:3])
+        self.assertNotIn("target", inspect.signature(evaluator.converting_best_reserved).parameters)
+        self.assertNotIn("target", inspect.signature(evaluator.ols_reserved_candidate).parameters)
+
+    def test_park_extra_reserved_keeps_greedy_in_top3_and_demotes_alts(self):
+        lexicon = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cat", "en", (1,), 50), 2.0),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("car", "en", (2,), 40), 1.5),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("can", "en", (3,), 30), 1.0),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cab", "en", (4,), 20), 0.5),
+        ]
+        greedy = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (5,), 0), 8.0, frequency_free=True, source="greedy",
+        )
+        alt = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caz", "en", (6,), 0), 9.0, frequency_free=True, source="greedy_alts",
+        )
+        nbest = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caa", "en", (7,), 0), 8.5, frequency_free=True, source="nbest",
+        )
+        neighbor = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cad", "en", (8,), 80), 7.0, frequency_free=False, source="neighbors",
+        )
+        reserved = [greedy, alt, nbest, neighbor]
+        extras = evaluator.extra_reserved_occupant_keys(
+            reserved, lexicon, reserved_budget=2,
+        )
+        self.assertEqual({("caz", "en")}, extras)
+        published = evaluator.publish_reserved_slots(lexicon, reserved, reserved_budget=2)
+        unparked = [
+            entry.word
+            for entry in evaluator.published_ranking(published, reserved, lexicon_reference=lexicon)
+        ]
+        self.assertEqual("caz", unparked[0])
+        parked = [
+            entry.word
+            for entry in evaluator.published_ranking(
+                published,
+                reserved,
+                lexicon_reference=lexicon,
+                extra_park_keys=extras,
+                park_min_rank=4,
+            )
+        ]
+        self.assertEqual("cax", parked[0])
+        self.assertNotIn("caz", parked[:3])
+        self.assertGreaterEqual(parked.index("caz") + 1, 4)
+        self.assertIn("caz", parked)
+        already_low = evaluator.park_extra_reserved_below_rank(
+            [(greedy, 0.1), (lexicon[0], 0.0), (lexicon[1], -0.1), (lexicon[2], -0.2), (alt, -1.0)],
+            {("caz", "en")},
+            min_rank=4,
+        )
+        self.assertEqual("caz", already_low[-1][0].word)
+        self.assertNotIn("target", inspect.signature(evaluator.park_extra_reserved_below_rank).parameters)
+        self.assertNotIn("target", inspect.signature(evaluator.extra_reserved_occupant_keys).parameters)
+        self.assertNotIn("target", inspect.signature(evaluator.reserved_clears_lexicon_top3).parameters)
+        extras4 = evaluator.extra_reserved_occupant_keys(
+            reserved, lexicon, reserved_budget=4,
+        )
+        self.assertEqual({("caz", "en"), ("caa", "en"), ("cad", "en")}, extras4)
+        published4 = evaluator.publish_reserved_slots(lexicon, reserved, reserved_budget=4)
+        parked4 = [
+            entry.word
+            for entry in evaluator.published_ranking(
+                published4,
+                reserved,
+                lexicon_reference=lexicon,
+                extra_park_keys=extras4,
+                park_min_rank=4,
+            )
+        ]
+        self.assertEqual("cax", parked4[0])
+        self.assertNotIn("caz", parked4[:3])
+        self.assertNotIn("caa", parked4[:3])
+        self.assertIn("caz", parked4)
+        self.assertIn("caa", parked4)
+        self.assertEqual(1, sum(1 for word in parked4[:3] if word in {"cax", "caz", "caa"}))
+        extras_best = evaluator.extra_reserved_occupant_keys(
+            reserved, lexicon, reserved_budget=4, converting_best=True,
+        )
+        self.assertEqual({("cax", "en"), ("caa", "en"), ("cad", "en")}, extras_best)
+        published_best = evaluator.publish_reserved_slots(
+            lexicon, reserved, reserved_budget=4, converting_best=True,
+        )
+        parked_best = [
+            entry.word
+            for entry in evaluator.published_ranking(
+                published_best,
+                reserved,
+                lexicon_reference=lexicon,
+                extra_park_keys=extras_best,
+                park_min_rank=4,
+            )
+        ]
+        self.assertEqual("caz", parked_best[0])
+        self.assertNotIn("cax", parked_best[:3])
+        self.assertNotIn("caa", parked_best[:3])
+        self.assertIn("cax", parked_best)
+        self.assertEqual(1, sum(1 for word in parked_best[:3] if word in {"cax", "caz", "caa"}))
+        self.assertNotIn("target", inspect.signature(evaluator.reserved_occupants).parameters)
+
+    def test_ols_extra_converts_when_greedy_does_not_and_inlex_is_not_parked(self):
+        lexicon = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cat", "en", (1,), 50), 2.0),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("car", "en", (2,), 40), 1.5),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("can", "en", (3,), 30), 1.0),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cab", "en", (4,), 20), 0.5),
+        ]
+        weak_greedy = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (5,), 0), -9.0, frequency_free=True, source="greedy",
+        )
+        converting_alt = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caz", "en", (6,), 0), 8.0, frequency_free=True, source="greedy_alts",
+        )
+        neighbor = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cad", "en", (8,), 80), 7.0, frequency_free=False, source="neighbors",
+        )
+        reserved = [weak_greedy, converting_alt, neighbor]
+        extras = evaluator.extra_reserved_occupant_keys(
+            reserved, lexicon, reserved_budget=2,
+        )
+        self.assertEqual({("caz", "en")}, extras)
+        published = evaluator.publish_reserved_slots(lexicon, reserved, reserved_budget=2)
+        ranked = [
+            entry.word
+            for entry in evaluator.published_ranking(
+                published,
+                reserved,
+                lexicon_reference=lexicon,
+                extra_park_keys=extras,
+                park_min_rank=4,
+            )
+        ]
+        self.assertEqual("caz", ranked[0])
+        self.assertNotIn("cax", ranked[:3])
+        converting_greedy = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (5,), 0), 8.0, frequency_free=True, source="greedy",
+        )
+        with_greedy = evaluator.publish_reserved_slots(
+            lexicon, [converting_greedy, converting_alt, neighbor], reserved_budget=3,
+        )
+        extras3 = evaluator.extra_reserved_occupant_keys(
+            [converting_greedy, converting_alt, neighbor], lexicon, reserved_budget=3,
+        )
+        ranked_greedy = [
+            entry.word
+            for entry in evaluator.published_ranking(
+                with_greedy,
+                [converting_greedy, converting_alt, neighbor],
+                lexicon_reference=lexicon,
+                extra_park_keys=extras3,
+                park_min_rank=4,
+            )
+        ]
+        self.assertEqual("cax", ranked_greedy[0])
+        self.assertNotIn("caz", ranked_greedy[:3])
+        self.assertIn("cad", ranked_greedy)
+        self.assertNotIn("target", inspect.signature(evaluator.park_extra_frequency_free_to_protect_top3).parameters)
+
+    def test_reserved_gap_to_lexicon_top3_does_not_take_targets(self):
+        lexicon = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cat", "en", (1,), 50), 2.0),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("car", "en", (2,), 40), 1.5),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("can", "en", (3,), 30), 1.0),
+        ]
+        strong = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (4,), 0), 8.0, frequency_free=True, source="greedy",
+        )
+        weak = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caz", "en", (5,), 0), -9.0, frequency_free=True, source="greedy_alts",
+        )
+        self.assertGreater(evaluator.reserved_gap_to_lexicon_top3(strong, lexicon), 0.0)
+        self.assertLess(evaluator.reserved_gap_to_lexicon_top3(weak, lexicon), 0.0)
+        dest = [2.0, 1.5, 1.0, -0.5]
+        ols = 1.8
+        conservative = evaluator.conservative_lexicon_spatial(dest)
+        blended = 0.5 * ols + 0.5 * conservative
+        self.assertAlmostEqual(ols, evaluator.unblend_oov_spatial(blended, dest, 0.5))
+        self.assertNotIn("target", inspect.signature(evaluator.reserved_gap_to_lexicon_top3).parameters)
+        self.assertNotIn("target", inspect.signature(evaluator.unblend_oov_spatial).parameters)
+        self.assertNotIn("target", inspect.signature(evaluator.lexicon_top3_fusion_floor).parameters)
+
     def test_in_lexicon_reserved_spatial_is_on_the_merged_scale(self):
         calibration = evaluator.fit_oov_score_calibration([-0.40, -0.10], [-0.40, -0.10])
         neighbor = evaluator.ReservedCandidate(
@@ -521,7 +1760,7 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
         self.assertEqual(evaluator.median_lexicon_spatial(merged_scale), scored.spatial)
         self.assertEqual(80, scored.entry.frequency)
 
-    def test_unique_best_oov_uses_more_of_the_ols_map(self):
+    def test_greedy_oov_keeps_full_ols_while_alts_keep_the_blend(self):
         greedy = evaluator.ReservedCandidate(
             evaluator.LexiconEntry("cax", "en", (1,), 0), "greedy", forward=-0.05,
         )
@@ -535,12 +1774,30 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
             evaluator.LexiconEntry("cay", "en", (3,), 0), "greedy_alts", forward=-0.06,
         )
         tied = evaluator._oov_blend_by_margin([greedy, close], 0.5)
-        self.assertEqual(0.5, tied[id(greedy)])
-        nbest_close = evaluator.ReservedCandidate(
-            evaluator.LexiconEntry("caa", "en", (4,), 0), "nbest", forward=-0.06,
+        self.assertEqual(0.0, tied[id(greedy)])
+        self.assertEqual(0.5, tied[id(close)])
+        nbest = evaluator.ReservedCandidate(
+            evaluator.LexiconEntry("caa", "en", (4,), 0), "nbest", forward=-0.01,
         )
-        vs_nbest = evaluator._oov_blend_by_margin([greedy, alt, nbest_close], 0.5)
+        vs_nbest = evaluator._oov_blend_by_margin([greedy, alt, nbest], 0.5)
         self.assertEqual(0.0, vs_nbest[id(greedy)])
+        self.assertEqual(0.5, vs_nbest[id(nbest)])
+        calibration = evaluator.fit_oov_score_calibration([-0.40, -0.10], [-0.40, -0.10])
+        spatials = [-0.40, -0.20, -0.10]
+        dest = [2.0, 0.5, -0.5, -1.0]
+        scored = evaluator.score_reserved_sources(
+            {"greedy": [greedy], "greedy_alts": [alt]},
+            calibration=calibration,
+            ctc_spatials=spatials,
+            oov_map_blend=0.5,
+            lexicon_spatials=dest,
+        )
+        by_word = {item.word: item for item in scored}
+        self.assertEqual(0.0, by_word["cax"].oov_map_blend)
+        self.assertEqual(0.5, by_word["caz"].oov_map_blend)
+        self.assertGreater(by_word["cax"].spatial, by_word["caz"].spatial)
+        self.assertNotIn("target", inspect.signature(evaluator._oov_blend_by_margin).parameters)
+        self.assertNotIn("target", inspect.signature(evaluator.score_reserved_sources).parameters)
 
     def test_true_oov_use_the_train_fit_map_without_floor_clamp(self):
         calibration = evaluator.fit_oov_score_calibration([-0.40, -0.10], [-0.40, -0.10])
@@ -661,6 +1918,10 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
         neighbor = evaluator.ScoredLexiconEntry(
             evaluator.LexiconEntry("cat", "en", (1, 2, 3), 77), 0.2, frequency_free=False, source="neighbors",
         )
+        fill = evaluator.reserved_fill_ranks([greedy, weak_alt, strong_alt, neighbor])
+        self.assertEqual(1, fill[("cax", "en")])
+        self.assertEqual(2, fill[("cay", "en")])
+        self.assertGreater(fill[("caz", "en")], fill[("cay", "en")])
         published = evaluator.publish_reserved_slots(
             base, [greedy, weak_alt, strong_alt, neighbor], reserved_budget=4,
         )
@@ -743,6 +2004,113 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
         oov = [item for item in reserved if item.frequency_free]
         for item in oov:
             self.assertEqual(0, item.entry.frequency)
+
+    def test_in_lexicon_reserved_uses_decoder_spatial_already_on_the_slate(self):
+        layout = {"keyLabels": list("catdxyz") + [None] * 57}
+        output = logits([1, 2, 3], classes=8, frames=6)
+        lexicon_by_word = {
+            "cat": evaluator.LexiconEntry("cat", "en", (1, 2, 3), 80),
+        }
+        ctc = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("car", "en", (1, 2, 5), 40), 0.4),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cat", "en", (1, 2, 3), 80), 2.5),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("can", "en", (1, 2, 6), 30), -0.2),
+        ]
+        existing = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("zzz", "en", (7,), 5), 0.1),
+        ]
+        sources, rejected, _spellings = evaluator.collect_reserved_sources(
+            output,
+            layout,
+            n_best=1,
+            beam_width=4,
+            existing=existing,
+            known_offensive=set(),
+            lexicon_by_word=lexicon_by_word,
+            language="en",
+            ctc=ctc,
+        )
+        self.assertEqual(0, rejected)
+        cat = next(item for item in sources["greedy"] if item.entry.word == "cat")
+        self.assertGreater(cat.entry.frequency, 0)
+        self.assertIsNotNone(cat.decoder_spatial)
+        expected = evaluator._z_normalize([item.spatial for item in ctc])[1]
+        self.assertAlmostEqual(expected, cat.decoder_spatial)
+        calibration = evaluator.fit_oov_score_calibration([-0.40, -0.10], [-0.40, -0.10])
+        dest = [2.0, 0.5, -0.5, -1.0]
+        scored = evaluator.score_reserved_candidate(
+            cat,
+            calibration=calibration,
+            ctc_spatials=[-0.8, -0.2],
+            lexicon_spatials=dest,
+        )
+        self.assertFalse(scored.frequency_free)
+        self.assertEqual(80, scored.entry.frequency)
+        self.assertAlmostEqual(evaluator.map_z_onto_pool(cat.decoder_spatial, dest), scored.spatial)
+        calibrated = evaluator.score_reserved_candidate(
+            evaluator.ReservedCandidate(cat.entry, "greedy", forward=cat.forward),
+            calibration=calibration,
+            ctc_spatials=[-0.8, -0.2],
+            lexicon_spatials=dest,
+        )
+        self.assertNotAlmostEqual(calibrated.spatial, scored.spatial)
+        oov_layout = {"keyLabels": list("caxd") + [None] * 60}
+        oov_sources, _, _ = evaluator.collect_reserved_sources(
+            logits([1, 2, 3], classes=8, frames=6),
+            oov_layout,
+            n_best=1,
+            beam_width=4,
+            existing=existing,
+            known_offensive=set(),
+            lexicon_by_word={},
+            language="en",
+            ctc=[
+                evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cax", "en", (1, 2, 3), 0), 3.0),
+                evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cad", "en", (1, 2, 4), 12), 0.1),
+            ],
+        )
+        oov = oov_sources["greedy"][0]
+        self.assertEqual(0, oov.entry.frequency)
+        self.assertIsNone(oov.decoder_spatial)
+        missing, _, _ = evaluator.collect_reserved_sources(
+            output,
+            layout,
+            n_best=1,
+            beam_width=4,
+            existing=existing,
+            known_offensive=set(),
+            lexicon_by_word=lexicon_by_word,
+            language="en",
+            ctc=[evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("zzz", "en", (7,), 5), 0.1)],
+        )
+        self.assertIsNone(next(item for item in missing["greedy"] if item.entry.word == "cat").decoder_spatial)
+        lexicon = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("the", "en", (1,), 50), 2.0),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("car", "en", (2,), 40), 1.5),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("can", "en", (3,), 30), 1.0),
+        ]
+        greedy_ff = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (5,), 0), 8.0, frequency_free=True, source="greedy",
+        )
+        extra_ff = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caz", "en", (6,), 0), 9.0, frequency_free=True, source="greedy_alts",
+        )
+        reserved = [greedy_ff, extra_ff, scored]
+        extras = evaluator.extra_reserved_occupant_keys(reserved, lexicon, reserved_budget=3)
+        published = evaluator.publish_reserved_slots(lexicon, reserved, reserved_budget=3)
+        ranked = [
+            entry.word
+            for entry in evaluator.published_ranking(
+                published,
+                reserved,
+                lexicon_reference=lexicon,
+                extra_park_keys=extras,
+                park_min_rank=4,
+            )
+        ]
+        self.assertEqual(1, sum(1 for word in ranked[:3] if word in {"cax", "caz"}))
+        self.assertNotIn("target", inspect.signature(evaluator.collect_reserved_sources).parameters)
+        self.assertNotIn("target", inspect.signature(evaluator.score_reserved_candidate).parameters)
 
     def test_first_recovered_source_labels_without_construction_reading_targets(self):
         greedy = evaluator.ReservedCandidate(

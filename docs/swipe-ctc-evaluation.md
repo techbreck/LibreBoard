@@ -365,6 +365,33 @@ scoring, beam 64, and `CtcSwipeDecoder.kt` are unchanged.
 Evidence: `docs/models/evidence/swipe-published-31-recall.json` and
 `docs/models/evidence/swipe-published-31-1000-{1,2}.json`.
 
+A later converting path scored true OOV with the unclamped train-fit map (`oovMapBlend` 0),
+parked extra frequency-free reserved at rank ≥ 4, and filled at most 11 reserved occupants
+(keep 20 lexicon ranks). Occupancy search on that path is stopped. This is still
+published-31 membership, not a Phase 0 quality or top-3 win.
+
+| Quantity | Frozen 32-slot | Keep-20 converting append | 1-slot greedy OLS | Gate |
+| --- | ---: | ---: | ---: | ---: |
+| Target in ranked[:31] | 5,670 | 5,773 | 5,723 | 5,822 at 97.9% conversion |
+| Static-fusion top-1 / top-3 | 5,200 / 5,551 | 5,235 / 5,566 | 5,235 / 5,567 | do not regress 5,200 / 5,551 |
+| return_trip published-31 | 1,529 | 1,575 | 1,553 | 1,572 |
+| return_trip top-3 | 1,498 | 1,506 | 1,507 | 1,539 (90%) |
+| Host reserved-decode p95 | — | 22.9 ms | 15.5 ms | < 91 ms |
+
+Matched 1,000-path union ranking twice was 87.8%/92.9%. Keep-20 new hits 103 convert 15
+top-3 (~14.5%), not 97.9%. 100% conversion of those hits is still 5,654. Competing
+greedy+alts+nbest membership is 5,795; publishing that whole bag still misses 5,822, and
+5,551+125 = 5,676 < 5,700. Single converting occupant policies (highest-OLS clearer;
+conversion-gated swap of non-converting greedy) were 5,722/5,567 and 5,721/5,567 — washes
+versus 1-slot greedy. Unparking leftover greedy_alts (keep 3 lexicon) dropped frozen top-3
+to 5,542 and is rejected. `--leftover-greedy-alts-append` stays off. Further keep-20
+fill-order tweaks are rejected. `diagnosticOnly` / `releaseEligible` false. Production
+vocabulary, scoring, beam 64, and `CtcSwipeDecoder.kt` are unchanged. Evidence:
+`docs/models/evidence/swipe-published-31-fill-loss-window.json`,
+`docs/models/evidence/swipe-published-31-rank46-offset.json`,
+`docs/models/evidence/swipe-published-31-conv-best.json`, and
+`docs/models/evidence/swipe-published-31-swap-gated.json`.
+
 The 1,000-row ranking follow-up assigned frequency 1 to the 4,089 supplemental words. Adding them
 to both CTC and geometry lowered combined top-1/top-3 from 86.6%/92.7% to 85.0%/91.9%. Replaying
 only supplemented CTC with the original geometric candidates yielded 84.8%/92.3%. Both scoring
