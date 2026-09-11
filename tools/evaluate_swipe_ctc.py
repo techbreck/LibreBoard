@@ -2231,15 +2231,16 @@ def converting_fill_loss_append_fill(
     base_budget: int,
     extra_oov: int = EXTRA_OOV_FILL,
 ) -> list[ScoredLexiconEntry]:
-    """Window-losers take non-converting extra_oov seats, then leftover converting append.
+    """Window-losers take non-converting extra_oov seats, then leftover converting alts.
 
-    Keep-20 (at most 11 reserved). ``prefer_window_losing_converting_alts`` reorders
-    the spatial prefix so converting extra_oov greedy_alts/nbest keep their seats
-    and only non-converting extra_oov (typically nbest) give way to window-losing
-    converting greedy_alts. Leftover converting neighbors-of-greedy, then leftover
-    converting greedy_alts, fill the keep-20 remainder. Extra FF stay parked. No
-    leftover-greedy-alts-append, unparking, CTC-forward neighbors, OLS-if-clears,
-    or floor clamp. Construction never reads evaluation targets.
+    Keep-20 (at most 11 reserved). Spatial extra_oov stays greedy-first (unique
+    n-best seats held; not n-best-last). ``prefer_window_losing_converting_alts``
+    reorders that prefix so converting extra_oov greedy_alts/nbest keep seats and
+    only non-converting extra_oov give way to window-losing converting greedy_alts.
+    Leftover converting greedy_alts fill the keep-20 remainder before leftover
+    converting neighbors-of-greedy (neighbors convert 0 top-3). No leftover-greedy-alts-append,
+    CTC-forward neighbors, OLS-if-clears, or floor clamp. Construction never reads
+    evaluation targets.
     """
     reordered = prefer_window_losing_converting_alts(
         ordered, lexicon, extra_oov=extra_oov,
@@ -2260,11 +2261,11 @@ def converting_fill_loss_append_fill(
         seen.add(key)
         result.append(candidate)
 
-    for candidate in leftover_converting_greedy_neighbors(ordered, lexicon):
-        take(candidate)
     for candidate in window_losing_converting_greedy_alts(
         ordered, lexicon, extra_oov=extra_oov,
     ):
+        take(candidate)
+    for candidate in leftover_converting_greedy_neighbors(ordered, lexicon):
         take(candidate)
     return result
 

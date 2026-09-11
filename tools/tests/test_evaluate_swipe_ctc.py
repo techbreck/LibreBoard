@@ -1498,17 +1498,17 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
         words = [item.word for item in appended]
         self.assertEqual("cax", words[0])
         self.assertIn("caa", words[:8])
-        self.assertIn("cad", words)
         self.assertIn("wa6", words)
-        self.assertLess(words.index("cad"), words.index("wa6"))
-        self.assertNotIn("wa8", words)
+        self.assertIn("wa8", words)
+        self.assertLess(words.index("wa6"), words.index("cad") if "cad" in words else 11)
+        self.assertLessEqual(len(appended), 11)
         extras = evaluator.extra_reserved_occupant_keys(
             reserved, lexicon, reserved_budget=8, converting_fill_loss_append=True,
         )
         published = evaluator.publish_reserved_slots(
             lexicon, reserved, reserved_budget=8, converting_fill_loss_append=True,
         )
-        parked = [
+        ranked = [
             entry.word
             for entry in evaluator.published_ranking(
                 published,
@@ -1518,10 +1518,11 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
                 park_min_rank=4,
             )
         ]
-        self.assertEqual("cax", parked[0])
-        self.assertIn("cad", parked)
-        self.assertNotIn("wa8", parked[:3])
-        self.assertNotIn("caa", parked[:3])
+        self.assertEqual("cax", ranked[0])
+        self.assertIn("wa8", ranked)
+        self.assertNotIn("caa", ranked[:3])
+        self.assertNotIn("wa8", ranked[:3])
+        self.assertEqual(31, len(ranked))
         self.assertNotIn("target", inspect.signature(evaluator.leftover_converting_greedy_neighbors).parameters)
         self.assertNotIn("target", inspect.signature(evaluator.converting_fill_loss_append_fill).parameters)
 
