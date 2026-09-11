@@ -624,6 +624,66 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
         self.assertEqual(1, sum(1 for word in ranked_miss[:3] if word in {"cax", "caz", "caa"}))
         self.assertNotIn("target", inspect.signature(evaluator.unblend_greedy_alts_when_greedy_misses_top3).parameters)
 
+    def test_prefer_converting_budget11_seats_window_losing_alt_and_truncated(self):
+        lexicon = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"lex{index}", "en", (index,), 50 - index), 2.0 - 0.05 * index,
+            )
+            for index in range(31)
+        ]
+        greedy = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (40,), 0), 8.0, frequency_free=True, source="greedy",
+        )
+        converting = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"wa{index}", "en", (50 + index,), 0),
+                7.5 - 0.05 * index,
+                frequency_free=True,
+                source="greedy_alts",
+            )
+            for index in range(12)
+        ]
+        nbest = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"n{index}", "en", (80 + index,), 0),
+                9.0 - 0.02 * index,
+                frequency_free=True,
+                source="nbest",
+            )
+            for index in range(4)
+        ]
+        truncated = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cad", "en", (8,), 80), 0.2, frequency_free=False, source="truncated_ctc",
+        )
+        reserved = [greedy, *converting, *nbest, truncated]
+        self.assertGreater(evaluator.reserved_oov_ctc_ranks(reserved)[("wa8", "en")], 7)
+        self.assertTrue(evaluator.reserved_clears_lexicon_top3(converting[8], lexicon))
+        spatial = evaluator.reserved_occupants(reserved, lexicon, reserved_budget=11)
+        self.assertNotIn("wa8", [item.word for item in spatial[:8]])
+        preferred = evaluator.reserved_occupants(
+            reserved, lexicon, reserved_budget=11, prefer_converting_greedy_alts=True,
+        )
+        self.assertEqual(11, len(preferred))
+        self.assertEqual("cax", preferred[0].word)
+        self.assertIn("wa8", [item.word for item in preferred])
+        self.assertEqual(31, len(evaluator.publish_reserved_slots(
+            lexicon, reserved, reserved_budget=11, prefer_converting_greedy_alts=True,
+        )))
+        ranked = [
+            entry.word
+            for entry in evaluator.published_ranking(
+                evaluator.publish_reserved_slots(
+                    lexicon, reserved, reserved_budget=11, prefer_converting_greedy_alts=True,
+                ),
+                reserved,
+                lexicon_reference=lexicon,
+                park_min_rank=0,
+            )
+        ]
+        self.assertEqual("cax", ranked[0])
+        self.assertEqual(31, len(ranked))
+        self.assertNotIn("target", inspect.signature(evaluator.reserved_occupants).parameters)
+
     def test_lift_near_top3_unblends_only_rank_4_to_6_frequency_free(self):
         lexicon = [
             evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("the", "en", (1,), 200), 3.0),
