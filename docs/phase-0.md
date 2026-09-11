@@ -48,10 +48,10 @@ parity. Those results do not establish correction gains on human tap errors.
 
 | Required evidence | Current state |
 |---|---|
-| 3,000 held-out human spatial tap errors | 2,113; another 887 required |
+| 3,000 held-out human spatial tap errors | 3,462 (2,113 phone + 1,349 smartwatch); corpus minimum met |
 | Valid-word correction and keep coverage | 6,132 corrections and 4,635 keeps; count minimums met, quality not measured |
-| 500 split/join cases | None in the combined corpus |
-| Contraction/personal/compound coverage | 3,244 contraction cases; personal and compound coverage missing |
+| 500 split/join cases | 509 ITE letter-regroup cases; minimum met |
+| Contraction/personal/compound coverage | 3,244 human contractions plus 360/312 project-authored personal/compound held out; all kinds represented |
 | Swipe absolute quality and difficult strata | Offline native-lexicon union remains below absolute top-1/top-3 gates; full live fusion is not qualified |
 | End-to-end latency and combined added peak memory | Not qualified; diagnostic snapshots and generous-deadline replays are insufficient |
 | Required device matrix | Forced-low-RAM emulator checks exist; stock physical Android and physical GrapheneOS evidence are absent |

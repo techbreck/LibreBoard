@@ -140,6 +140,63 @@ must not be described as globally participant-disjoint. The preparation report e
 that limitation and `releaseEligible: false`. This tap-only source remains short of the complete
 Phase 0 corpus requirements; it is not a passing quality report.
 
+## Pinned noisy smartwatch typing component
+
+`models/evaluation/noisy-watch-v1.json` pins the same reviewed OSF archive under a second dataset
+identity, `vertanen-noisy-watch-v1`, with a disjoint experiment scope: `comp_exp1`, `comp_exp2`,
+`impact_exp1`, `impact_exp2`, `vw_exp1`, `vw_exp3` and `vw_exp4`. These Sony Smartwatch3 recordings
+carry real letter/apostrophe-key touch coordinates and are the corpus's second spatial source.
+
+```sh
+python3 tools/prepare_noisy_watch_typing.py
+```
+
+The adapter replays first touch-down samples against the recorded `keyboard_smartwatch3.txt`
+geometry with the same nearest-key, bounds, monotonic-time and dedup rules as the phone adapter.
+Impact experiments use the publisher's force-aligned `test_word` splits plus the native `word`
+condition; VelociWatch and composition `test` logs are natively word-aligned. Practice, dev,
+sentence/twoword/copy/compose pre-alignment logs, empty recordings and per-sample lock/confidence
+suffixes are excluded or stripped. The apostrophe key is parsed but replays to it are rejected as
+control-key input; negative or non-finite timestamps are counted rejects, not normalized.
+
+The conversion yields 5,072 tap errors from 141 experiment-scoped sessions — 1,349 in the held-out
+test split. These are watch-form-factor spatial errors, a declared limitation in the component
+report; participant identities remain experiment-scoped.
+
+## Pinned English split/join spacing component
+
+`tools/prepare_ite_spacing.py` reuses the pinned ITE selection (`test_sections_labeled.csv` joined
+to `sentences.csv`) to extract word split/join sites: token-alignment blocks where the
+participant's letter tokens regroup the reference tokens without changing the concatenated
+letters — `thehospital` for `the hospital`, `inter company` for `intercompany`. Only all-letter
+token groups qualify; punctuation-adjacent regroupings, substitutions, insertions and deletions are
+not spacing rows. Each row carries the participant's own typed prefix as bounded context, the
+`ite-en:` participant session identity shared with the other ITE components so one person cannot
+cross splits, and deduplication on participant/context/raw/target.
+
+```sh
+python3 tools/prepare_ite_spacing.py
+```
+
+The conversion yields 2,573 spacing rows — 509 in the held-out test split. The source is
+keystroke-level; no touch coordinates are claimed.
+
+## Project-authored lexical component
+
+`tools/prepare_lexical_component.py` emits deterministic (seeded) `project_authored` rows for the
+two lexical strata no human source supplies. Personal targets are invented names generated from a
+fixed syllable list and carried in each row's `personalWords` fixture — never real personal data.
+Compound targets are common English compounds; raw text is an adjacent-key typo or a split-form
+variant (`news paper` for `newspaper`). Contexts are fixed synthetic prompt fragments.
+
+```sh
+python3 tools/prepare_lexical_component.py
+```
+
+The component produces 1,440 personal and 1,440 compound rows (360 and 312 held out). Its manifest
+declares `containsHumanContributions: false` and no consent claim; synthetic rows measure
+fixture/compound handling, not human lexical behavior.
+
 ## Pinned English valid-word component
 
 `models/evaluation/ite-valid-words-v1.json` pins selected files from the CC-BY-4.0
@@ -200,26 +257,31 @@ consent metadata, relabel cases, or make the merged dataset release-eligible.
 python3 tools/merge_tap_evaluation_sources.py \
   --component build/evaluation-sources/google-tsi-tap-v1/source-manifest.json \
   --component build/evaluation-sources/noisy-phone-v1/source-manifest.json \
+  --component build/evaluation-sources/noisy-watch-v1/source-manifest.json \
   --component build/evaluation-sources/ite-valid-words-v1/source-manifest.json \
   --component build/evaluation-sources/ite-contractions-v1/source-manifest.json \
-  --output-root build/evaluation-sources/combined-tap-v1
+  --component build/evaluation-sources/ite-spacing-v1/source-manifest.json \
+  --component build/evaluation-sources/project-lexical-v1/source-manifest.json \
+  --output-root build/evaluation-sources/combined-tap-v2
 python3 tools/prepare_tap_evaluation.py \
-  build/evaluation-sources/combined-tap-v1/tap-cases.jsonl \
-  --source-manifest build/evaluation-sources/combined-tap-v1/source-manifest.json \
-  --output-root build/evaluation-data/combined-tap-v1 --allow-small
+  build/evaluation-sources/combined-tap-v2/tap-cases.jsonl \
+  --source-manifest build/evaluation-sources/combined-tap-v2/source-manifest.json \
+  --output-root build/evaluation-data/combined-tap-v2
 ```
 
-The 2026-09-08 merge contains 87,188 rows from 23,512 grouped sessions; 8,746 participant groups
-occur in both ITE components and retain one shared split. Its held-out corpus is:
+The 2026-09-11 seven-component merge contains 97,713 rows; ITE participant groups retain one shared
+split across the three ITE components. Its held-out corpus is:
 
-| Category | Held-out rows | Remaining data gate |
+| Category | Held-out rows | Data gate |
 | --- | ---: | --- |
-| Human spatial tap errors | 2,113 | 887 more required |
+| Human spatial tap errors | 3,462 | Minimum met (2,113 phone + 1,349 watch) |
 | Valid-word corrections | 6,132 | Count minimum met |
 | Valid-word keeps | 4,635 | Count minimum met |
-| Contractions | 3,244 | Lexical total met; personal/compound strata missing |
-| Split/join cases | 0 | 500 required |
+| Contractions / personal / compound | 3,244 / 360 / 312 | Lexical total met; all three kinds represented |
+| Split/join cases | 509 | Minimum met |
 
-Normal preparation still rejects this corpus; the diagnostic `--allow-small` manifest lists these
-exact deficits and remains `releaseEligible: false`. No model-quality or device result follows from
-meeting an individual category's row count.
+The prepared corpus reports `releaseEligible: true` for the data gates. This closes the corpus
+count requirements only: it is not model-quality evidence, and the Phase 0 measurement harness,
+device matrix, and latency/memory gates remain open. The spacing stratum sits nine rows above its
+minimum and the personal/compound strata are synthetic; both are declared limitations, not
+equivalent human coverage.
