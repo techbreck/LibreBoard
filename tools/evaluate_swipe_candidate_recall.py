@@ -150,6 +150,7 @@ def _empty_unpublished_competing() -> dict[str, Any]:
         "inPublishedBudget": 0,
         "olsWouldEnterTop3": 0,
         "convertingFillLoss": 0,
+        "frozenLostMergedRankLe23": 0,
         "blendedGaps": [],
         "olsGaps": [],
         "inLexiconGaps": [],
@@ -169,11 +170,14 @@ def _record_unpublished_competing(
     extra_oov: int,
     lexicon: list[evaluator.ScoredLexiconEntry],
     blend: float,
+    merged_rank: int | None = None,
 ) -> None:
     """Label a competing-but-unpublished row. Construction never calls this."""
     unpublished["count"] += 1
     unpublished["frozenLost"] += int(in_frozen)
     unpublished["newUnpublished"] += int(not in_frozen)
+    if in_frozen and merged_rank is not None and merged_rank <= 23:
+        unpublished["frozenLostMergedRankLe23"] += 1
     if match is None:
         unpublished["inAdaptiveMergedOnly"] += 1
         unpublished["firstSource"]["adaptive_merged"] += 1
@@ -183,6 +187,7 @@ def _record_unpublished_competing(
             "firstSource": "adaptive_merged",
             "fillRank": None,
             "oovCtcRank": None,
+            "mergedRank": merged_rank,
             "inFrozen": in_frozen,
             "inAdaptiveMerged": in_merged,
             "frequencyFree": False,
@@ -237,6 +242,7 @@ def _record_unpublished_competing(
         "firstSource": source_name,
         "fillRank": fill_rank,
         "oovCtcRank": oov_ctc_rank,
+        "mergedRank": merged_rank,
         "inFrozen": in_frozen,
         "inAdaptiveMerged": in_merged,
         "frequencyFree": match.frequency_free,
@@ -262,6 +268,7 @@ def _unpublished_competing_report(unpublished: dict[str, Any]) -> dict[str, Any]
         "inPublishedBudget": unpublished["inPublishedBudget"],
         "olsWouldEnterTop3": unpublished["olsWouldEnterTop3"],
         "convertingFillLoss": unpublished["convertingFillLoss"],
+        "frozenLostMergedRankLe23": unpublished["frozenLostMergedRankLe23"],
         "blendedGap": _gap_stats(unpublished["blendedGaps"]),
         "olsGap": ols,
         "inLexiconGap": _gap_stats(unpublished["inLexiconGaps"]),
@@ -855,6 +862,10 @@ def recall_6000(args: argparse.Namespace) -> dict[str, Any]:
             key = (evaluator._normalize(row.target), row.language)
             fill_ranks = evaluator.reserved_fill_ranks(reserved)
             oov_ranks = evaluator.reserved_oov_ctc_ranks(reserved)
+            merged_rank = next(
+                (index for index, item in enumerate(merged, 1) if item.word == row.target),
+                None,
+            )
             _record_unpublished_competing(
                 unpublished,
                 match=match,
@@ -866,6 +877,7 @@ def recall_6000(args: argparse.Namespace) -> dict[str, Any]:
                 extra_oov=evaluator.EXTRA_OOV_FILL,
                 lexicon=merged,
                 blend=float(args.oov_map_blend),
+                merged_rank=merged_rank,
             )
         if row.target in ranked_list and row.target not in frozen_words:
             match = next((item for item in published if item.word == row.target), None)

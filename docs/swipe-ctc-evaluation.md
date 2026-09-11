@@ -448,6 +448,20 @@ convertingFillLoss row and loses more frozen tail membership: 5,773 present /
 5,567 top-3, convertingFillLoss 12, frozenLost 4. Not promoted over budget 11.
 Evidence: `docs/models/evidence/swipe-published-31-budget12.json`.
 
+The remaining 22 unpublished competing rows split as 20 greedy_alts that cannot
+occupy ranked[:31] without extra reserved seats (fillRank > 11) and 2 frozenLost
+adaptive-merged rows that already occupy the merged 32. Budget 11 fill keeps 20
+lexicon fusion ranks, so frozen ranks 21-23 can be stolen at fill;
+`inPublishedBudget` is 0. Evidence:
+`docs/models/evidence/swipe-published-31-unpublished-without-extra-seats.json`.
+
+Tighter stratum-adaptive geometry (very_sloppy/long 4, sloppy/return_trip/double_letter
+8; short still 32/32) recovered frozenLost 2→0 without extra reserved seats or
+unclamping extras, but published-31 fell 5,776→5,773 and 6k top-3 5,567→5,559
+(1k twice 873/928). Truncated leftovers still publish 0 unique seats. Not
+promoted. Geometry limits stay 8/8/12/16/16. Evidence:
+`docs/models/evidence/swipe-published-31-tight-geo.json`.
+
 The 1,000-row ranking follow-up assigned frequency 1 to the 4,089 supplemental words. Adding them
 to both CTC and geometry lowered combined top-1/top-3 from 86.6%/92.7% to 85.0%/91.9%. Replaying
 only supplemented CTC with the original geometric candidates yielded 84.8%/92.3%. Both scoring

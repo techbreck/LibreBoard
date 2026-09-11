@@ -940,6 +940,7 @@ def merge_swipe_slates(
 
 # Stratum-adaptive decoder union: geometry is near-dead-weight on the failing
 # strata, where truncation drops CTC-only targets. Short stays at a full 32/32.
+# Geometry 4/4/8/8/8 stole 6k top-3; keep 8/8/12/16/16.
 STRATUM_GEOMETRY_LIMITS = {
     "very_sloppy": 8,
     "long": 8,

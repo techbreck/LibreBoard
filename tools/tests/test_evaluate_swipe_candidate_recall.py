@@ -143,6 +143,7 @@ class CandidateRecallDiagnosticTest(unittest.TestCase):
             extra_oov=7,
             lexicon=lexicon,
             blend=0.5,
+            merged_rank=None,
         )
         report = diagnostic._unpublished_competing_report(unpublished)
         self.assertEqual(1, report["count"])
@@ -179,6 +180,26 @@ class CandidateRecallDiagnosticTest(unittest.TestCase):
         self.assertEqual(1, weak_report["fillRank"]["gt11"])
         self.assertEqual(0, weak_report["olsWouldEnterTop3"])
         self.assertEqual(0, weak_report["convertingFillLoss"])
+        frozen_lost = diagnostic._empty_unpublished_competing()
+        diagnostic._record_unpublished_competing(
+            frozen_lost,
+            match=None,
+            fill_rank=None,
+            oov_ctc_rank=None,
+            in_frozen=True,
+            in_merged=True,
+            reserved_budget=11,
+            extra_oov=7,
+            lexicon=lexicon,
+            blend=0.5,
+            merged_rank=22,
+        )
+        frozen_report = diagnostic._unpublished_competing_report(frozen_lost)
+        self.assertEqual(1, frozen_report["frozenLost"])
+        self.assertEqual(1, frozen_report["inAdaptiveMergedOnly"])
+        self.assertEqual(1, frozen_report["frozenLostMergedRankLe23"])
+        self.assertEqual(22, frozen_report["rows"][0]["mergedRank"])
+        self.assertNotIn("target", inspect.signature(diagnostic._record_unpublished_competing).parameters)
 
 
 if __name__ == "__main__":

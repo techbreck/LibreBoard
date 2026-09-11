@@ -478,8 +478,64 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
         self.assertEqual((32, 32), evaluator.decoder_slate_budgets({"short", "long", "sloppy"}))
         self.assertEqual((32, 8), evaluator.decoder_slate_budgets({"long", "very_sloppy"}))
         self.assertEqual((32, 8), evaluator.decoder_slate_budgets({"very_sloppy"}))
+        self.assertEqual((32, 8), evaluator.decoder_slate_budgets({"long"}))
         self.assertEqual((32, 12), evaluator.decoder_slate_budgets({"sloppy", "medium"}))
+        self.assertEqual((32, 16), evaluator.decoder_slate_budgets({"return_trip"}))
+        self.assertEqual((32, 16), evaluator.decoder_slate_budgets({"double_letter"}))
         self.assertEqual((32, 32), evaluator.decoder_slate_budgets({"clean", "medium"}))
+        self.assertNotIn("target", inspect.signature(evaluator.decoder_slate_budgets).parameters)
+
+    def test_reduced_geometry_slice_lets_truncated_ctc_occupy_merged_32(self):
+        ctc = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"c{index:02d}", "en", (index,), 10),
+                float(32 - index),
+            )
+            for index in range(32)
+        ]
+        geometric = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"g{index:02d}", "en", (100 + index,), 10),
+                float(32 - index),
+            )
+            for index in range(32)
+        ]
+        full = evaluator.merge_swipe_slates(ctc, geometric)
+        self.assertEqual(32, len(full))
+        full_words = {item.word for item in full}
+        leftover_ctc = [item.word for item in ctc if item.word not in full_words]
+        self.assertTrue(leftover_ctc)
+        tight = evaluator.merge_swipe_slates(ctc, geometric[:4])
+        self.assertEqual(32, len(tight))
+        recovered = set(leftover_ctc) & {item.word for item in tight}
+        self.assertTrue(recovered)
+        self.assertNotIn("target", inspect.signature(evaluator.merge_swipe_slates).parameters)
+
+    def test_budget11_fill_drops_lexicon_fusion_ranks_21_to_23(self):
+        lexicon = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"lex{index:02d}", "en", (index,), 50 - index),
+                2.0 - 0.05 * index,
+            )
+            for index in range(31)
+        ]
+        reserved = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"oov{index}", "en", (80 + index,), 0),
+                0.0,
+                frequency_free=True,
+                source="greedy" if index == 0 else "greedy_alts",
+            )
+            for index in range(11)
+        ]
+        published = evaluator.publish_reserved_slots(lexicon, reserved, reserved_budget=11)
+        words = {item.word for item in published}
+        self.assertEqual(31, len(published))
+        for index in range(20):
+            self.assertIn(f"lex{index:02d}", words)
+        for index in range(20, 23):
+            self.assertNotIn(f"lex{index:02d}", words)
+        self.assertNotIn("target", inspect.signature(evaluator.publish_reserved_slots).parameters)
 
     def test_train_path_loader_does_not_return_targets(self):
         layout = {"id": "test-layout", "keyLabels": list("abc"), "keyMask": [1, 1, 1]}

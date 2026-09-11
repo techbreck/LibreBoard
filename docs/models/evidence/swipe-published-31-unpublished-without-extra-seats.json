@@ -1,0 +1,34 @@
+{
+  "convertingFillLoss": 13,
+  "diagnosticOnly": true,
+  "keeperEvidence": "docs/models/evidence/swipe-published-31-alt-unblend.json",
+  "limitations": [
+    "Labels only from unpublished competing rows on the spatial budget-11 keeper. Construction does not read targets.",
+    "inPublishedBudget is 0: no unpublished row occupied a reserved seat in the 11 then lost at ranking. Ranking cannot recover fill losses.",
+    "Budget 11 fill keeps 20 lexicon fusion ranks and replaces ranks 21-31. Frozen published-31 targets sit in ranks 1-23, so ranks 21-23 can be stolen at fill.",
+    "The 20 unpublished greedy_alts have fillRank 12-40 and oovCtcRank 11-39. Seating them needs extra reserved seats (budget 12+), unique extra_oov/n-best displacement, extra OLS unclamp, leftover-greedy-alts-append, or target-aware fill.",
+    "Tighter stratum geometry 4/4/8/8/8 recovered frozenLost 2→0 without extra seats and without unclamping extras, but published-31 5,776→5,773 and 6k top-3 5,567→5,559. Limits reverted to 8/8/12/16/16."
+  ],
+  "measuredTop3": 5567,
+  "published31TargetPresent": 5776,
+  "qualityClaim": false,
+  "releaseEligible": false,
+  "schemaVersion": 1,
+  "summary": {
+    "competingTargetPresent": 5798,
+    "count": 22,
+    "fillRank": {
+      "gt11": 20,
+      "le11": 0,
+      "none": 2
+    },
+    "firstSource": {
+      "adaptive_merged": 2,
+      "greedy_alts": 20
+    },
+    "frozenLost": 2,
+    "inPublishedBudget": 0,
+    "needExtraReservedSeats": 20,
+    "occupyMerged32WithoutExtraSeats": 2
+  }
+}
