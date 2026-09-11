@@ -483,6 +483,13 @@ return_trip present 1,569 (below 1,572), top-3 5,567. 1k twice 878/929. Not
 promoted. Evidence:
 `docs/models/evidence/swipe-published-31-protect-drop.json`.
 
+Length-changing converting greedy_alts in leftover extra_oov seats, unique n-best
+held, leftover-greedy-alts-append and protect-drop off: convertingFillLoss 13→12,
+nbest 5/0 held, greedy_alts 49/1 held, frozenLost 2 held, 6k 5,775 present /
+5,567 top-3, neighbors 3→2. 1k twice 878/929. OLS-gap extra_oov is a wash at
+blend 0.5. Not promoted. Evidence:
+`docs/models/evidence/swipe-published-31-len-change.json`.
+
 The 1,000-row ranking follow-up assigned frequency 1 to the 4,089 supplemental words. Adding them
 to both CTC and geometry lowered combined top-1/top-3 from 86.6%/92.7% to 85.0%/91.9%. Replaying
 only supplemented CTC with the original geometric candidates yielded 84.8%/92.3%. Both scoring

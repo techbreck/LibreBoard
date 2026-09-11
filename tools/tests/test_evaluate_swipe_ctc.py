@@ -351,6 +351,7 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
             evaluator.leftover_converting_greedy_neighbors,
             evaluator.converting_fill_loss_append_fill,
             evaluator.protect_frozen_converting_32_fill,
+            evaluator.length_changing_converting_extra_oov,
             evaluator.drop_nonconverting_extra_for_published_31,
             evaluator.protected_lexicon_fusion_keys,
             evaluator.window_losing_converting_greedy_alts,
@@ -559,6 +560,49 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
         self.assertEqual([item.word for item in extra_oov], [item.word for item in spatial[1:8]])
         self.assertNotIn("target", inspect.signature(evaluator.converting_inlex_after_extra_oov).parameters)
         self.assertNotIn("target", inspect.signature(evaluator.reserved_occupants).parameters)
+
+    def test_length_changing_extra_oov_holds_nbest_and_seats_leftover_converting(self):
+        lexicon = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"lex{index}", "en", (index,), 50 - index), 2.0 - 0.05 * index,
+            )
+            for index in range(31)
+        ]
+        greedy = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (40,), 0), 8.0, frequency_free=True, source="greedy",
+        )
+        same_length = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"wa{index}", "en", (50 + index,), 0),
+                7.5 - 0.05 * index,
+                frequency_free=True,
+                source="greedy_alts",
+            )
+            for index in range(6)
+        ]
+        nbest = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caa", "en", (60,), 0), 7.2, frequency_free=True, source="nbest",
+        )
+        leftover = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cazz", "en", (70,), 0), 6.9, frequency_free=True, source="greedy_alts",
+        )
+        reserved = [greedy, *same_length, nbest, leftover]
+        self.assertTrue(evaluator.reserved_clears_lexicon_top3(leftover, lexicon))
+        self.assertEqual(3, len("cax"))
+        self.assertEqual(4, len("cazz"))
+        occupants = evaluator.reserved_occupants(
+            reserved, lexicon, reserved_budget=11, length_changing_extra_oov=True,
+        )
+        extra_oov_words = [item.word for item in occupants[1:8]]
+        self.assertIn("caa", extra_oov_words)
+        self.assertIn("cazz", extra_oov_words)
+        published = evaluator.publish_reserved_slots(
+            lexicon, reserved, reserved_budget=11, length_changing_extra_oov=True,
+        )
+        self.assertEqual(31, len(published))
+        self.assertIn("cazz", {item.word for item in published})
+        self.assertIn("caa", {item.word for item in published})
+        self.assertNotIn("target", inspect.signature(evaluator.length_changing_converting_extra_oov).parameters)
 
     def test_budget11_fill_drops_lexicon_fusion_ranks_21_to_23(self):
         lexicon = [

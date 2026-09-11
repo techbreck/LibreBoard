@@ -400,6 +400,8 @@ def ranking_1000(args: argparse.Namespace) -> dict[str, Any]:
         argv.append("--leftover-greedy-alts-append")
     if args.protect_frozen_ranks:
         argv.append("--protect-frozen-ranks")
+    if args.length_changing_extra_oov:
+        argv.append("--length-changing-extra-oov")
     parsed = evaluator.parse_args(argv)
     report = evaluator.evaluate(parsed)
     report["diagnosticOnly"] = True
@@ -802,6 +804,7 @@ def recall_6000(args: argparse.Namespace) -> dict[str, Any]:
             converting_fill_loss_append=bool(args.converting_fill_loss_append),
             leftover_greedy_alts_append=bool(args.leftover_greedy_alts_append),
             protect_frozen_ranks=bool(args.protect_frozen_ranks),
+            length_changing_extra_oov=bool(args.length_changing_extra_oov),
         )
         skip_keys = {
             (evaluator._normalize(item.word), item.entry.language) for item in merged
@@ -821,6 +824,7 @@ def recall_6000(args: argparse.Namespace) -> dict[str, Any]:
             converting_fill_loss_append=bool(args.converting_fill_loss_append),
             leftover_greedy_alts_append=bool(args.leftover_greedy_alts_append),
             protect_frozen_ranks=bool(args.protect_frozen_ranks),
+            length_changing_extra_oov=bool(args.length_changing_extra_oov),
         )
         park_min_rank = int(args.park_extra_reserved_min_rank)
         published = evaluator.lift_near_top3_frequency_free(
@@ -971,6 +975,7 @@ def recall_6000(args: argparse.Namespace) -> dict[str, Any]:
         "convertingFillLossAppend": bool(args.converting_fill_loss_append),
         "leftoverGreedyAltsAppend": bool(args.leftover_greedy_alts_append),
         "protectFrozenRanks": bool(args.protect_frozen_ranks),
+        "lengthChangingExtraOov": bool(args.length_changing_extra_oov),
         "published31Membership": True,
         "newHits": new_hits,
         "conversionOutsideTop3": _conversion_outside_report(outside_top3),
@@ -1203,6 +1208,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--protect-frozen-ranks",
         action="store_true",
         help="32-slot fill keeping lexicon fusion ranks 1-23; leftover converting alts occupy 24-32; count ranked[:31]",
+    )
+    parser.add_argument(
+        "--length-changing-extra-oov",
+        action="store_true",
+        help="extra_oov leftover seats prefer length-changing converting greedy_alts; hold spatial n-best",
     )
     return parser.parse_args(argv)
 

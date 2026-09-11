@@ -1,0 +1,22 @@
+{
+  "convertingFillLoss": 13,
+  "diagnosticOnly": true,
+  "keeperEvidence": "docs/models/evidence/swipe-published-31-alt-unblend.json",
+  "limitations": [
+    "Labels only from unpublished competing rows on the spatial budget-11 keeper. Construction does not read targets.",
+    "OLS-gap extra_oov among blend-0.5 greedy_alts is the same order as spatial extra_oov, so it cannot seat oovCtcRank 11 without extra seats.",
+    "Length-changing converting greedy_alts occupy remaining extra_oov seats after spatial n-best are held. Unique n-best extra_oov stay.",
+    "leftover-greedy-alts-append and protect-frozen/protect-drop stay off. Extras stay blend 0.5. Frozen ranks 1-23 are not a reserved-budget raise."
+  ],
+  "measuredTop3": 5567,
+  "published31TargetPresent": 5776,
+  "qualityClaim": false,
+  "releaseEligible": false,
+  "schemaVersion": 1,
+  "summary": {
+    "allBlendedGapNegative": true,
+    "closestOovCtcRank": 11,
+    "count": 13,
+    "olsGapOrderEqualsSpatialAtSameBlend": true
+  }
+}
