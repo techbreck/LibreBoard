@@ -1940,13 +1940,17 @@ def unblend_oov_spatial(spatial: float, dest: Sequence[float], blend: float) -> 
 
 def prioritize_reserved_candidates(
     reserved: Sequence[ScoredLexiconEntry],
+    *,
+    extra_oov: int = EXTRA_OOV_FILL,
 ) -> list[ScoredLexiconEntry]:
     """Mix unconstrained CTC OOV with in-lexicon recoveries.
 
     Frozen targets in the published 31 all sit in ranks 1-23, so up to eight
     reserved slots can replace the tail without dropping a frozen membership
     hit. Fill greedy, then the best unconstrained OOV alts/n-best, then
-    in-lexicon neighbors/truncated by spatial and frequency.
+    in-lexicon neighbors/truncated by spatial and frequency. Budget 12 uses
+    extra_oov = 11 so oovCtcRank 11 (closest convertingFillLoss) can occupy
+    the 12th reserved seat. Construction never reads evaluation targets.
     """
     if not any(candidate.source for candidate in reserved):
         return list(reserved)
@@ -1968,7 +1972,7 @@ def prioritize_reserved_candidates(
     in_lexicon_ctc.sort(key=in_lexicon_key)
     other_in_lexicon.sort(key=in_lexicon_key)
     oov_ctc.sort(key=lambda candidate: (-candidate.spatial, _normalize(candidate.word)))
-    extra_oov = EXTRA_OOV_FILL
+    extra_oov = max(0, extra_oov)
     return [
         *greedy,
         *oov_ctc[:extra_oov],
@@ -2423,8 +2427,13 @@ def reserved_occupants(
     6k 5,567→5,551.
     """
     skipped = set(skip_keys)
+    extra_oov = EXTRA_OOV_FILL
+    if reserved_budget >= 12:
+        extra_oov = max(EXTRA_OOV_FILL, reserved_budget - 1)
     ordered = [
-        candidate for candidate in prioritize_reserved_candidates(reserved)
+        candidate for candidate in prioritize_reserved_candidates(
+            reserved, extra_oov=extra_oov,
+        )
         if (_normalize(candidate.word), candidate.entry.language) not in skipped
     ]
     if reserved_budget <= 0:

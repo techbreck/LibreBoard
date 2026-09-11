@@ -606,6 +606,23 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
         self.assertNotIn("caz", ranked)
         self.assertNotIn("target", inspect.signature(evaluator.prioritize_reserved_candidates).parameters)
         self.assertNotIn("target", inspect.signature(evaluator.reserved_occupants).parameters)
+        occupants12 = evaluator.reserved_occupants(reserved, lexicon, reserved_budget=12)
+        words12 = [item.word for item in occupants12]
+        self.assertEqual(12, len(occupants12))
+        self.assertEqual("cax", words12[0])
+        self.assertIn("caz", words12)
+        published12 = evaluator.publish_reserved_slots(lexicon, reserved, reserved_budget=12)
+        self.assertEqual(31, len(published12))
+        self.assertIn("caz", [item.word for item in published12])
+        ranked12 = [
+            entry.word
+            for entry in evaluator.published_ranking(
+                published12, reserved, lexicon_reference=lexicon, park_min_rank=0,
+            )
+        ]
+        self.assertEqual(31, len(ranked12))
+        self.assertIn("caz", ranked12)
+        self.assertEqual("cax", ranked12[0])
 
     def test_unblend_greedy_alts_only_when_greedy_misses_top3(self):
         lexicon = [

@@ -443,6 +443,11 @@ stole 6k top-3. Keep-20 seat-order permutations and n-best-last are stopped. Kee
 remains 5,776 present / 5,567 top-3. Evidence:
 `docs/models/evidence/swipe-published-31-cfl-inspection.json`.
 
+Reserved budget 12 (spatial extra_oov 11 so oovCtcRank 11 can occupy) seats one
+convertingFillLoss row and loses more frozen tail membership: 5,773 present /
+5,567 top-3, convertingFillLoss 12, frozenLost 4. Not promoted over budget 11.
+Evidence: `docs/models/evidence/swipe-published-31-budget12.json`.
+
 The 1,000-row ranking follow-up assigned frequency 1 to the 4,089 supplemental words. Adding them
 to both CTC and geometry lowered combined top-1/top-3 from 86.6%/92.7% to 85.0%/91.9%. Replaying
 only supplemented CTC with the original geometric candidates yielded 84.8%/92.3%. Both scoring
