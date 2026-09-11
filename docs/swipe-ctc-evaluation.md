@@ -403,6 +403,13 @@ publish 0 (extra_oov fills the four seats); return_trip present 1,568; reserved 
 `docs/models/evidence/swipe-published-31-score-fix.json` and
 `docs/models/evidence/swipe-published-31-score-blend.json`.
 
+Raising the unparked blend-0.5 budget from 4 to 11 (still no keep-20 fill-order, no
+floor clamp) publishes 21 of the 41 leftover greedy_alts. Frozen 6k is 5,776 present /
+5,235 / 5,566 top-3; 1k twice 878/929; return_trip present 1,577; reserved p95 19.3 ms;
+frozenLost 2. Thirteen converting leftover alts remain at fillRank > 11. New hits 106
+convert 15. `diagnosticOnly` / `releaseEligible` false. Evidence:
+`docs/models/evidence/swipe-published-31-score-budget11.json`.
+
 The 1,000-row ranking follow-up assigned frequency 1 to the 4,089 supplemental words. Adding them
 to both CTC and geometry lowered combined top-1/top-3 from 86.6%/92.7% to 85.0%/91.9%. Replaying
 only supplemented CTC with the original geometric candidates yielded 84.8%/92.3%. Both scoring

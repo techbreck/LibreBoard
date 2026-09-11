@@ -524,6 +524,43 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
         self.assertEqual("oovword", published[30].word)
         self.assertNotIn("target", inspect.signature(evaluator.publish_reserved_slots).parameters)
 
+    def test_publish_reserved_budget11_stays_inside_31_without_floor_clamp(self):
+        lexicon = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry(f"lex{index}", "en", (index,), 50 - index), 2.0 - 0.05 * index)
+            for index in range(31)
+        ]
+        greedy = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (40,), 0), 8.0, frequency_free=True, source="greedy",
+        )
+        extras = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"wa{index}", "en", (50 + index,), 0),
+                7.5 - 0.05 * index,
+                frequency_free=True,
+                source="greedy_alts",
+            )
+            for index in range(12)
+        ]
+        reserved = [greedy, *extras]
+        occupants = evaluator.reserved_occupants(reserved, lexicon, reserved_budget=11)
+        self.assertEqual(11, len(occupants))
+        self.assertEqual("cax", occupants[0].word)
+        self.assertIn("wa9", [item.word for item in occupants])
+        published = evaluator.publish_reserved_slots(lexicon, reserved, reserved_budget=11)
+        self.assertEqual(31, len(published))
+        self.assertEqual(11, sum(1 for item in published if item.frequency_free))
+        ranked = [
+            entry.word
+            for entry in evaluator.published_ranking(
+                published, reserved, lexicon_reference=lexicon, park_min_rank=0,
+            )
+        ]
+        self.assertEqual(31, len(ranked))
+        self.assertEqual("cax", ranked[0])
+        self.assertIn("wa9", ranked)
+        self.assertNotIn("target", inspect.signature(evaluator.reserved_occupants).parameters)
+        self.assertNotIn("target", inspect.signature(evaluator.publish_reserved_slots).parameters)
+
     def test_lift_near_top3_unblends_only_rank_4_to_6_frequency_free(self):
         lexicon = [
             evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("the", "en", (1,), 200), 3.0),
