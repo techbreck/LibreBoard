@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package helium314.keyboard.latin.engine.onnx
 
+import android.util.Log
 import helium314.keyboard.latin.BuildConfig
 import helium314.keyboard.latin.engine.Deadline
 import helium314.keyboard.latin.engine.EngineAvailability
@@ -100,9 +101,12 @@ object OnnxRuntimeSessionFactory {
             } else {
                 EngineAvailability.INCOMPATIBLE
             }
+            Log.w(TAG, "onnx session open failed ($availability): ${cause.javaClass.name}: ${cause.message}")
             OnnxSessionOpenResult(availability)
         }
     }
+
+    private const val TAG = "OnnxRuntimeSession"
 }
 
 internal data class OrtClassNames(

@@ -263,6 +263,13 @@ public final class BinaryDictionary extends Dictionary {
                 session.mIsBeginningOfSentenceArray);
         final InputPointers inputPointers = composedData.mInputPointers;
         final boolean isGesture = composedData.mIsBatchMode;
+        if (isGesture) {
+            // This build ships no native gesture suggest policy: the factory method is never
+            // registered, so the gesture Suggest instance has null TRAVERSAL/SCORING/WEIGHTING
+            // and the native call below would crash. Swipe suggestions are instead produced by
+            // the geometric-trace fallback plus engine decoders in Suggest.
+            return null;
+        }
         final int inputSize;
         if (!isGesture) {
             inputSize =

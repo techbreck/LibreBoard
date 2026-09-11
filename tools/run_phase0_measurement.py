@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Drive the Phase 0 tap-corpus measurement instrumentation on a bound device or emulator.
+"""Drive the Phase 0 measurement instrumentation on a bound device or emulator.
 
-Pushes the prepared corpus and (optionally) the context model into the debug app's private
-files directory, runs Phase0MeasurementInstrumentedTest, and pulls the schema-3 measurement
-JSONL. The output is raw measurement input for evaluate_engine.py, not release evidence alone.
+Pushes the prepared tap/swipe corpora and (optionally) the context and swipe models into the
+debug app's private files directory, runs Phase0MeasurementInstrumentedTest, and pulls the
+schema-3 measurement JSONL plus an environment sidecar merged into the --metadata file. The
+output is raw measurement input for evaluate_engine.py, not release evidence alone.
 """
 from __future__ import annotations
 
@@ -25,12 +26,13 @@ SAFE_NAME = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 ENVIRONMENTS = {"stock_android_hardware", "grapheneos_hardware", "low_ram_emulator"}
 
 
-def adb(adb_path: str, serial: str | None, *args: str, stdin: bytes | None = None) -> str:
+def adb(adb_path: str, serial: str | None, *args: str, stdin: bytes | None = None,
+        timeout: int = 600) -> str:
     command = [adb_path]
     if serial:
         command += ["-s", serial]
     command += list(args)
-    result = subprocess.run(command, input=stdin, capture_output=True, timeout=600)
+    result = subprocess.run(command, input=stdin, capture_output=True, timeout=timeout)
     if result.returncode != 0:
         raise RuntimeError(f"adb {' '.join(args)} failed: {result.stderr.decode(errors='replace')[:512]}")
     return result.stdout.decode(errors="replace")
@@ -50,13 +52,19 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--adb", type=pathlib.Path, default=pathlib.Path(shutil.which("adb") or "adb"))
     parser.add_argument("--serial")
-    parser.add_argument("--corpus", type=pathlib.Path, required=True,
-                        help="prepared corpus JSONL (e.g. build/evaluation-data/combined-tap-v2/test.jsonl)")
+    parser.add_argument("--corpus", type=pathlib.Path,
+                        help="prepared tap corpus JSONL (e.g. build/evaluation-data/combined-tap-v2/test.jsonl)")
+    parser.add_argument("--swipe-corpus", type=pathlib.Path,
+                        help="prepared swipe corpus JSONL (e.g. build/model-data/swipe-latin-v1/test.jsonl)")
     parser.add_argument("--model-dir", type=pathlib.Path,
-                        help="directory containing context.onnx and tokenizer.json")
+                        help="directory containing the context model *.onnx and tokenizer.json")
+    parser.add_argument("--swipe-model", type=pathlib.Path,
+                        help="the CTC swipe model *.onnx file")
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--environment", required=True, choices=sorted(ENVIRONMENTS))
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--instrument-timeout", type=int, default=4 * 60 * 60,
+                        help="seconds to wait for the instrumented run (default 4h)")
     parser.add_argument("--output", type=pathlib.Path, required=True)
     parser.add_argument("--metadata", type=pathlib.Path,
                         help="schema-3 metadata JSON to create or update with this run's environment")
@@ -66,13 +74,13 @@ def main(argv=None) -> int:
     parser.add_argument("--context-model-sha256")
     args = parser.parse_args(argv)
 
-    if not 0 < len(args.run_id) <= 512 or not args.corpus.is_file():
+    if not 0 < len(args.run_id) <= 512:
         return 2
+    if args.corpus is None and args.swipe_corpus is None:
+        raise RuntimeError("at least one of --corpus or --swipe-corpus is required")
     adb_path = str(args.adb)
-    remote_corpus = "corpus.jsonl"
-    remote_output = "measurement.jsonl"
+    remote_outputs: list[str] = []
 
-    push_private(adb_path, args.serial, args.corpus, remote_corpus)
     model_arg: list[str] = []
     if args.model_dir is not None:
         onnx_files = sorted(args.model_dir.glob("*.onnx"))
@@ -86,19 +94,39 @@ def main(argv=None) -> int:
 
     instrument_args = [
         "-e", "class", TEST_CLASS,
-        "-e", "libreboardRequirePhase0Measurement", "true",
-        "-e", "phase0CorpusFile", f"{REMOTE_DIR}/{remote_corpus}",
-        "-e", "phase0OutputFile", remote_output,
         "-e", "phase0RunId", args.run_id,
         "-e", "phase0Environment", args.environment,
         *model_arg,
     ]
+    if args.corpus is not None:
+        push_private(adb_path, args.serial, args.corpus, "corpus.jsonl")
+        remote_outputs.append("measurement.jsonl")
+        instrument_args += [
+            "-e", "libreboardRequirePhase0Measurement", "true",
+            "-e", "phase0CorpusFile", f"{REMOTE_DIR}/corpus.jsonl",
+            "-e", "phase0OutputFile", "measurement.jsonl",
+        ]
+    if args.swipe_corpus is not None:
+        push_private(adb_path, args.serial, args.swipe_corpus, "swipe-corpus.jsonl")
+        remote_outputs.append("swipe-measurement.jsonl")
+        instrument_args += [
+            "-e", "libreboardRequirePhase0SwipeMeasurement", "true",
+            "-e", "phase0SwipeCorpusFile", f"{REMOTE_DIR}/swipe-corpus.jsonl",
+            "-e", "phase0SwipeOutputFile", "swipe-measurement.jsonl",
+        ]
+        if args.swipe_model is not None:
+            push_private(adb_path, args.serial, args.swipe_model, "swipe.onnx")
+            instrument_args += ["-e", "phase0SwipeModelFile", f"{REMOTE_DIR}/swipe.onnx"]
     if args.limit:
         instrument_args += ["-e", "phase0Limit", str(args.limit)]
-    print(adb(adb_path, args.serial, "shell", "am", "instrument", "-w", "-r", *instrument_args, RUNNER))
+    print(adb(adb_path, args.serial, "shell", "am", "instrument", "-w", "-r",
+              *instrument_args, RUNNER, timeout=args.instrument_timeout))
 
-    pulled = adb(adb_path, args.serial, "exec-out", "run-as", PACKAGE,
-                 "cat", f"files/{REMOTE_DIR}/{remote_output}").encode()
+    pulled = b"".join(
+        adb(adb_path, args.serial, "exec-out", "run-as", PACKAGE,
+            "cat", f"files/{REMOTE_DIR}/{name}").encode()
+        for name in remote_outputs
+    )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_bytes(pulled)
 
