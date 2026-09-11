@@ -476,6 +476,13 @@ off) recovers frozenLost 2→0 and holds 6k top-3 5,567. Published-31 is 5,772
 twice 878/929. Not promoted over the budget-11 keeper. Evidence:
 `docs/models/evidence/swipe-published-31-protect-frozen.json`.
 
+Cutting that 32-set to ranked[:31] by dropping n-best/neighbors before leftover
+converting greedy_alts (still protecting ranks 1–23) zeros unique n-best (5→0)
+without raising leftover-alt unique occupancy (still 44). Published-31 5,766,
+return_trip present 1,569 (below 1,572), top-3 5,567. 1k twice 878/929. Not
+promoted. Evidence:
+`docs/models/evidence/swipe-published-31-protect-drop.json`.
+
 The 1,000-row ranking follow-up assigned frequency 1 to the 4,089 supplemental words. Adding them
 to both CTC and geometry lowered combined top-1/top-3 from 86.6%/92.7% to 85.0%/91.9%. Replaying
 only supplemented CTC with the original geometric candidates yielded 84.8%/92.3%. Both scoring

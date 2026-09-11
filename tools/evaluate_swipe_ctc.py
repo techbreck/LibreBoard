@@ -2990,6 +2990,72 @@ def published_ranking_scored(
     )
 
 
+def protected_lexicon_fusion_keys(
+    lexicon: Sequence[ScoredLexiconEntry],
+    *,
+    ranks: int = FROZEN_PROTECTED_RANKS,
+) -> set[tuple[str, str]]:
+    """Keys of the best ``ranks`` lexicon fusion occupants. No evaluation targets."""
+    if not lexicon or ranks <= 0:
+        return set()
+    ordered = [
+        candidate for candidate, _fusion in sorted(
+            zip(lexicon, static_fusion_values(lexicon), strict=True),
+            key=lambda item: (
+                -item[1],
+                _normalize(item[0].word),
+                item[0].entry.language,
+            ),
+        )
+    ]
+    return {
+        (_normalize(candidate.word), candidate.entry.language)
+        for candidate in ordered[:ranks]
+    }
+
+
+def drop_nonconverting_extra_for_published_31(
+    ranked: Sequence[tuple[ScoredLexiconEntry, float]],
+    lexicon: Sequence[ScoredLexiconEntry],
+    extra_keys: Iterable[tuple[str, str]],
+) -> list[tuple[ScoredLexiconEntry, float]]:
+    """Drop one extra so leftover converting greedy_alts occupy ranked[:31].
+
+    Frozen lexicon fusion ranks 1-23 stay. n-best and neighbors (0 top-3 on the
+    keeper) go before leftover converting greedy_alts. leftover-greedy-alts-append
+    stays off. Construction never reads evaluation targets.
+    """
+    if len(ranked) <= PUBLISHED_RANKING_BOUND:
+        return list(ranked)
+    extras = set(extra_keys)
+    protected = protected_lexicon_fusion_keys(lexicon)
+
+    def key_of(candidate: ScoredLexiconEntry) -> tuple[str, str]:
+        return (_normalize(candidate.word), candidate.entry.language)
+
+    def drop_priority(candidate: ScoredLexiconEntry) -> int:
+        key = key_of(candidate)
+        if key in protected or key not in extras:
+            return -1
+        if candidate.source == "nbest":
+            return 4
+        if candidate.source == "neighbors":
+            return 3
+        if not reserved_clears_lexicon_top3(candidate, lexicon):
+            return 2
+        return 1
+
+    chosen: tuple[int, int] | None = None
+    for index, (candidate, _fusion) in enumerate(ranked):
+        priority = drop_priority(candidate)
+        if priority < 0:
+            continue
+        if chosen is None or priority > chosen[0] or (priority == chosen[0] and index > chosen[1]):
+            chosen = (priority, index)
+    drop = chosen[1] if chosen is not None else len(ranked) - 1
+    return [item for index, item in enumerate(ranked) if index != drop]
+
+
 def published_ranking(
     published: Sequence[ScoredLexiconEntry],
     reserved: Sequence[ScoredLexiconEntry],
@@ -2997,20 +3063,31 @@ def published_ranking(
     *,
     extra_park_keys: Iterable[tuple[str, str]] = (),
     park_min_rank: int = 0,
+    protect_frozen_ranks: bool = False,
 ) -> list[LexiconEntry]:
     """Reorder the published 31. Lexicon fusions stay those of ``lexicon_reference``.
 
     The counted list is this result (length of ``published``, at most 31).
     Extra frequency-free occupants in ``extra_park_keys`` are demoted to
     ``park_min_rank`` or worse only when another frequency-free occupant
-    already occupies top-3. In-lexicon extras are not parked.
+    already occupies top-3. In-lexicon extras are not parked. A 32-slot
+    protect-frozen fill drops one non-converting extra before leftover
+    converting or lexicon ranks 1-23.
     """
     scored = published_ranking_scored(published, reserved, lexicon_reference)
     if park_min_rank >= 2 and extra_park_keys:
         scored = park_extra_frequency_free_to_protect_top3(
             scored, extra_park_keys, min_rank=park_min_rank,
         )
-    return [item[0].entry for item in scored]
+    if (
+        protect_frozen_ranks
+        and lexicon_reference is not None
+        and len(scored) > PUBLISHED_RANKING_BOUND
+    ):
+        scored = drop_nonconverting_extra_for_published_31(
+            scored, lexicon_reference, extra_park_keys,
+        )
+    return [item[0].entry for item in scored[:PUBLISHED_RANKING_BOUND]]
 
 
 def lift_near_top3_frequency_free(
@@ -3467,7 +3544,8 @@ def _evaluate(args: argparse.Namespace, slate_stream=None) -> dict[str, Any]:
                 lexicon_reference=merged,
                 extra_park_keys=extra_park_keys,
                 park_min_rank=park_min_rank,
-            )[:PUBLISHED_RANKING_BOUND]
+                protect_frozen_ranks=protect_frozen_ranks,
+            )
             competing = published
         else:
             competing = competing_slate(merged, reserved)

@@ -845,8 +845,9 @@ def recall_6000(args: argparse.Namespace) -> dict[str, Any]:
             lexicon_reference=merged,
             extra_park_keys=extra_park_keys,
             park_min_rank=park_min_rank,
+            protect_frozen_ranks=bool(args.protect_frozen_ranks),
         )
-        ranked_list = [entry.word for entry in ranked][: evaluator.PUBLISHED_RANKING_BOUND]
+        ranked_list = [entry.word for entry in ranked]
         if row.target in {item.word for item in merged} and row.target not in ranked_list:
             lost_at_publish += 1
         finished = time.perf_counter_ns()

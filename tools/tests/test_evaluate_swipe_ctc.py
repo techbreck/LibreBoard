@@ -351,6 +351,8 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
             evaluator.leftover_converting_greedy_neighbors,
             evaluator.converting_fill_loss_append_fill,
             evaluator.protect_frozen_converting_32_fill,
+            evaluator.drop_nonconverting_extra_for_published_31,
+            evaluator.protected_lexicon_fusion_keys,
             evaluator.window_losing_converting_greedy_alts,
             evaluator.prefer_window_losing_converting_alts,
             evaluator.reserved_fill_ranks,
@@ -602,20 +604,29 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
                 frequency_free=True,
                 source="greedy_alts",
             )
-            for index in range(7)
+            for index in range(6)
         ]
+        weak_nbest = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caa", "en", (60,), 0),
+            7.2,
+            frequency_free=True,
+            source="nbest",
+            oov_map_blend=1.0,
+        )
         leftover = evaluator.ScoredLexiconEntry(
             evaluator.LexiconEntry("caz", "en", (70,), 0), 6.9, frequency_free=True, source="greedy_alts",
         )
-        reserved = [greedy, *extra_oov, leftover]
+        reserved = [greedy, *extra_oov, weak_nbest, leftover]
         self.assertEqual(8, evaluator.reserved_oov_ctc_ranks(reserved)[("caz", "en")])
         self.assertTrue(evaluator.reserved_clears_lexicon_top3(leftover, lexicon))
+        self.assertFalse(evaluator.reserved_clears_lexicon_top3(weak_nbest, lexicon))
         occupants = evaluator.reserved_occupants(
             reserved, lexicon, reserved_budget=11, protect_frozen_ranks=True,
         )
         self.assertEqual(9, len(occupants))
         self.assertEqual("cax", occupants[0].word)
         self.assertEqual("caz", occupants[8].word)
+        self.assertIn("caa", [item.word for item in occupants])
         published = evaluator.publish_reserved_slots(
             lexicon, reserved, reserved_budget=11, protect_frozen_ranks=True,
         )
@@ -624,11 +635,25 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
         for index in range(23):
             self.assertIn(f"lex{index:02d}", words)
         self.assertIn("caz", words)
+        extras = evaluator.extra_reserved_occupant_keys(
+            reserved, lexicon, reserved_budget=11, protect_frozen_ranks=True,
+        )
         ranked = evaluator.published_ranking(
-            published, reserved, lexicon_reference=lexicon, park_min_rank=0,
-        )[: evaluator.PUBLISHED_RANKING_BOUND]
+            published,
+            reserved,
+            lexicon_reference=lexicon,
+            extra_park_keys=extras,
+            park_min_rank=0,
+            protect_frozen_ranks=True,
+        )
         self.assertEqual(31, len(ranked))
+        ranked_words = [entry.word for entry in ranked]
+        self.assertIn("caz", ranked_words)
+        self.assertNotIn("caa", ranked_words)
+        for index in range(23):
+            self.assertIn(f"lex{index:02d}", ranked_words)
         self.assertNotIn("target", inspect.signature(evaluator.protect_frozen_converting_32_fill).parameters)
+        self.assertNotIn("target", inspect.signature(evaluator.drop_nonconverting_extra_for_published_31).parameters)
         self.assertNotIn("target", inspect.signature(evaluator.publish_reserved_slots).parameters)
 
     def test_train_path_loader_does_not_return_targets(self):
