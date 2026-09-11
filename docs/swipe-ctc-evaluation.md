@@ -425,6 +425,11 @@ occupants) is 5,774 present / 5,567 top-3, convertingFillLoss still 13. Not prom
 over spatial budget 11. Evidence:
 `docs/models/evidence/swipe-published-31-cfl-unpark.json`.
 
+Putting leftover greedy_alts and truncated leftovers before 0-converting n-best
+inside budget 11 drops published-31 to 5,748 (n-best unique seats 5→0, alts 49→26)
+with top-3 still 5,567. convertingFillLoss stays 13. Not promoted. Evidence:
+`docs/models/evidence/swipe-published-31-first-source.json`.
+
 The 1,000-row ranking follow-up assigned frequency 1 to the 4,089 supplemental words. Adding them
 to both CTC and geometry lowered combined top-1/top-3 from 86.6%/92.7% to 85.0%/91.9%. Replaying
 only supplemented CTC with the original geometric candidates yielded 84.8%/92.3%. Both scoring

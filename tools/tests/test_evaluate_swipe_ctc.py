@@ -1638,6 +1638,65 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
         self.assertEqual(1, sum(1 for word in parked[:3] if word in {"cax", "caz", "caxt", "caa"}))
         self.assertNotIn("target", inspect.signature(evaluator.ablation_first_source_fill).parameters)
 
+    def test_ablation_first_source_budget11_displaces_nbest_with_leftover_alts(self):
+        lexicon = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"lex{index}", "en", (index,), 50 - index), 2.0 - 0.05 * index,
+            )
+            for index in range(31)
+        ]
+        greedy = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (40,), 0), 8.0, frequency_free=True, source="greedy",
+        )
+        converting = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"wa{index}", "en", (50 + index,), 0),
+                7.5 - 0.05 * index,
+                frequency_free=True,
+                source="greedy_alts",
+            )
+            for index in range(10)
+        ]
+        nbest = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"n{index}", "en", (80 + index,), 0),
+                9.5 - 0.02 * index,
+                frequency_free=True,
+                source="nbest",
+            )
+            for index in range(5)
+        ]
+        truncated = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cad", "en", (8,), 80), 0.2, frequency_free=False, source="truncated_ctc",
+        )
+        reserved = [greedy, *converting, *nbest, truncated]
+        self.assertGreater(evaluator.reserved_oov_ctc_ranks(reserved)[("wa8", "en")], 7)
+        spatial = evaluator.reserved_occupants(reserved, lexicon, reserved_budget=11)
+        self.assertIn("n0", [item.word for item in spatial])
+        self.assertNotIn("wa8", [item.word for item in spatial])
+        filled = evaluator.reserved_occupants(
+            reserved, lexicon, reserved_budget=11, ablation_first_source_fill_sources=True,
+        )
+        words = [item.word for item in filled]
+        self.assertEqual(11, len(filled))
+        self.assertEqual("cax", words[0])
+        self.assertIn("wa8", words)
+        self.assertIn("cad", words)
+        self.assertLess(words.index("wa8"), words.index("n0") if "n0" in words else 11)
+        published = evaluator.publish_reserved_slots(
+            lexicon, reserved, reserved_budget=11, ablation_first_source_fill_sources=True,
+        )
+        self.assertEqual(31, len(published))
+        ranked = [
+            entry.word
+            for entry in evaluator.published_ranking(
+                published, reserved, lexicon_reference=lexicon, park_min_rank=0,
+            )
+        ]
+        self.assertEqual("cax", ranked[0])
+        self.assertEqual(31, len(ranked))
+        self.assertNotIn("target", inspect.signature(evaluator.ablation_first_source_fill).parameters)
+
     def test_window_losing_converting_alts_do_not_displace_converting_extra_oov_winners(self):
         lexicon = [
             evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cat", "en", (1,), 50), 2.0),

@@ -2010,14 +2010,14 @@ def ablation_first_source_fill(
     *,
     extra_oov: int = EXTRA_OOV_FILL,
 ) -> list[ScoredLexiconEntry]:
-    """Greedy, leftover converting greedy_alts, then neighbors/truncated, n-best last.
+    """Greedy, greedy_alts, neighbors/truncated, n-best last. No targets.
 
     Ablation first-source of the 184: greedy 41, greedy_alts 69, n-best 33,
-    neighbors 36, truncated 5. Spatial extra_oov mixes n-best into the 7 extra
-    seats so neighbors publish 0. Length-changing greedy_alts (insert/delete)
-    are preferred over same-length substitutions so unpublished converting
-    recoveries can occupy extra_oov. One extra_oov seat is left for in-lex
-    neighbors when those sources are present. No evaluation targets.
+    neighbors 36, truncated 5. Spatial extra_oov mixes 0-converting n-best into
+    the extra seats so leftover greedy_alts (fillRank > 11) and neighbors
+    publish 0. Length-changing greedy_alts are preferred; leftover alts occupy
+    seats before n-best. One extra_oov seat is left for in-lex neighbors when
+    those sources are present. Construction never reads evaluation targets.
     """
     greedy = [candidate for candidate in reserved if candidate.source == "greedy"]
     greedy_len = len(_normalize(greedy[0].word)) if greedy else 0
@@ -2062,8 +2062,8 @@ def ablation_first_source_fill(
     take(greedy)
     take(alts[:alt_window])
     take(neighbors)
-    take(nbest)
     take(alts[alt_window:])
+    take(nbest)
     take(reserved)
     return result
 
