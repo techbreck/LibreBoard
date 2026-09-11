@@ -2962,6 +2962,59 @@ def lift_near_top3_frequency_free(
     return lifted
 
 
+def unblend_greedy_alts_when_greedy_misses_top3(
+    published: Sequence[ScoredLexiconEntry],
+    reserved: Sequence[ScoredLexiconEntry],
+    lexicon_reference: Sequence[ScoredLexiconEntry],
+) -> list[ScoredLexiconEntry]:
+    """Unblend the best published greedy_alt to OLS only when greedy misses top-3.
+
+    Blend-0.5 extra greedy_alts convert 0. Unclamping every extra stole 6k top-3
+    5,566→5,550. If greedy already occupies top-3, alts stay blended. If greedy
+    misses, the spatially-best published greedy_alt unblends to the train-fit map
+    so one converting alt can enter top-3. No floor clamp, no extra optimism
+    offset, no evaluation targets.
+    """
+    if not published or not lexicon_reference:
+        return list(published)
+    ranked = published_ranking_scored(published, reserved, lexicon_reference)
+    top = [candidate for candidate, _fusion in ranked[:3]]
+    if any(candidate.frequency_free and candidate.source == "greedy" for candidate in top):
+        return list(published)
+    if any(
+        candidate.frequency_free and candidate.source == "greedy_alts" for candidate in top
+    ):
+        return list(published)
+    dest = [candidate.spatial for candidate in lexicon_reference]
+    alts = [
+        candidate for candidate in published
+        if candidate.frequency_free
+        and candidate.source == "greedy_alts"
+        and candidate.oov_map_blend > 0.0
+    ]
+    if not alts:
+        return list(published)
+    best = max(alts, key=lambda candidate: (candidate.spatial, _normalize(candidate.word)))
+    best_key = (_normalize(best.word), best.entry.language)
+    result: list[ScoredLexiconEntry] = []
+    for candidate in published:
+        key = (_normalize(candidate.word), candidate.entry.language)
+        if key != best_key:
+            result.append(candidate)
+            continue
+        spatial = unblend_oov_spatial(candidate.spatial, dest, candidate.oov_map_blend)
+        result.append(
+            ScoredLexiconEntry(
+                candidate.entry,
+                spatial,
+                frequency_free=True,
+                source=candidate.source,
+                oov_map_blend=0.0,
+            )
+        )
+    return result
+
+
 def collect_oov_calibration_observations(
     logits: Sequence[Sequence[float]],
     ctc_candidates: Sequence[ScoredLexiconEntry],
@@ -3286,6 +3339,9 @@ def _evaluate(args: argparse.Namespace, slate_stream=None) -> dict[str, Any]:
                 max_rank=int(getattr(args, "oov_lift_max_rank", 6) or 6),
                 extra_park_keys=extra_park_keys,
                 park_min_rank=park_min_rank,
+            )
+            published = unblend_greedy_alts_when_greedy_misses_top3(
+                published, reserved, merged,
             )
             ctc_geometric_fusion = published_ranking(
                 published,

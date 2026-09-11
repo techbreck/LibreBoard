@@ -822,6 +822,9 @@ def recall_6000(args: argparse.Namespace) -> dict[str, Any]:
             extra_park_keys=extra_park_keys,
             park_min_rank=park_min_rank,
         )
+        published = evaluator.unblend_greedy_alts_when_greedy_misses_top3(
+            published, reserved, merged,
+        )
         if len(published) > evaluator.PUBLISHED_RANKING_BOUND:
             over_bound += 1
         added += min(reserved_budget, len(published))

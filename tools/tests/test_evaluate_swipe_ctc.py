@@ -354,6 +354,7 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
             evaluator.reserved_fill_ranks,
             evaluator.reserved_oov_ctc_ranks,
             evaluator.lift_near_top3_frequency_free,
+            evaluator.unblend_greedy_alts_when_greedy_misses_top3,
             evaluator.split_published_slate,
             evaluator.published_ranking,
             evaluator.static_fusion_values,
@@ -560,6 +561,68 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
         self.assertIn("wa9", ranked)
         self.assertNotIn("target", inspect.signature(evaluator.reserved_occupants).parameters)
         self.assertNotIn("target", inspect.signature(evaluator.publish_reserved_slots).parameters)
+
+    def test_unblend_greedy_alts_only_when_greedy_misses_top3(self):
+        lexicon = [
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cat", "en", (1,), 50), 2.0),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("car", "en", (2,), 40), 1.5),
+            evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("can", "en", (3,), 30), 1.0),
+        ] + [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"zz{index}", "en", (10 + index,), 1), -1.0,
+            )
+            for index in range(28)
+        ]
+        converting_alt = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caz", "en", (6,), 0),
+            1.2,
+            frequency_free=True,
+            source="greedy_alts",
+            oov_map_blend=0.5,
+        )
+        quieter_alt = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caa", "en", (7,), 0),
+            0.8,
+            frequency_free=True,
+            source="greedy_alts",
+            oov_map_blend=0.5,
+        )
+        converting_greedy = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (5,), 0), 8.0, frequency_free=True, source="greedy",
+        )
+        reserved_hit = [converting_greedy, converting_alt, quieter_alt]
+        published_hit = evaluator.publish_reserved_slots(lexicon, reserved_hit, reserved_budget=11)
+        held = evaluator.unblend_greedy_alts_when_greedy_misses_top3(
+            published_hit, reserved_hit, lexicon,
+        )
+        ranked_hit = [
+            entry.word
+            for entry in evaluator.published_ranking(held, reserved_hit, lexicon_reference=lexicon)
+        ]
+        self.assertEqual("cax", ranked_hit[0])
+        self.assertNotIn("caz", ranked_hit[:3])
+        self.assertEqual(0.5, next(item for item in held if item.word == "caz").oov_map_blend)
+        missing_greedy = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (5,), 0), -3.0, frequency_free=True, source="greedy",
+        )
+        reserved_miss = [missing_greedy, converting_alt, quieter_alt]
+        published_miss = evaluator.publish_reserved_slots(lexicon, reserved_miss, reserved_budget=11)
+        unblended = evaluator.unblend_greedy_alts_when_greedy_misses_top3(
+            published_miss, reserved_miss, lexicon,
+        )
+        caz = next(item for item in unblended if item.word == "caz")
+        caa = next(item for item in unblended if item.word == "caa")
+        self.assertEqual(0.0, caz.oov_map_blend)
+        self.assertGreater(caz.spatial, converting_alt.spatial)
+        self.assertEqual(0.5, caa.oov_map_blend)
+        ranked_miss = [
+            entry.word
+            for entry in evaluator.published_ranking(unblended, reserved_miss, lexicon_reference=lexicon)
+        ]
+        self.assertIn("caz", ranked_miss[:3])
+        self.assertNotIn("caa", ranked_miss[:3])
+        self.assertEqual(1, sum(1 for word in ranked_miss[:3] if word in {"cax", "caz", "caa"}))
+        self.assertNotIn("target", inspect.signature(evaluator.unblend_greedy_alts_when_greedy_misses_top3).parameters)
 
     def test_lift_near_top3_unblends_only_rank_4_to_6_frequency_free(self):
         lexicon = [

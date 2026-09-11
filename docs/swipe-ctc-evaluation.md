@@ -410,6 +410,11 @@ frozenLost 2. Thirteen converting leftover alts remain at fillRank > 11. New hit
 convert 15. `diagnosticOnly` / `releaseEligible` false. Evidence:
 `docs/models/evidence/swipe-published-31-score-budget11.json`.
 
+Unblending the spatially-best published greedy_alt to the train-fit map only when greedy
+misses top-3 moves extra-alt top-3 0→1 and overall top-3 5,566→5,567 without dropping
+1k 878/929. Membership stays 5,776. Not 5,822 / 5,700. Evidence:
+`docs/models/evidence/swipe-published-31-alt-unblend.json`.
+
 The 1,000-row ranking follow-up assigned frequency 1 to the 4,089 supplemental words. Adding them
 to both CTC and geometry lowered combined top-1/top-3 from 86.6%/92.7% to 85.0%/91.9%. Replaying
 only supplemented CTC with the original geometric candidates yielded 84.8%/92.3%. Both scoring
