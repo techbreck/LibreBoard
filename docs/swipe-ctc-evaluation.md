@@ -435,6 +435,14 @@ neighbors in the keep-20 remainder is 5,774 / 5,567, convertingFillLoss still 13
 n-best held. Not promoted. Evidence:
 `docs/models/evidence/swipe-published-31-cfl-alts-first.json`.
 
+The 13 convertingFillLoss unpublished rows on the spatial budget-11 keeper are all
+greedy_alts with oovCtcRank 11–36 (fillRank 12–37). Budget 11 is greedy plus at most
+10 extra OOV, so the closest convertingFillLoss cannot occupy ranked[:31]. Their
+blend-0.5 gaps are all negative (would not convert if seated); unclamped extra OLS
+stole 6k top-3. Keep-20 seat-order permutations and n-best-last are stopped. Keeper
+remains 5,776 present / 5,567 top-3. Evidence:
+`docs/models/evidence/swipe-published-31-cfl-inspection.json`.
+
 The 1,000-row ranking follow-up assigned frequency 1 to the 4,089 supplemental words. Adding them
 to both CTC and geometry lowered combined top-1/top-3 from 86.6%/92.7% to 85.0%/91.9%. Replaying
 only supplemented CTC with the original geometric candidates yielded 84.8%/92.3%. Both scoring

@@ -562,6 +562,51 @@ class EvaluateSwipeCtcTest(unittest.TestCase):
         self.assertNotIn("target", inspect.signature(evaluator.reserved_occupants).parameters)
         self.assertNotIn("target", inspect.signature(evaluator.publish_reserved_slots).parameters)
 
+    def test_spatial_budget11_cannot_seat_oov_ctc_rank_past_ten_extras(self):
+        lexicon = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"lex{index}", "en", (index,), 50 - index), 2.0 - 0.05 * index,
+            )
+            for index in range(31)
+        ]
+        greedy = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("cax", "en", (40,), 0), 8.0, frequency_free=True, source="greedy",
+        )
+        extra_oov = [
+            evaluator.ScoredLexiconEntry(
+                evaluator.LexiconEntry(f"wa{index}", "en", (50 + index,), 0),
+                7.5 - 0.05 * index,
+                frequency_free=True,
+                source="greedy_alts",
+            )
+            for index in range(10)
+        ]
+        leftover = evaluator.ScoredLexiconEntry(
+            evaluator.LexiconEntry("caz", "en", (70,), 0), 6.9, frequency_free=True, source="greedy_alts",
+        )
+        reserved = [greedy, *extra_oov, leftover]
+        ranks = evaluator.reserved_oov_ctc_ranks(reserved)
+        self.assertEqual(11, ranks[("caz", "en")])
+        self.assertTrue(evaluator.reserved_clears_lexicon_top3(leftover, lexicon))
+        occupants = evaluator.reserved_occupants(reserved, lexicon, reserved_budget=11)
+        words = [item.word for item in occupants]
+        self.assertEqual(11, len(occupants))
+        self.assertEqual("cax", words[0])
+        self.assertNotIn("caz", words)
+        published = evaluator.publish_reserved_slots(lexicon, reserved, reserved_budget=11)
+        self.assertEqual(31, len(published))
+        self.assertNotIn("caz", [item.word for item in published])
+        ranked = [
+            entry.word
+            for entry in evaluator.published_ranking(
+                published, reserved, lexicon_reference=lexicon, park_min_rank=0,
+            )
+        ]
+        self.assertEqual("cax", ranked[0])
+        self.assertNotIn("caz", ranked)
+        self.assertNotIn("target", inspect.signature(evaluator.prioritize_reserved_candidates).parameters)
+        self.assertNotIn("target", inspect.signature(evaluator.reserved_occupants).parameters)
+
     def test_unblend_greedy_alts_only_when_greedy_misses_top3(self):
         lexicon = [
             evaluator.ScoredLexiconEntry(evaluator.LexiconEntry("cat", "en", (1,), 50), 2.0),

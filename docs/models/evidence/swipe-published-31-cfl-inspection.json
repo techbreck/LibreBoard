@@ -1,0 +1,132 @@
+{
+  "convertingFillLoss": 13,
+  "diagnosticOnly": true,
+  "keeperEvidence": "docs/models/evidence/swipe-published-31-alt-unblend.json",
+  "limitations": [
+    "Labels only from unpublished competing rows on the spatial budget-11 keeper. Construction does not read targets.",
+    "Spatial extra_oov with budget 11 is greedy plus at most 10 extra OOV (oovCtcRank 1-10). Closest convertingFillLoss is oovCtcRank 11.",
+    "All convertingFillLoss blended gaps are negative, so seating them at blend 0.5 would not enter top-3. Unclamped OLS extras stole 6k top-3 5,566 to 5,550.",
+    "Displacing unique n-best or unique extra_oov converting alts lost published-31 membership. leftover-greedy-alts-append evicted frozen ranks 1-23.",
+    "No allowed lever seats these 13 in ranked[:31] without raising budget to 12+, stealing unique extra_oov/n-best membership, unclamping extras, or reading targets."
+  ],
+  "measuredTop3": 5567,
+  "published31TargetPresent": 5776,
+  "qualityClaim": false,
+  "releaseEligible": false,
+  "rows": [
+    {
+      "blendedGap": -0.6022195995948991,
+      "fillRank": 12,
+      "firstSource": "greedy_alts",
+      "frequencyFree": true,
+      "olsGap": 0.7266797770159283,
+      "oovCtcRank": 11
+    },
+    {
+      "blendedGap": -0.7637103559253702,
+      "fillRank": 17,
+      "firstSource": "greedy_alts",
+      "frequencyFree": true,
+      "olsGap": 0.9013123433906784,
+      "oovCtcRank": 16
+    },
+    {
+      "blendedGap": -0.7936306269392706,
+      "fillRank": 17,
+      "firstSource": "greedy_alts",
+      "frequencyFree": true,
+      "olsGap": 0.49892825554364184,
+      "oovCtcRank": 16
+    },
+    {
+      "blendedGap": -0.6998103314873738,
+      "fillRank": 18,
+      "firstSource": "greedy_alts",
+      "frequencyFree": true,
+      "olsGap": 1.04005576418926,
+      "oovCtcRank": 17
+    },
+    {
+      "blendedGap": -1.319222872082869,
+      "fillRank": 21,
+      "firstSource": "greedy_alts",
+      "frequencyFree": true,
+      "olsGap": 0.04830723004933013,
+      "oovCtcRank": 20
+    },
+    {
+      "blendedGap": -0.7668849169600255,
+      "fillRank": 22,
+      "firstSource": "greedy_alts",
+      "frequencyFree": true,
+      "olsGap": 0.6971363130172532,
+      "oovCtcRank": 21
+    },
+    {
+      "blendedGap": -0.06176150488232457,
+      "fillRank": 29,
+      "firstSource": "greedy_alts",
+      "frequencyFree": true,
+      "olsGap": 1.769728030983255,
+      "oovCtcRank": 28
+    },
+    {
+      "blendedGap": -1.0703851278739622,
+      "fillRank": 30,
+      "firstSource": "greedy_alts",
+      "frequencyFree": true,
+      "olsGap": 0.29960346984190966,
+      "oovCtcRank": 29
+    },
+    {
+      "blendedGap": -0.9893788386022513,
+      "fillRank": 31,
+      "firstSource": "greedy_alts",
+      "frequencyFree": true,
+      "olsGap": 0.39011563853434716,
+      "oovCtcRank": 30
+    },
+    {
+      "blendedGap": -0.8440385050197075,
+      "fillRank": 32,
+      "firstSource": "greedy_alts",
+      "frequencyFree": true,
+      "olsGap": 0.33886824361503476,
+      "oovCtcRank": 31
+    },
+    {
+      "blendedGap": -1.0411580584693372,
+      "fillRank": 34,
+      "firstSource": "greedy_alts",
+      "frequencyFree": true,
+      "olsGap": 0.14044224955322293,
+      "oovCtcRank": 33
+    },
+    {
+      "blendedGap": -0.828756979523232,
+      "fillRank": 36,
+      "firstSource": "greedy_alts",
+      "frequencyFree": true,
+      "olsGap": 0.6381005301942253,
+      "oovCtcRank": 35
+    },
+    {
+      "blendedGap": -1.1922769064453993,
+      "fillRank": 37,
+      "firstSource": "greedy_alts",
+      "frequencyFree": true,
+      "olsGap": 0.18502397671364879,
+      "oovCtcRank": 36
+    }
+  ],
+  "schemaVersion": 1,
+  "summary": {
+    "allBlendedGapNegative": true,
+    "allFillRankGt11": true,
+    "allOovCtcRankGt7": true,
+    "minFillRank": 12,
+    "minOovCtcRank": 11,
+    "occupantsNeededForClosest": 12,
+    "spatialBudget11CoversOovRanks": "1-10"
+  }
+}
