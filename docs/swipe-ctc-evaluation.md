@@ -570,3 +570,24 @@ comparison. Known-offensive entries from the full native dictionary were exclude
 [baseline report](models/evidence/swipe-greedy-context-base-1000.json) and
 [replay proof](models/evidence/greedy-context-swipes-slate-verification.json) bind the diagnostic.
 This preserves a rejected baseline for later context scoring; it does not adopt the OOV strategy.
+
+Context coefficient sweeps, 2026-09-11. Two students have been run against frozen swipe slates.
+On the frozen 6,000 merged slates (5,997 joined rows), the small 7.61M student degraded top-3
+monotonically at every nonzero coefficient: 5,549 → 5,537 → 5,481 → 5,407 → 5,321 for
+coefficients 0 → 1.2; top-1 also fell. On the 1,000 greedy-OOV slates, coefficient 0.35 was the
+only positive point (+4 top-3, +13 top-1) and higher coefficients were negative — weakly
+consistent with context helping only where the lexical prior is absent. Evidence:
+`docs/models/evidence/context-small-swipe-validation.json` and
+`docs/models/evidence/context-small-greedy-swipe-validation.json`.
+
+The shared 35.66M student could not be scored. The only local `context-en-de-v1` export binds
+the pre-alignment corpus (`63bfb4…`, distillation manifest `389693…`, appCommit `54048ad2`),
+which predates commit `b42af82f`'s shared-session hashing; measured under the old hash, 42,628 of
+47,355 swipe-validation rows (450 of 603 sessions) have their source session inside
+context-train, so the joint-split guard rejects it and any forced run would be contaminated.
+The canonical shared-session student — model `8566382e…`, export report `b528cc61…`, distillation
+manifest `72c090…` (the committed `models/context/distillation-manifest.json`, binding the aligned
+corpus `2c49ca…` already audited by `joint-model-splits-shared-v2.json`) — was exported on Linux
+and its artifacts are not in this tree. When that export is restored, the command is the same with
+`--distillation-manifest models/context/distillation-manifest.json` and the v2 audit unchanged.
+Blockage evidence: `docs/models/evidence/context-shared-swipe-validation-blocked.json`.

@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "releaseEligible": false,
+  "diagnosticOnly": true,
+  "status": "blocked",
+  "summary": "Shared-student swipe-context scoring could not start: the only local context-en-de-v1 export binds the pre-alignment corpus, which provably leaks swipe-validation sessions into context training, and the canonical shared-session export is absent from this tree.",
+  "attemptedCommand": "tools/evaluate_swipe_context.py --slates-report docs/models/evidence/swipe-validation-context-base-6000.json --slates build/reports/swipe-validation-context-base-6000.jsonl --prefix-manifest docs/models/evidence/swipe-reference-context-v1.json --prefix-root build/evaluation-data/swipe-reference-context-v1 --joint-split-audit docs/models/evidence/joint-model-splits-shared-v2.json --distillation-manifest build/model-training/context-en-de-v1/distillation-manifest.json --spec models/context/model-spec.json --export-report build/model-export/context-en-de-v1/export-report.json",
+  "rejection": "evaluate_swipe_context.py raised 'validation pool is not separated from context training': joint audit contextCorpusManifestSha256 2c49ca71d9e9ef4832eefba5f3d58a7cebae8a916e78b372764c12ea1892bf12 != distillation dataManifestSha256 63bfb424dcf7cdc2c113b8bf0dd3bf26fb4f569c0fadd9d5659d0a38746081df.",
+  "localExportChain": {
+    "exportReport": "build/model-export/context-en-de-v1/export-report.json",
+    "exportReportSha256": "06aa285236229968e8f24f3a56491813796b0124ce6dfe574a449eedc94b3c0a",
+    "appCommit": "54048ad242ad96038bd9429cba9e10cc52304baf",
+    "trainingReportSha256": "0b2bf05e1f8b0916580eff9e032138fb7765ffa693c6073f822a7dec779663e8",
+    "distillationManifestFileSha256": "389693264e4125584b567f6ca638643e19bb28a1c9de6baad1d879c629e124bf",
+    "contextCorpusManifestSha256": "63bfb424dcf7cdc2c113b8bf0dd3bf26fb4f569c0fadd9d5659d0a38746081df",
+    "modelSha256": "b6dde70259d75790d8685884a50b9939f88befd55405fa3e78f6d8edebc033df",
+    "weightsSha256": "95384df3d674f2022c84f0b56528e735db9505295732f6421d90618adefaff14",
+    "tokenizerSha256": "1395e285927bfbfa5888dc7c83e4f57dfcfbfeb54f29a3cf2437f5db3d71d6a2",
+    "trainingExamples": 61620,
+    "validationExamples": 3364,
+    "note": "Pre-alignment student trained before commit b42af82f re-hashed shared-source sessions to the swipe split. This is not the canonical shared-session model."
+  },
+  "canonicalExportChain": {
+    "modelSha256": "8566382e57ea5a9af76ddf600e189572d62fcc8b227de8415ce88ad0e172022b",
+    "exportReportSha256": "b528cc61dc956fc3d0be59c37719f41b7e85169875369ca5b0c12837e4f187e6",
+    "trainingReportSha256": "df174d415bbedbbc5424d66f8f598bad84621cb1a114df081d5671fcb1a09860",
+    "distillationManifestFileSha256": "72c090461e1d4be2c9c28902f029633a9ba8f77a69ab6834ec21a32d756481c7",
+    "contextCorpusManifestSha256": "2c49ca71d9e9ef4832eefba5f3d58a7cebae8a916e78b372764c12ea1892bf12",
+    "tokenizerSha256": "e2089ddfa01ff69eba73195cb3623c86703a812a712ec356ec5fe837297a8cc9",
+    "jointSplitAuditSha256": "2a23818e61918c9464440548f5e01a4d020e39b7b55241eed8dd148b0abe4fdf",
+    "modelSpecSha256": "85086a308bf83ec351ca6733f65eefd137a0bbfb3f96e936d7e6a5beab7e943f",
+    "pinnedBy": "docs/models/evidence/context-shared-linux-reproducibility.json",
+    "note": "Two byte-identical Linux exports; artifacts are not present in this local tree. The corrected invocation uses --distillation-manifest models/context/distillation-manifest.json (file sha 72c090…) and the existing joint-model-splits-shared-v2.json audit, exactly as the small-student run did."
+  },
+  "contaminationMeasurement": {
+    "method": "Mapped each swipe-validation sessionId to its context-corpus split under the pre-b42af82f hashing: context sessionId = sha256('libreboard-context-session-split-v1\\0futo-swipe-dataset-v1\\0' + session), swipe sessionId = sha256('libreboard-swipe-session-split-v1\\0' + session), over the on-disk corpus build/model-data/context-en-de-v1 (split-manifest 63bfb4…) and source artifacts build/model-sources/futo-swipe-dataset-v1/{train,dev,test}.jsonl.",
+    "swipeValidationRows": 47355,
+    "swipeValidationSessions": 603,
+    "rowsByOldContextSplit": {
+      "train": 42628,
+      "validation": 1729,
+      "test": 1653,
+      "absent": 1345
+    },
+    "sessionsByOldContextSplit": {
+      "train": 450,
+      "validation": 26,
+      "test": 30,
+      "absent": 97
+    },
+    "interpretation": "Under the pre-alignment corpus, 90.0% of swipe-validation rows (74.6% of sessions) have their source session inside context-train. Scoring the local export on validation slates would be contaminated even if the audit were bypassed; no honest audit of corpus 63bfb4… can satisfy contextSplitRows.train == 0."
+  },
+  "smallStudentResult": {
+    "evidence": "docs/models/evidence/context-small-swipe-validation.json",
+    "rows": 5997,
+    "overallTop3ByCoefficient": {
+      "0": 5549,
+      "0.35": 5537,
+      "0.7": 5481,
+      "0.95": 5407,
+      "1.2": 5321
+    },
+    "note": "Previously undocumented committed result: every nonzero context coefficient degraded top-3 monotonically on the frozen 6k merged slates."
+  },
+  "limitations": [
+    "This file records a binding/audit failure and a session-mapping measurement, not a model-quality result.",
+    "The contamination count uses the pre-b42af82f session hash reconstructed from git history; the audit tool itself cannot certify corpus 63bfb4… because its recorded policy/tool pins differ from the current ones.",
+    "No coefficient sweep ran for the shared student; the small-student 6k result and the 1k greedy-OOV result remain the only measured context evidence.",
+    "Publisher reference prefixes are not captured prior editor input; session separation does not exclude prompt overlap."
+  ]
+}
