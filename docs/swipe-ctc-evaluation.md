@@ -591,3 +591,39 @@ corpus `2c49ca…` already audited by `joint-model-splits-shared-v2.json`) — w
 and its artifacts are not in this tree. When that export is restored, the command is the same with
 `--distillation-manifest models/context/distillation-manifest.json` and the v2 audit unchanged.
 Blockage evidence: `docs/models/evidence/context-shared-swipe-validation-blocked.json`.
+
+On-device swipe replay rehearsal, 2026-09-12. The instrumented harness
+(`Phase0MeasurementInstrumentedTest.replaySwipeCorpusThroughMeasuredSystems`) replayed 12,500
+test swipe paths on `low_ram_emulator` (sdk_gphone64_arm64, API 36) through the production
+pipeline: all eight strata reached the ≥500 minimum by corpus row 12,364. The run required a
+guard in `BinaryDictionary.getSuggestions` for batch-mode input — this tree never registers a
+gesture suggest policy factory, so the native gesture Suggest instance dereferences a null
+TRAVERSAL on any batch suggest; swipe is instead produced by the geometric-trace fallback plus
+engine decoders, as `Suggest.getSuggestedWordsForBatchInput` already documents.
+
+Schema-3 measurement evidence: `build/reports/swipe-emulator-full-1.jsonl` (sha256
+`c0300bd9d583d3feb8704852647f23306c23d11562e2de2e6d5bce179629e914`, run id
+`swipe-emulator-full-1`, appCommit `ffa9dd32`). Not release evidence: single environment,
+non-low-RAM-flagged AVD.
+
+Measured accuracy on the 12,500-row strata-covering replay:
+
+| system                    | top-1  | top-3  | notes |
+|---------------------------|--------|--------|-------|
+| ctc                       | 80.9%  | 87.1%  | AVAILABLE 11,898 / TIMEOUT 602 at a 1,500 ms standalone budget |
+| geometric                 | 52.7%  | 71.6%  | TIMEOUT on 12,485 rows (partial frequency-ordered scans) |
+| fused_swipe (production)  | 4.5%   | 5.7%   | 125 ms `SWIPE_PROPOSAL_BUDGET_MILLIS` unreachable on emulator; `ParallelSwipeDecoder` discards partial results on timeout, so fused receives zero decoded candidates |
+| fused_relaxed (aux)       | 45.2%  | 60.9%  | `LegacySuggestionFusion.fuse` fed the standalone decoded candidates plus trace-fallback classics without the proposal deadline |
+| fused_relaxed_neural      | 45.2%  | 60.8%  | differs on 233/12,500 rows, −3 top-3 net |
+
+Two findings bear on the feasibility question. First, the static fusion boundary is a net loss
+on swipe: of the 10,289 rows where the CTC decoder places the target in top-3, relaxed fusion
+keeps only 72.0% in top-3 and drops 1,142 entirely — trace-fallback classics outrank decoded
+candidates. Second, context rescoring cannot engage on this corpus: swipe rows carry no
+`precedingContext`, and the neural variant's 1.9% reorder rate is noise-level (27 better, 33
+worse). The on-device harness therefore provides no evidence that context rescoring lifts swipe
+slates; that question remains with the frozen-slate diagnostic (`evaluate_swipe_context.py`),
+still blocked on the canonical shared-session export.
+
+Peak added neural memory during the run was 230.6 MiB (context + swipe models resident), above
+the 64 MiB gate; emulator measurement only.
