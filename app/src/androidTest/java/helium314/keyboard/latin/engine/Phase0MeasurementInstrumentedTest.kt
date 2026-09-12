@@ -269,6 +269,7 @@ class Phase0MeasurementInstrumentedTest {
         require(!output.isDirectory)
         val limit = args.getString("phase0Limit")?.toIntOrNull() ?: Int.MAX_VALUE
         require(limit > 0)
+        val (shardIndex, shardCount) = shardConfig(args)
         val context = InstrumentationRegistry.getInstrumentation().targetContext
 
         val fixture = buildFixture(context)
@@ -279,6 +280,7 @@ class Phase0MeasurementInstrumentedTest {
 
         val writer = output.bufferedWriter()
         var measured = 0
+        var ordinal = 0
         corpus.bufferedReader().useLines { lines ->
             for (line in lines) {
                 if (measured >= limit) break
@@ -286,6 +288,7 @@ class Phase0MeasurementInstrumentedTest {
                 val row = JSONObject(line)
                 if (row.getString("split") != "test" || row.getString("category") == "swipe") continue
                 if (row.getString("raw").isEmpty()) continue
+                if (ordinal++ % shardCount != shardIndex) continue
 
                 val predictions = JSONObject()
                 val latency = JSONObject()
@@ -381,6 +384,14 @@ class Phase0MeasurementInstrumentedTest {
         return out
     }
 
+    /** Disjoint row partition for multi-environment runs; duplicate ids fail dataset checks. */
+    private fun shardConfig(args: android.os.Bundle): Pair<Int, Int> {
+        val count = args.getString("phase0ShardCount")?.toIntOrNull() ?: 1
+        val index = args.getString("phase0ShardIndex")?.toIntOrNull() ?: 0
+        require(count > 0 && index in 0 until count) { "invalid shard config $index/$count" }
+        return index to count
+    }
+
     private fun suggestionInfoSurfaces(suggestions: List<SuggestedWordInfo>): JSONArray {
         val seen = LinkedHashSet<String>()
         val out = JSONArray()
@@ -408,6 +419,7 @@ class Phase0MeasurementInstrumentedTest {
         require(!output.isDirectory)
         val limit = args.getString("phase0Limit")?.toIntOrNull() ?: Int.MAX_VALUE
         require(limit > 0)
+        val (shardIndex, shardCount) = shardConfig(args)
 
         val fixture = buildFixture(context)
         val baselinePssKiB = Debug.getPss().toDouble()
@@ -437,6 +449,7 @@ class Phase0MeasurementInstrumentedTest {
         val swipeExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
         val fusion = LegacySuggestionFusion()
         var measured = 0
+        var ordinal = 0
         corpus.bufferedReader().useLines { lines ->
             for (line in lines) {
                 if (measured >= limit) break
@@ -445,6 +458,7 @@ class Phase0MeasurementInstrumentedTest {
                 if (row.optString("split") != "test") continue
                 val path = row.optJSONArray("pathCoordinates") ?: continue
                 if (path.length() < 4) continue
+                if (ordinal++ % shardCount != shardIndex) continue
 
                 val request = swipeRequest(row, swipeBounds, geometry, measured.toLong() + 1)
                 val pointers = InputPointers(request.path.size)

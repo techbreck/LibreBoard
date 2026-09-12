@@ -63,6 +63,10 @@ def main(argv=None) -> int:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--environment", required=True, choices=sorted(ENVIRONMENTS))
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--shard-count", type=int, default=1,
+                        help="split the corpus into this many disjoint row partitions")
+    parser.add_argument("--shard-index", type=int, default=0,
+                        help="measure only rows whose ordinal %% shard-count equals this index")
     parser.add_argument("--instrument-timeout", type=int, default=4 * 60 * 60,
                         help="seconds to wait for the instrumented run (default 4h)")
     parser.add_argument("--output", type=pathlib.Path, required=True)
@@ -119,6 +123,13 @@ def main(argv=None) -> int:
             instrument_args += ["-e", "phase0SwipeModelFile", f"{REMOTE_DIR}/swipe.onnx"]
     if args.limit:
         instrument_args += ["-e", "phase0Limit", str(args.limit)]
+    if not 0 <= args.shard_index < args.shard_count:
+        raise RuntimeError("require 0 <= --shard-index < --shard-count")
+    if args.shard_count != 1:
+        instrument_args += [
+            "-e", "phase0ShardCount", str(args.shard_count),
+            "-e", "phase0ShardIndex", str(args.shard_index),
+        ]
     print(adb(adb_path, args.serial, "shell", "am", "instrument", "-w", "-r",
               *instrument_args, RUNNER, timeout=args.instrument_timeout))
 
