@@ -132,6 +132,7 @@ def inspect_device(
     adb: pathlib.Path,
     requested_serial: str | None = None,
     *,
+    device_user: int | None = None,
     runner: Runner = subprocess.run,
     now: Callable[[], datetime.datetime] = lambda: datetime.datetime.now(datetime.UTC),
 ) -> dict[str, Any]:
@@ -176,7 +177,12 @@ def inspect_device(
         raise DeviceCaptureError("device memory total is unavailable")
     memory_mib = (int(memory_match.group(1)) + 1023) // 1024
 
-    current_user = shell("am", "get-current-user")
+    if device_user is not None:
+        if not 0 <= device_user <= 9999:
+            raise DeviceCaptureError("requested device-user id is invalid")
+        current_user = str(device_user)
+    else:
+        current_user = shell("am", "get-current-user")
     if not current_user.isdigit() or int(current_user) > 9999:
         raise DeviceCaptureError("device current-user id is invalid")
     packages = _parse_packages(shell("pm", "list", "packages", "--user", current_user))
@@ -191,9 +197,9 @@ def inspect_device(
     if not SECURITY_PATCH.fullmatch(values["securityPatchLevel"]):
         blockers.append("selected target has an invalid security patch level")
     if installed_play:
-        blockers.append("sandboxed Google Play packages are installed for the current user")
+        blockers.append("sandboxed Google Play packages are installed for the inspected user")
     if LIBREBOARD_PACKAGE not in packages:
-        blockers.append("LibreBoard is not installed for the current user")
+        blockers.append("LibreBoard is not installed for the inspected user")
 
     captured = now().astimezone(datetime.UTC).replace(microsecond=0)
     return {
@@ -247,6 +253,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--adb", type=pathlib.Path, help="path to the Android Debug Bridge")
     parser.add_argument("--serial", help="specific adb device serial")
+    parser.add_argument("--device-user", type=int,
+                        help="inspect this Android user id instead of the current foreground user")
     parser.add_argument("--output", required=True, type=pathlib.Path)
     return parser.parse_args(argv)
 
@@ -262,7 +270,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("device capture error: adb is not an executable file", file=sys.stderr)
         return 1
     try:
-        report = inspect_device(adb, args.serial)
+        report = inspect_device(adb, args.serial, device_user=args.device_user)
         write_report(args.output, report)
     except DeviceCaptureError as failure:
         print(f"device capture error: {failure}", file=sys.stderr)

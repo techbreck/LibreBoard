@@ -38,12 +38,16 @@ def adb(adb_path: str, serial: str | None, *args: str, stdin: bytes | None = Non
     return result.stdout.decode(errors="replace")
 
 
-def push_private(adb_path: str, serial: str | None, local: pathlib.Path, remote_name: str) -> None:
+def push_private(adb_path: str, serial: str | None, local: pathlib.Path, remote_name: str,
+                 device_user: int | None = None) -> None:
     if not SAFE_NAME.fullmatch(remote_name):
         raise RuntimeError(f"unsafe remote name {remote_name}")
     staging = f"/data/local/tmp/{remote_name}.phase0push"
     adb(adb_path, serial, "push", str(local), staging)
-    adb(adb_path, serial, "shell", "run-as", PACKAGE, "sh", "-c",
+    run_as = ["run-as", PACKAGE]
+    if device_user is not None:
+        run_as += ["--user", str(device_user)]
+    adb(adb_path, serial, "shell", *run_as, "sh", "-c",
         f"'mkdir -p files/{REMOTE_DIR} && cp {staging} files/{REMOTE_DIR}/{remote_name}'")
     adb(adb_path, serial, "shell", "rm", "-f", staging)
 
@@ -67,6 +71,9 @@ def main(argv=None) -> int:
                         help="split the corpus into this many disjoint row partitions")
     parser.add_argument("--shard-index", type=int, default=0,
                         help="measure only rows whose ordinal %% shard-count equals this index")
+    parser.add_argument("--device-user", type=int,
+                        help="install/run under this Android user id (e.g. a Play-free GrapheneOS "
+                             "profile); adds --user to instrument and run-as calls")
     parser.add_argument("--instrument-timeout", type=int, default=4 * 60 * 60,
                         help="seconds to wait for the instrumented run (default 4h)")
     parser.add_argument("--output", type=pathlib.Path, required=True)
@@ -92,8 +99,8 @@ def main(argv=None) -> int:
         if len(onnx_files) != 1 or not tokenizer.is_file():
             raise RuntimeError(
                 f"model dir must contain exactly one *.onnx and tokenizer.json: {args.model_dir}")
-        push_private(adb_path, args.serial, onnx_files[0], "context.onnx")
-        push_private(adb_path, args.serial, tokenizer, "tokenizer.json")
+        push_private(adb_path, args.serial, onnx_files[0], "context.onnx", args.device_user)
+        push_private(adb_path, args.serial, tokenizer, "tokenizer.json", args.device_user)
         model_arg = ["-e", "phase0ModelDir", REMOTE_DIR]
 
     instrument_args = [
@@ -103,7 +110,7 @@ def main(argv=None) -> int:
         *model_arg,
     ]
     if args.corpus is not None:
-        push_private(adb_path, args.serial, args.corpus, "corpus.jsonl")
+        push_private(adb_path, args.serial, args.corpus, "corpus.jsonl", args.device_user)
         remote_outputs.append("measurement.jsonl")
         instrument_args += [
             "-e", "libreboardRequirePhase0Measurement", "true",
@@ -111,7 +118,8 @@ def main(argv=None) -> int:
             "-e", "phase0OutputFile", "measurement.jsonl",
         ]
     if args.swipe_corpus is not None:
-        push_private(adb_path, args.serial, args.swipe_corpus, "swipe-corpus.jsonl")
+        push_private(adb_path, args.serial, args.swipe_corpus, "swipe-corpus.jsonl",
+                     args.device_user)
         remote_outputs.append("swipe-measurement.jsonl")
         instrument_args += [
             "-e", "libreboardRequirePhase0SwipeMeasurement", "true",
@@ -119,7 +127,7 @@ def main(argv=None) -> int:
             "-e", "phase0SwipeOutputFile", "swipe-measurement.jsonl",
         ]
         if args.swipe_model is not None:
-            push_private(adb_path, args.serial, args.swipe_model, "swipe.onnx")
+            push_private(adb_path, args.serial, args.swipe_model, "swipe.onnx", args.device_user)
             instrument_args += ["-e", "phase0SwipeModelFile", f"{REMOTE_DIR}/swipe.onnx"]
     if args.limit:
         instrument_args += ["-e", "phase0Limit", str(args.limit)]
@@ -130,18 +138,24 @@ def main(argv=None) -> int:
             "-e", "phase0ShardCount", str(args.shard_count),
             "-e", "phase0ShardIndex", str(args.shard_index),
         ]
-    print(adb(adb_path, args.serial, "shell", "am", "instrument", "-w", "-r",
+    instrument_cmd = ["shell", "am", "instrument", "-w", "-r"]
+    if args.device_user is not None:
+        instrument_cmd += ["--user", str(args.device_user)]
+    print(adb(adb_path, args.serial, *instrument_cmd,
               *instrument_args, RUNNER, timeout=args.instrument_timeout))
 
+    run_as = ["run-as", PACKAGE]
+    if args.device_user is not None:
+        run_as += ["--user", str(args.device_user)]
     pulled = b"".join(
-        adb(adb_path, args.serial, "exec-out", "run-as", PACKAGE,
+        adb(adb_path, args.serial, "exec-out", *run_as,
             "cat", f"files/{REMOTE_DIR}/{name}").encode()
         for name in remote_outputs
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_bytes(pulled)
 
-    sidecar_raw = adb(adb_path, args.serial, "exec-out", "run-as", PACKAGE,
+    sidecar_raw = adb(adb_path, args.serial, "exec-out", *run_as,
                       "cat", f"files/{REMOTE_DIR}/environment.json")
     sidecar = json.loads(sidecar_raw)
     if args.metadata is not None:

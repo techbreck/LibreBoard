@@ -583,9 +583,11 @@ class Phase0MeasurementInstrumentedTest {
             .put("peakAddedNeuralMemoryMiB", peakAddedNeuralKiB / 1024.0)
         if (environment == "grapheneos_hardware") {
             sidecar.put("grapheneOsBuildNumber", Build.DISPLAY)
-            sidecar.put("sandboxedGooglePlayInstalled", runCatching {
-                context.packageManager.getPackageInfo("app.grapheneos.gmscompat", 0); true
-            }.getOrDefault(false))
+            // gmscompat is a GrapheneOS system app present on every profile; the sandboxed
+            // Play check must look for the actual Google packages (as capture_android_device.py does).
+            sidecar.put("sandboxedGooglePlayInstalled", SANDBOXED_PLAY_PACKAGES.any { pkg ->
+                runCatching { context.packageManager.getPackageInfo(pkg, 0); true }.getOrDefault(false)
+            })
         }
         file.writeText(sidecar.toString())
     }
@@ -596,5 +598,12 @@ class Phase0MeasurementInstrumentedTest {
 
         /** Placeholder emitted when a system returns no candidates; always a miss. */
         const val EMPTY_PREDICTION_SENTINEL = "__no_candidates__"
+
+        /** User-installed package IDs that indicate sandboxed Google Play is provisioned. */
+        val SANDBOXED_PLAY_PACKAGES = arrayOf(
+            "com.google.android.gms",
+            "com.google.android.gsf",
+            "com.android.vending",
+        )
     }
 }
