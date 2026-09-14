@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from typing import Any, Iterable
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 TAP_SYSTEMS = ("heliboard", "fused", "fused_personal", "fused_neural")
 SWIPE_SYSTEMS = ("geometric", "ctc", "fused_swipe")
 ALL_SYSTEMS = TAP_SYSTEMS + SWIPE_SYSTEMS
@@ -74,6 +74,7 @@ class Example:
     target: str
     raw: str
     predictions: dict[str, tuple[str, ...]]
+    commits: dict[str, tuple[str, bool]]
     latency_ms: dict[str, float]
     strata: frozenset[str]
     should_correct: bool | None
@@ -141,7 +142,9 @@ def parse_example(raw: dict[str, Any], line_number: int) -> Example:
         if len({normalized(value) for value in values}) != len(values):
             raise EvaluationError(f"{location}: predictions must be normalization-distinct")
         predictions[system] = tuple(values)
-    if raw["split"] == "test" and raw["category"] != "swipe":
+    commits_raw = raw.get("commits")
+    measured_tap = raw["split"] == "test" and raw["category"] != "swipe"
+    if measured_tap:
         if not raw["raw"]:
             raise EvaluationError(f"{location}: measured tap raw text must not be empty")
         for system in ("fused", "fused_personal", "fused_neural"):
@@ -149,6 +152,38 @@ def parse_example(raw: dict[str, Any], line_number: int) -> Example:
                 raise EvaluationError(
                     f"{location}: {system} does not preserve the exact raw candidate"
                 )
+        if not isinstance(commits_raw, dict) or set(commits_raw) != set(TAP_SYSTEMS):
+            raise EvaluationError(
+                f"{location}: measured tap rows require commits for exactly the tap systems"
+            )
+    elif commits_raw is not None:
+        raise EvaluationError(f"{location}: commits belong only to measured tap rows")
+
+    commits: dict[str, tuple[str, bool]] = {}
+    for system, value in (commits_raw or {}).items():
+        if not isinstance(value, dict) or set(value) != {"committed", "willAutoCorrect"}:
+            raise EvaluationError(f"{location}: invalid commit record for {system}")
+        committed = value["committed"]
+        will_auto_correct = value["willAutoCorrect"]
+        if not isinstance(committed, str) or not committed or len(committed) > MAXIMUM_TEXT_LENGTH:
+            raise EvaluationError(f"{location}: {system} commit requires a committed surface")
+        if not isinstance(will_auto_correct, bool):
+            raise EvaluationError(f"{location}: {system} willAutoCorrect must be a boolean")
+        # A keep commits the typed text verbatim and a correction replaces it; anything else means
+        # the harness reported a decision its own slate cannot support.
+        if will_auto_correct and committed == raw["raw"]:
+            raise EvaluationError(
+                f"{location}: {system} claims a correction that equals the raw surface"
+            )
+        if not will_auto_correct and committed != raw["raw"]:
+            raise EvaluationError(
+                f"{location}: {system} keeps the typed word but committed a different surface"
+            )
+        if normalized(committed) not in {normalized(candidate) for candidate in predictions[system]}:
+            raise EvaluationError(
+                f"{location}: {system} committed a word that is absent from its own slate"
+            )
+        commits[system] = (committed, will_auto_correct)
     latency: dict[str, float] = {}
     for system, value in (latency_raw or {}).items():
         if system not in ALL_SYSTEMS or isinstance(value, bool) or not isinstance(value, (int, float)):
@@ -189,6 +224,7 @@ def parse_example(raw: dict[str, Any], line_number: int) -> Example:
         target=raw["target"],
         raw=raw["raw"],
         predictions=predictions,
+        commits=commits,
         latency_ms=latency,
         strata=frozenset(strata_raw),
         should_correct=should_correct,
@@ -233,15 +269,37 @@ def percentile(values: list[float], quantile: float) -> float:
     return ordered[index]
 
 
+def reachable(row: Example, system: str, rank: int) -> set[str]:
+    """Normalized surfaces the user obtains within `rank` interactions.
+
+    Rank one is what the editor receives with no extra interaction at all. For a tap system that is
+    the commit decision, never the head of the suggestion strip: production seats the typed word at
+    index zero ahead of any pending correction, so scoring the strip's head reports the typed text
+    back to itself. Deeper ranks add the strip entries the user can still tap.
+    """
+    surfaces = {normalized(value) for value in row.predictions[system][:rank]}
+    if system in TAP_SYSTEMS and row.commits:
+        committed = normalized(row.commits[system][0])
+        if rank <= 1:
+            return {committed}
+        surfaces.add(committed)
+    return surfaces
+
+
 def accuracy(examples: Iterable[Example], system: str, rank: int = 1) -> float:
     rows = list(examples)
     if not rows:
         raise EvaluationError(f"no examples for {system} accuracy")
-    hits = sum(
-        normalized(row.target) in {normalized(value) for value in row.predictions[system][:rank]}
-        for row in rows
-    )
+    hits = sum(normalized(row.target) in reachable(row, system, rank) for row in rows)
     return hits / len(rows)
+
+
+def auto_correction_rate(examples: Iterable[Example], system: str) -> float:
+    """Share of measured rows where the system replaced the typed word. Diagnostic, not a gate."""
+    rows = [row for row in examples if row.commits]
+    if not rows:
+        raise EvaluationError(f"no commit decisions for {system}")
+    return sum(row.commits[system][1] for row in rows) / len(rows)
 
 
 def relative_error_reduction(baseline_accuracy: float, new_accuracy: float) -> float:
@@ -255,7 +313,13 @@ def false_correction_rate(examples: Iterable[Example], system: str) -> float:
     rows = [row for row in examples if row.should_correct is False]
     if not rows:
         raise EvaluationError("valid-word keep cases are missing")
-    false_corrections = sum(normalized(row.predictions[system][0]) != normalized(row.raw) for row in rows)
+    # A false correction is production actually replacing a word it should have kept, which is the
+    # commit decision -- not merely ranking something above the typed word on the strip. The
+    # comparison is normalized, exactly as accuracy is: auto-capitalizing "thursday" to "Thursday"
+    # commits the same word and already scores as a hit, so counting it as a false correction here
+    # would penalize the keyboard for behaviour the accuracy gate rewards.
+    false_corrections = sum(
+        normalized(row.commits[system][0]) != normalized(row.raw) for row in rows)
     return false_corrections / len(rows)
 
 
@@ -384,6 +448,27 @@ def validate_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
             raise EvaluationError(f"metadata requires lowercase {field}")
         hashes[field] = value
 
+    # Which model candidate this evidence claims to qualify. The 2026-09-11 GrapheneOS run measured
+    # a superseded context export and nothing in the report said so, because metadata recorded only
+    # the hash it was handed. Binding the candidate here makes that omission impossible.
+    artifact_pin = metadata.get("artifactPin")
+    if not isinstance(artifact_pin, dict) or set(artifact_pin) != {
+        "candidateId", "contextModelSha256", "swipeModelSha256"
+    }:
+        raise EvaluationError(
+            "metadata requires an artifactPin naming the candidate this evidence qualifies")
+    candidate = artifact_pin["candidateId"]
+    if not isinstance(candidate, str) or not candidate or len(candidate) > MAXIMUM_IDENTITY_LENGTH:
+        raise EvaluationError("artifactPin requires a candidateId")
+    for field in ("contextModelSha256", "swipeModelSha256"):
+        value = artifact_pin[field]
+        if not isinstance(value, str) or not SHA256.fullmatch(value):
+            raise EvaluationError(f"artifactPin requires lowercase {field}")
+        if value != hashes[field]:
+            raise EvaluationError(
+                f"artifactPin {field} is {value}, but the measurement used {hashes[field]}; "
+                f"this evidence does not qualify the pinned candidate")
+
     environments = metadata.get("environments")
     if not isinstance(environments, list) or len(environments) != len(REQUIRED_ENVIRONMENTS):
         raise EvaluationError("metadata requires exactly the three reference environments")
@@ -445,6 +530,7 @@ def validate_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     return {
         "appCommit": app_commit,
         **hashes,
+        "artifactPin": dict(artifact_pin),
         "environments": validated_environments,
         "peakAddedNeuralMemoryMiB": maximum_peak_memory,
     }
@@ -488,6 +574,7 @@ def evaluate(
         metrics["systems"][system] = {
             "top1": accuracy(relevant, system),
             "top3": accuracy(relevant, system, 3),
+            "autoCorrectionRate": auto_correction_rate(relevant, system),
             "latencyMs": {
                 "p50": percentile([row.latency_ms[system] for row in relevant], 0.50),
                 "p95": percentile([row.latency_ms[system] for row in relevant], 0.95),
@@ -573,9 +660,14 @@ def render(metrics: dict[str, Any]) -> str:
     lines = ["LibreBoard Phase 0 evaluation", ""]
     for system, values in metrics["systems"].items():
         latency = values["latencyMs"]
+        # top1 is the commit decision for tap systems, so show how often each one actually
+        # replaced the typed word; an identical rate across systems is the classic symptom of a
+        # harness reporting the typed text back to itself.
+        corrected = values.get("autoCorrectionRate")
+        suffix = "" if corrected is None else f" corrected={corrected:.3%}"
         lines.append(
             f"{system:16} top1={values['top1']:.3%} top3={values['top3']:.3%} "
-            f"p95={latency['p95']:.1f}ms"
+            f"p95={latency['p95']:.1f}ms{suffix}"
         )
     lines.append("")
     for kind, values in metrics["environmentLatencyMs"].items():

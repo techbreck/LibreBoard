@@ -822,6 +822,156 @@ class SuggestTest {
         )
     }
 
+    // The Phase 0 measurement harness scores what the editor actually receives. These lock the two
+    // entry points it reads, because scoring rank one of the strip instead silently reported the
+    // typed word back to itself for every measured row and hid every correction.
+
+    @Test fun `commit decision keeps the typed word when production will not auto-correct`() {
+        val locale = Locale.ENGLISH
+        val suggestedWords = suggestedWordsOf(
+            typedWord = "targte",
+            words = listOf("targte", "target"),
+            willAutoCorrect = false,
+            locale = locale,
+        )
+        // "target" is on the strip one tap away, but nothing replaces the typed text.
+        assertEquals("target", suggestedWords.getWord(SuggestedWords.INDEX_OF_AUTO_CORRECTION))
+        assertEquals(
+            Suggest.CommitDecision("targte", false),
+            Suggest.commitDecisionOf(suggestedWords, "targte"),
+        )
+    }
+
+    @Test fun `commit decision takes the correction slot when production will auto-correct`() {
+        val suggestedWords = suggestedWordsOf(
+            typedWord = "targte",
+            words = listOf("targte", "target"),
+            willAutoCorrect = true,
+            locale = Locale.ENGLISH,
+        )
+        assertEquals(
+            Suggest.CommitDecision("target", true),
+            Suggest.commitDecisionOf(suggestedWords, "targte"),
+        )
+    }
+
+    @Test fun `commit decision falls back to the typed word without a correction slot`() {
+        val suggestedWords = suggestedWordsOf(
+            typedWord = "targte",
+            words = listOf("targte"),
+            willAutoCorrect = true,
+            locale = Locale.ENGLISH,
+        )
+        assertEquals(
+            Suggest.CommitDecision("targte", false),
+            Suggest.commitDecisionOf(suggestedWords, "targte"),
+        )
+    }
+
+    @Test fun `classic commit decision corrects a whitelisted replacement`() {
+        val locale = Locale.ENGLISH
+        assertEquals(
+            Suggest.CommitDecision("I'll", true),
+            classicCommitDecision("ill",
+                listOf(suggestion("I'll", Int.MAX_VALUE, locale), suggestion("ill", 1500000, locale))),
+        )
+    }
+
+    @Test fun `classic commit decision keeps a word the ngram context prefers`() {
+        val locale = Locale.ENGLISH
+        nextWordSuggestions = suggestionResults(listOf(suggestion("ill", 200, locale)))
+        assertEquals(
+            Suggest.CommitDecision("ill", false),
+            classicCommitDecision("ill",
+                listOf(suggestion("I'll", Int.MAX_VALUE, locale), suggestion("ill", 1500000, locale))),
+        )
+    }
+
+    @Test fun `classic commit decision keeps the typed word without any suggestion`() {
+        assertEquals(
+            Suggest.CommitDecision("ill", false),
+            classicCommitDecision("ill", emptyList()),
+        )
+    }
+
+    @Test fun `a field that does not request auto-correction disables the threshold entirely`() {
+        // SettingsValues sets the auto-correction threshold to Float.MAX_VALUE when auto-correction
+        // is off, so nothing but whitelist entries can ever be committed. A measurement fixture
+        // built on a bare TYPE_CLASS_TEXT field therefore reports a keyboard that cannot correct,
+        // which is why the Phase 0 harness requests TYPE_TEXT_FLAG_AUTO_CORRECT and asserts this.
+        fun loadWith(inputType: Int): Boolean {
+            Settings.getInstance().loadSettings(
+                latinIME,
+                Locale.ENGLISH,
+                InputAttributes(
+                    EditorInfo().apply { this.inputType = inputType }, false, latinIME.packageName),
+            )
+            return Settings.getValues().mAutoCorrectEnabled
+        }
+
+        assert(!loadWith(InputType.TYPE_CLASS_TEXT))
+        assertEquals(Float.MAX_VALUE, Settings.getValues().mAutoCorrectionThreshold)
+
+        assert(loadWith(InputType.TYPE_CLASS_TEXT
+            or InputType.TYPE_TEXT_VARIATION_NORMAL
+            or InputType.TYPE_TEXT_FLAG_AUTO_CORRECT))
+        assert(Settings.getValues().mAutoCorrectionThreshold < 1f)
+    }
+
+    @Test fun `a resumed composition is never auto-corrected`() {
+        // WordComposer.setComposingWord marks the composition resumed, which production treats as
+        // "the user tapped back into an existing word" and never auto-corrects. A measurement
+        // harness that builds rows that way observes 0% correction on every system; rows must be
+        // replayed as key events instead.
+        val locale = Locale.ENGLISH
+        val suggestions = listOf(suggestion("I'll", Int.MAX_VALUE, locale), suggestion("ill", 1500000, locale))
+        val fresh = shouldBeAutoCorrected("ill", suggestions, null, null, locale, confidenceModest)
+        assert(fresh.last())
+
+        val resumed = WordComposer().apply {
+            setComposingWord(StringUtils.toCodePointArray("ill"), IntArray(6) { Constants.NOT_A_COORDINATE })
+        }
+        assert(resumed.isResumed)
+        val result = shouldBeAutoCorrected(
+            "ill", suggestions, null, null, locale, confidenceModest, wordComposer = resumed)
+        assert(!result.last())
+    }
+
+    private fun suggestedWordsOf(
+        typedWord: String, words: List<String>, willAutoCorrect: Boolean, locale: Locale,
+    ): SuggestedWords {
+        val infos = ArrayList(words.map { suggestion(it, 1_000_000, locale) })
+        return SuggestedWords(
+            infos, null, suggestion(typedWord, SuggestedWordInfo.MAX_SCORE, locale),
+            !willAutoCorrect, willAutoCorrect, false, SuggestedWords.INPUT_STYLE_TYPING, 0,
+        )
+    }
+
+    private fun classicCommitDecision(
+        typedWord: String,
+        suggestions: List<SuggestedWordInfo>,
+        autoCorrectThreshold: Float = confidenceModest,
+    ): Suggest.CommitDecision {
+        enableAutocorrect(autoCorrectThreshold)
+        val composer = WordComposer()
+        StringUtils.toCodePointArray(typedWord).forEach {
+            val event = Event.createEventForCodePointFromAlreadyTypedText(
+                it, Constants.NOT_A_COORDINATE, Constants.NOT_A_COORDINATE)
+            composer.applyProcessedEvent(composer.processEvent(event))
+        }
+        val params = KeyboardParams().apply {
+            GRID_HEIGHT = 1
+            GRID_WIDTH = 1
+            mId = KeyboardLayoutSet.getFakeKeyboardId(KeyboardElement.ALPHABET)
+        }
+        suggest.clearNextWordSuggestionsCache()
+        return suggest.classicCommitDecision(
+            composer, NgramContext.EMPTY_PREV_WORDS_INFO, Keyboard(params),
+            Settings.getValues().mSettingsValuesForSuggestion,
+            SuggestedWords.INPUT_STYLE_TYPING, suggestionResults(suggestions),
+        )
+    }
+
     private fun enableAutocorrect(autoCorrectThreshold: Float) {
         latinIME.prefs().edit {
             putBoolean(Settings.PREF_AUTO_CORRECTION, true)

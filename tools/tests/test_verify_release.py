@@ -656,6 +656,11 @@ class VerifyReleaseEvidenceTest(unittest.TestCase):
                 document["lexicalKind"] = evaluate_engine.LEXICAL_KINDS[number % 3]
             if should_correct is not None:
                 document["shouldCorrect"] = should_correct
+            if category != "swipe":
+                document["commits"] = {
+                    system: {"committed": slate[0], "willAutoCorrect": slate[0] != raw}
+                    for system, slate in predictions.items()
+                }
             documents.append(document)
 
         number = 0
@@ -740,6 +745,11 @@ class VerifyReleaseEvidenceTest(unittest.TestCase):
             "coreApkSha256": self.apk_hash,
             "swipeModelSha256": "b" * 64,
             "contextModelSha256": "c" * 64,
+            "artifactPin": {
+                "candidateId": "context-shared-session-v2",
+                "contextModelSha256": "c" * 64,
+                "swipeModelSha256": "b" * 64,
+            },
             "environments": [
                 {
                     "kind": "stock_android_hardware",

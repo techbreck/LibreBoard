@@ -8,7 +8,16 @@ import unittest
 
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from evaluate_engine import EvaluationError, evaluate, parse_example, read_jsonl, validate_swipe_strata  # noqa: E402
+from evaluate_engine import (  # noqa: E402
+    EvaluationError,
+    accuracy,
+    auto_correction_rate,
+    evaluate,
+    false_correction_rate,
+    parse_example,
+    read_jsonl,
+    validate_swipe_strata,
+)
 
 
 def example(
@@ -25,11 +34,12 @@ def example(
     environment_kind: str = "stock_android_hardware",
     test_run_id: str = "stock-run",
     latency_overrides: dict[str, float] | None = None,
+    commits: dict[str, dict[str, object]] | None = None,
 ):
     latency = {system: 20.0 for system in predictions}
     latency.update(latency_overrides or {})
     value = {
-        "schemaVersion": 3,
+        "schemaVersion": 4,
         "id": f"example-{number}",
         "sessionId": session or f"session-{number}",
         "split": split,
@@ -47,16 +57,28 @@ def example(
         value["lexicalKind"] = "contraction"
     if should_correct is not None:
         value["shouldCorrect"] = should_correct
+    if split == "test" and category != "swipe":
+        # Default to committing each system's own head candidate, which is what a decision-free
+        # fixture means; tests that care about keep-versus-correct pass commits explicitly.
+        value["commits"] = commits or {
+            system: {"committed": slate[0], "willAutoCorrect": slate[0] != raw}
+            for system, slate in predictions.items()
+        }
     return parse_example(value, number)
 
 
 def metadata():
     return {
-        "schemaVersion": 3,
+        "schemaVersion": 4,
         "appCommit": "a" * 40,
         "coreApkSha256": "b" * 64,
         "swipeModelSha256": "c" * 64,
         "contextModelSha256": "d" * 64,
+        "artifactPin": {
+            "candidateId": "context-shared-session-v2",
+            "contextModelSha256": "d" * 64,
+            "swipeModelSha256": "c" * 64,
+        },
         "environments": [
             {
                 "kind": "stock_android_hardware",
@@ -95,7 +117,7 @@ def metadata():
 
 class EvaluateEngineTest(unittest.TestCase):
     def test_lexical_kind_is_required_and_category_scoped(self):
-        row = {"schemaVersion": 3, "id": "lexical", "sessionId": "session", "split": "train",
+        row = {"schemaVersion": 4, "id": "lexical", "sessionId": "session", "split": "train",
                "category": "lexical", "raw": "dont", "target": "don't"}
         for invalid in (None, "unknown", True):
             with self.subTest(kind=invalid), self.assertRaisesRegex(EvaluationError, "valid lexicalKind"):
@@ -109,13 +131,198 @@ class EvaluateEngineTest(unittest.TestCase):
             parse_example({**row, "schemaVersion": 2, "lexicalKind": "contraction"}, 1)
 
     def test_valid_word_labels_cannot_reclassify_keeps_as_corrections(self):
-        row = {"schemaVersion": 3, "id": "valid", "sessionId": "session", "split": "train",
+        row = {"schemaVersion": 4, "id": "valid", "sessionId": "session", "split": "train",
                "category": "valid_word", "raw": "their", "target": "there"}
         with self.assertRaisesRegex(EvaluationError, "contradicts"):
             parse_example({**row, "shouldCorrect": False}, 1)
         with self.assertRaisesRegex(EvaluationError, "contradicts"):
             parse_example({**row, "target": "THEIR", "shouldCorrect": True}, 1)
         self.assertFalse(parse_example({**row, "target": "THEIR", "shouldCorrect": False}, 1).should_correct)
+
+    def test_typed_word_first_slate_is_scored_by_the_commit_not_the_strip_head(self):
+        """The schema-3 harness defect: production seats the typed word ahead of its correction.
+
+        Scoring rank one of that slate reported the typed text back to itself, so every system
+        showed 0% top-1 on tap errors regardless of whether it actually corrected anything.
+        """
+        slate = ["targte", "target"]
+        corrected = example(
+            1, "tap_error", "target", "targte",
+            {system: list(slate) for system in
+             ("heliboard", "fused", "fused_personal", "fused_neural")},
+            commits={system: {"committed": "target", "willAutoCorrect": True} for system in
+                     ("heliboard", "fused", "fused_personal", "fused_neural")},
+        )
+        kept = example(
+            2, "tap_error", "target", "targte",
+            {system: list(slate) for system in
+             ("heliboard", "fused", "fused_personal", "fused_neural")},
+            commits={system: {"committed": "targte", "willAutoCorrect": False} for system in
+                     ("heliboard", "fused", "fused_personal", "fused_neural")},
+        )
+        self.assertEqual(1.0, accuracy([corrected], "fused_neural"))
+        self.assertEqual(0.0, accuracy([kept], "fused_neural"))
+        # Both rows expose the correction one tap away, so top-3 cannot distinguish them.
+        self.assertEqual(1.0, accuracy([corrected], "fused_neural", 3))
+        self.assertEqual(1.0, accuracy([kept], "fused_neural", 3))
+        self.assertEqual(1.0, auto_correction_rate([corrected], "fused_neural"))
+        self.assertEqual(0.0, auto_correction_rate([kept], "fused_neural"))
+
+    def test_top_three_keeps_the_committed_word_reachable(self):
+        row = example(
+            1, "tap_error", "target", "targte",
+            {system: ["targte", "other", "another", "target"] for system in
+             ("heliboard", "fused", "fused_personal", "fused_neural")},
+            commits={system: {"committed": "target", "willAutoCorrect": True} for system in
+                     ("heliboard", "fused", "fused_personal", "fused_neural")},
+        )
+        # "target" sits at rank four on the strip, but it is what the editor receives.
+        self.assertEqual(1.0, accuracy([row], "fused", 3))
+        self.assertEqual(1.0, accuracy([row], "fused"))
+
+    def test_false_corrections_count_commits_rather_than_strip_order(self):
+        ranked_but_kept = example(
+            1, "valid_word", "their", "their",
+            {system: ["their", "there"] for system in
+             ("heliboard", "fused", "fused_personal", "fused_neural")},
+            should_correct=False,
+            commits={system: {"committed": "their", "willAutoCorrect": False} for system in
+                     ("heliboard", "fused", "fused_personal", "fused_neural")},
+        )
+        replaced = example(
+            2, "valid_word", "their", "their",
+            {system: ["their", "there"] for system in
+             ("heliboard", "fused", "fused_personal", "fused_neural")},
+            should_correct=False,
+            commits={system: {"committed": "there", "willAutoCorrect": True} for system in
+                     ("heliboard", "fused", "fused_personal", "fused_neural")},
+        )
+        self.assertEqual(0.0, false_correction_rate([ranked_but_kept], "fused_neural"))
+        self.assertEqual(1.0, false_correction_rate([replaced], "fused_neural"))
+
+    def test_auto_capitalization_is_not_a_false_correction(self):
+        # Committing "Thursday" for a typed "thursday" is the same word, and accuracy scores it as
+        # a hit because accuracy is normalized. The false-correction metric must agree, or the
+        # keyboard is penalized for behaviour the accuracy gate rewards.
+        capitalized = example(
+            1, "valid_word", "thursday", "thursday",
+            {system: ["thursday"] for system in
+             ("heliboard", "fused", "fused_personal", "fused_neural")},
+            should_correct=False,
+            commits={system: {"committed": "Thursday", "willAutoCorrect": True} for system in
+                     ("heliboard", "fused", "fused_personal", "fused_neural")},
+        )
+        self.assertEqual(0.0, false_correction_rate([capitalized], "fused_neural"))
+        self.assertEqual(1.0, accuracy([capitalized], "fused_neural"))
+        # Replacing it with a genuinely different word still counts.
+        replaced = example(
+            2, "valid_word", "thursday", "thursday",
+            {system: ["thursday", "Tuesday"] for system in
+             ("heliboard", "fused", "fused_personal", "fused_neural")},
+            should_correct=False,
+            commits={system: {"committed": "Tuesday", "willAutoCorrect": True} for system in
+                     ("heliboard", "fused", "fused_personal", "fused_neural")},
+        )
+        self.assertEqual(1.0, false_correction_rate([replaced], "fused_neural"))
+
+    def test_commit_records_must_be_present_and_internally_consistent(self):
+        def row(**overrides):
+            value = {
+                "schemaVersion": 4, "id": "tap", "sessionId": "session", "split": "test",
+                "environmentKind": "stock_android_hardware", "testRunId": "stock-run",
+                "category": "tap_error", "target": "target", "raw": "targte",
+                "predictions": {system: ["targte", "target"] for system in
+                                ("heliboard", "fused", "fused_personal", "fused_neural")},
+                "latencyMs": {system: 20.0 for system in
+                              ("heliboard", "fused", "fused_personal", "fused_neural")},
+                "commits": {system: {"committed": "target", "willAutoCorrect": True} for system in
+                            ("heliboard", "fused", "fused_personal", "fused_neural")},
+            }
+            value.update(overrides)
+            return value
+
+        self.assertEqual(("target", True), parse_example(row(), 1).commits["fused"])
+
+        missing = row()
+        del missing["commits"]
+        with self.assertRaisesRegex(EvaluationError, "require commits"):
+            parse_example(missing, 1)
+
+        partial = row()
+        partial["commits"] = {"fused": {"committed": "target", "willAutoCorrect": True}}
+        with self.assertRaisesRegex(EvaluationError, "require commits"):
+            parse_example(partial, 1)
+
+        keep_mismatch = row()
+        keep_mismatch["commits"]["fused"] = {"committed": "target", "willAutoCorrect": False}
+        with self.assertRaisesRegex(EvaluationError, "keeps the typed word"):
+            parse_example(keep_mismatch, 1)
+
+        correction_mismatch = row()
+        correction_mismatch["commits"]["fused"] = {"committed": "targte", "willAutoCorrect": True}
+        with self.assertRaisesRegex(EvaluationError, "equals the raw surface"):
+            parse_example(correction_mismatch, 1)
+
+        off_slate = row()
+        off_slate["commits"]["fused"] = {"committed": "elsewhere", "willAutoCorrect": True}
+        with self.assertRaisesRegex(EvaluationError, "absent from its own slate"):
+            parse_example(off_slate, 1)
+
+        malformed = row()
+        malformed["commits"]["fused"] = {"committed": "target"}
+        with self.assertRaisesRegex(EvaluationError, "invalid commit record"):
+            parse_example(malformed, 1)
+
+        non_boolean = row()
+        non_boolean["commits"]["fused"] = {"committed": "target", "willAutoCorrect": "yes"}
+        with self.assertRaisesRegex(EvaluationError, "willAutoCorrect must be a boolean"):
+            parse_example(non_boolean, 1)
+
+    def test_commits_belong_only_to_measured_tap_rows(self):
+        swipe = {
+            "schemaVersion": 4, "id": "swipe", "sessionId": "session", "split": "test",
+            "environmentKind": "stock_android_hardware", "testRunId": "stock-run",
+            "category": "swipe", "target": "target", "raw": "", "strata": ["short"],
+            "predictions": {system: ["target"] for system in ("geometric", "ctc", "fused_swipe")},
+            "latencyMs": {system: 20.0 for system in ("geometric", "ctc", "fused_swipe")},
+            "commits": {"fused_swipe": {"committed": "target", "willAutoCorrect": True}},
+        }
+        with self.assertRaisesRegex(EvaluationError, "only to measured tap rows"):
+            parse_example(swipe, 1)
+
+        training = {
+            "schemaVersion": 4, "id": "tap", "sessionId": "session", "split": "train",
+            "category": "tap_error", "target": "target", "raw": "targte",
+            "commits": {system: {"committed": "target", "willAutoCorrect": True} for system in
+                        ("heliboard", "fused", "fused_personal", "fused_neural")},
+        }
+        with self.assertRaisesRegex(EvaluationError, "only to measured tap rows"):
+            parse_example(training, 1)
+
+    def test_metadata_must_name_the_candidate_it_qualifies(self):
+        rows = [example(1, "tap_error", "target", "targte", {
+            system: ["targte", "target"] for system in
+            ("heliboard", "fused", "fused_personal", "fused_neural")})]
+
+        def run(pin):
+            data = metadata()
+            if pin is None:
+                del data["artifactPin"]
+            else:
+                data["artifactPin"] = pin
+            return evaluate(rows, data, measurement_sha256="e" * 64, enforce_minimum_counts=False)
+
+        with self.assertRaisesRegex(EvaluationError, "requires an artifactPin"):
+            run(None)
+        with self.assertRaisesRegex(EvaluationError, "requires a candidateId"):
+            run({"candidateId": "", "contextModelSha256": "d" * 64, "swipeModelSha256": "c" * 64})
+        # The superseded-model failure this exists to catch: the pin names one candidate while the
+        # measurement was taken against another.
+        with self.assertRaisesRegex(EvaluationError, "does not qualify the pinned candidate"):
+            run({"candidateId": "context-shared-session-v2",
+                 "contextModelSha256": "f" * 64, "swipeModelSha256": "c" * 64})
+        with self.assertRaisesRegex(EvaluationError, "requires an artifactPin"):
+            run({"candidateId": "context-shared-session-v2", "contextModelSha256": "d" * 64})
 
     def test_passing_measurements_satisfy_every_gate(self):
         tap_systems = {
@@ -158,6 +365,7 @@ class EvaluateEngineTest(unittest.TestCase):
         self.assertTrue(result["passed"])
         self.assertTrue(all(result["checks"].values()))
         self.assertEqual("b" * 64, result["evidence"]["coreApkSha256"])
+        self.assertEqual("context-shared-session-v2", result["evidence"]["artifactPin"]["candidateId"])
         self.assertEqual(1, result["swipeStrataCounts"]["short"])
         self.assertEqual(1.0, result["gates"]["neuralContextRelativeErrorReduction"])
         self.assertEqual({"correct": 1, "keep": 1}, result["validWordCounts"])

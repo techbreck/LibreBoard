@@ -42,8 +42,10 @@ temporarily to keep upstream review practical; the Android application ID is `or
 - A pinned CC-BY-4.0 Aalto ITE adapter adds 54,519 real-word cases with reference-aligned context,
   including 6,132 held-out corrections and 4,635 keeps; its autocorrection-event selection bias is explicit.
 - A separate ITE contraction adapter and provenance-preserving merger retain shared participant
-  splits. The combined held-out corpus has 2,113 spatial tap errors, 10,767 valid-word cases and
-  3,244 contraction cases; spatial count, spacing, personal-word and compound coverage remain incomplete.
+  splits. The combined held-out corpus has 18,654 rows: 3,462 tap errors, 10,767 valid-word cases
+  (6,132 corrections and 4,635 keeps), 509 spacing cases and 3,916 lexical cases (3,244 contraction,
+  360 personal and 312 compound). Every Phase 0 corpus minimum is met; what remains missing is
+  device measurement, not coverage.
 - Model-qualified builds package the source-built reduced ONNX Runtime, signed swipe archive, and
   fixed project key as one fail-closed set. After first unlock, a background bootstrap activates CTC
   and discovers the optional signed en/de context-model provider without blocking classic input.

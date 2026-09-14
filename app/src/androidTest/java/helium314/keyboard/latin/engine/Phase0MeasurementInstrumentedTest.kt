@@ -4,9 +4,11 @@ package helium314.keyboard.latin.engine
 import android.os.Build
 import android.os.Debug
 import android.text.InputType
+import android.util.Log
 import android.view.inputmethod.EditorInfo
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.AndroidJUnit4
+import helium314.keyboard.event.Event
 import helium314.keyboard.keyboard.Keyboard
 import helium314.keyboard.keyboard.KeyboardElement
 import helium314.keyboard.keyboard.KeyboardId
@@ -23,7 +25,9 @@ import helium314.keyboard.latin.Suggest
 import helium314.keyboard.latin.SuggestedWords
 import helium314.keyboard.latin.SuggestedWords.SuggestedWordInfo
 import helium314.keyboard.latin.WordComposer
+import helium314.keyboard.latin.CapsMode
 import helium314.keyboard.latin.common.Constants
+import helium314.keyboard.latin.common.CoordinateUtils
 import helium314.keyboard.latin.common.InputPointers
 import helium314.keyboard.latin.engine.context.BpeContextTokenizer
 import helium314.keyboard.latin.engine.context.ContextCandidateRescorer
@@ -56,8 +60,13 @@ import org.junit.runner.RunWith
 
 /**
  * Phase 0 tap-corpus measurement harness. Replays prepared corpus rows through the live engine on
- * a bound device/emulator run and emits schema-3 measurement JSONL. The output is evidence only
+ * a bound device/emulator run and emits schema-4 measurement JSONL. The output is evidence only
  * when evaluate_engine.py binds it to a declared environment; it is never a release claim alone.
+ *
+ * Each tap row carries both the suggestion slate in production's ranking and, per system, the
+ * `commits` decision that production would apply when the word is terminated. Scoring the slate's
+ * rank one instead is what made the schema-3 tap results unusable: the strip always seats the typed
+ * word first, so no correction could ever be observed.
  *
  * Instrumentation arguments:
  *   phase0CorpusFile   prepared corpus JSONL under filesDir (required)
@@ -82,6 +91,9 @@ class Phase0MeasurementInstrumentedTest {
         val settingsForSuggestion: SettingsValuesForSuggestion,
         val editorInfo: EditorInfo,
         val inputAttributes: InputAttributes,
+        /** One-time synchronous cost before any row can be measured; excluded from latencyMs. */
+        val dictionaryReadyMs: Long,
+        val swipeLexiconReadyMs: Long,
     )
 
     private fun buildKeyboard(
@@ -104,27 +116,46 @@ class Phase0MeasurementInstrumentedTest {
 
     private fun buildFixture(context: android.content.Context): Fixture {
         Settings.init(context)
-        val editorInfo = EditorInfo().apply { inputType = InputType.TYPE_CLASS_TEXT }
+        // A composing text field that requests auto-correction, which is what an ordinary message
+        // or note field looks like. Bare TYPE_CLASS_TEXT requests neither auto-correction nor
+        // multi-line, so SettingsValues sets mAutoCorrectEnabled false and the auto-correction
+        // threshold to Float.MAX_VALUE; only whitelist entries such as "cant" -> "can't" then get
+        // through, and every ordinary spatial correction is silently blocked.
+        val editorInfo = EditorInfo().apply {
+            inputType = InputType.TYPE_CLASS_TEXT or
+                InputType.TYPE_TEXT_VARIATION_NORMAL or
+                InputType.TYPE_TEXT_FLAG_AUTO_CORRECT
+        }
         val inputAttributes = InputAttributes(editorInfo, false, context.packageName)
         Settings.getInstance().loadSettings(context, Locale.US, inputAttributes)
+        // Fail loudly rather than reporting a keyboard that structurally cannot correct.
+        check(Settings.getValues().mAutoCorrectEnabled) {
+            "measurement fixture has auto-correction disabled; every correction would be blocked"
+        }
 
         val facilitator = DictionaryFacilitatorImpl()
         facilitator.resetDictionaries(
             context, Locale.US, false, false, false, true, "", null,
         )
-        val deadline = System.nanoTime() + 30_000_000_000L
+        val dictionaryStart = System.nanoTime()
+        val deadline = dictionaryStart + 30_000_000_000L
         while (!facilitator.hasAtLeastOneInitializedMainDictionary()) {
             check(System.nanoTime() < deadline) { "main dictionary did not initialize" }
             Thread.sleep(25)
         }
+        val dictionaryReadyMs = (System.nanoTime() - dictionaryStart) / 1_000_000
         // resetDictionaries bumps swipeLexiconRevision before the index rebuild launches, so
         // revision alone cannot signal readiness. Poll the index itself: the geometric and CTC
-        // decoders return empty candidates until the unigram scan publishes.
-        val lexiconDeadline = System.nanoTime() + 120_000_000_000L
+        // decoders return empty candidates until the unigram scan publishes. The per-word JNI
+        // callback scan is one-time cost that can exceed minutes on hardened builds.
+        val lexiconStart = System.nanoTime()
+        val lexiconDeadline = lexiconStart + 600_000_000_000L
         while (facilitator.getSwipeLexiconWords(listOf("en-US"), 0, 1, false).isEmpty()) {
             check(System.nanoTime() < lexiconDeadline) { "swipe lexicon did not populate" }
             Thread.sleep(50)
         }
+        val swipeLexiconReadyMs = (System.nanoTime() - lexiconStart) / 1_000_000
+        Log.i(TAG, "swipe lexicon populated in ${swipeLexiconReadyMs}ms")
 
         val keyboard = buildKeyboard(context, editorInfo, "qwerty")
         val letterBounds = letterBounds(keyboard)
@@ -132,6 +163,7 @@ class Phase0MeasurementInstrumentedTest {
         return Fixture(
             context, facilitator, Suggest(facilitator), keyboard, letterBounds,
             SettingsValuesForSuggestion(false, false), editorInfo, inputAttributes,
+            dictionaryReadyMs, swipeLexiconReadyMs,
         )
     }
 
@@ -191,6 +223,12 @@ class Phase0MeasurementInstrumentedTest {
             .putFloat(Settings.PREF_NEURAL_STRENGTH, neuralStrength)
             .commit()
         Settings.getInstance().loadSettings(fixture.context, Locale.US, fixture.inputAttributes)
+        // LatinIME.loadSettings does this on every settings change; without it Suggest keeps the
+        // 0f constructor default instead of the configured auto-correction threshold.
+        fixture.suggest.setAutoCorrectionThreshold(Settings.getValues().mAutoCorrectionThreshold)
+        check(Settings.getValues().mAutoCorrectEnabled) {
+            "auto-correction became disabled mid-run; measured corrections would be blocked"
+        }
     }
 
     private fun coordinates(raw: String, points: JSONArray, bounds: FloatArray): IntArray {
@@ -212,34 +250,132 @@ class Phase0MeasurementInstrumentedTest {
         return NgramContext(*Array(words.size) { i -> NgramContext.WordInfo(words[words.size - 1 - i]) })
     }
 
-    private fun surfaces(suggestedWords: SuggestedWords, raw: String): JSONArray {
+    /**
+     * Bounded whole-process PSS sampling around the neural work.
+     *
+     * The reported figure is an upper bound on added neural memory, not an isolated neural peak:
+     * after fixture setup the process still performs classic dictionary suggestion work on every
+     * row, and sampling between rows can miss a transient peak entirely. Recording the components
+     * separately lets a reader see how much of the headline number the neural path accounts for,
+     * instead of reading one opaque total as a memory result.
+     */
+    private class MemoryProbe(val fixtureKiB: Double) {
+        var afterModelOpenKiB = fixtureKiB; private set
+        var peakNeuralDisabledKiB = fixtureKiB; private set
+        var peakNeuralEnabledKiB = fixtureKiB; private set
+        var samples = 0; private set
+
+        private fun sample(): Double {
+            samples++
+            return Debug.getPss().toDouble()
+        }
+
+        fun onModelOpened() {
+            afterModelOpenKiB = maxOf(afterModelOpenKiB, sample())
+            peakNeuralEnabledKiB = maxOf(peakNeuralEnabledKiB, afterModelOpenKiB)
+        }
+
+        /** Sampled after the systems that run with the neural path switched off. */
+        fun onNeuralDisabled() {
+            peakNeuralDisabledKiB = maxOf(peakNeuralDisabledKiB, sample())
+        }
+
+        /** Sampled after the systems that run with the neural path switched on. */
+        fun onNeuralEnabled() {
+            peakNeuralEnabledKiB = maxOf(peakNeuralEnabledKiB, sample())
+        }
+
+        val peakKiB get() = maxOf(peakNeuralDisabledKiB, peakNeuralEnabledKiB)
+        val addedKiB get() = peakKiB - fixtureKiB
+
+        fun toJson(): JSONObject = JSONObject()
+            .put("fixtureKiB", fixtureKiB)
+            .put("afterModelOpenKiB", afterModelOpenKiB)
+            .put("peakNeuralDisabledKiB", peakNeuralDisabledKiB)
+            .put("peakNeuralEnabledKiB", peakNeuralEnabledKiB)
+            .put("samples", samples)
+            .put("scope", "Whole-process PSS sampled after fixture setup. " +
+                "peakAddedNeuralMemoryMiB is peak minus fixture: an upper bound that also carries " +
+                "the classic suggestion work every row performs, and a sparse sample that may miss " +
+                "transient peaks. It is not an isolated neural peak and a value under the gate " +
+                "does not by itself establish the memory gate.")
+    }
+
+    /** One measured system: the strip as production ranks it plus the word it would commit. */
+    private class Measured(val surfaces: JSONArray, val commit: JSONObject, val elapsedMs: Double)
+
+    /**
+     * The suggestion slate in production's own order. Schema 4 deliberately does not hoist the raw
+     * surface: production already seats the typed word at [SuggestedWords.INDEX_OF_TYPED_WORD], and
+     * the schema-3 harness prepended it a second time, which made rank one the typed text for every
+     * row and hid every correction from the evaluator.
+     */
+    private fun surfaces(suggestedWords: SuggestedWords): JSONArray {
         val seen = LinkedHashSet<String>()
         val out = JSONArray()
-        val ordered = buildList {
-            add(raw)
-            for (index in 0 until suggestedWords.size()) add(suggestedWords.getWord(index))
-        }
-        for (word in ordered) {
+        for (index in 0 until suggestedWords.size()) {
+            val word = suggestedWords.getWord(index)
             if (word.isNotBlank() && seen.add(normalizeCandidate(word))) out.put(word)
             if (out.length() >= 32) break
         }
         return out
     }
 
-    private fun measure(fixture: Fixture, row: JSONObject): Pair<JSONArray, Double> {
+    private fun commitJson(decision: Suggest.CommitDecision): JSONObject = JSONObject()
+        .put("committed", decision.committedWord)
+        .put("willAutoCorrect", decision.willAutoCorrect)
+
+    /**
+     * A freshly typed word, built the way production builds one.
+     *
+     * [WordComposer.setComposingWord] ends by marking the composition resumed, and production never
+     * auto-corrects a resumed word — that is the "user tapped back into an existing word" case. A
+     * harness that composed rows that way could not observe a single correction on any system, which
+     * is exactly what the first schema-4 hardware run showed: 0% auto-correction even on the classic
+     * baseline. Replaying the key events instead leaves the composition fresh, as typing does.
+     */
+    private fun composerFor(fixture: Fixture, row: JSONObject): WordComposer {
         val raw = row.getString("raw")
+        val coords = coordinates(
+            raw, row.optJSONArray("touchPoints") ?: JSONArray(), fixture.letterBounds)
         val composer = WordComposer()
-        composer.setComposingWord(
-            raw.codePoints().toArray(),
-            coordinates(raw, row.optJSONArray("touchPoints") ?: JSONArray(), fixture.letterBounds),
-        )
+        raw.codePoints().toArray().forEachIndexed { index, codePoint ->
+            val event = Event.createEventForCodePointFromAlreadyTypedText(
+                codePoint,
+                CoordinateUtils.xFromArray(coords, index),
+                CoordinateUtils.yFromArray(coords, index),
+            )
+            composer.applyProcessedEvent(composer.processEvent(event))
+        }
+        composer.adviseCapitalizedModeBeforeFetchingSuggestions(CapsMode.OFF)
+        return composer
+    }
+
+    private fun measure(fixture: Fixture, row: JSONObject): Measured {
+        val raw = row.getString("raw")
+        val composer = composerFor(fixture, row)
         val start = System.nanoTime()
         val suggested = fixture.suggest.getSuggestedWords(
             composer, ngram(row.optString("precedingContext")), fixture.keyboard,
             fixture.settingsForSuggestion, true, SuggestedWords.INPUT_STYLE_TYPING, 1,
         )
         val elapsed = (System.nanoTime() - start) / 1_000_000.0
-        return surfaces(suggested, raw) to elapsed
+        val slate = surfaces(suggested)
+        val decision = Suggest.commitDecisionOf(suggested, raw)
+        // Schema 4 still requires the exact raw surface in every LibreBoard slate so the report can
+        // prove the one-tap fallback; production seats it at index 0, so a miss is a real defect.
+        check((0 until slate.length()).any { slate.getString(it) == raw }) {
+            "measured slate dropped the raw surface for '$raw'"
+        }
+        // Normalized, exactly as the evaluator checks it. A capitalization correction such as
+        // "sox" -> "Sox" commits a surface the slate holds only in its typed-word casing, because
+        // the slate must stay normalization-distinct.
+        check((0 until slate.length()).any {
+            normalizeCandidate(slate.getString(it)) == normalizeCandidate(decision.committedWord)
+        }) {
+            "committed word '${decision.committedWord}' is absent from its own slate"
+        }
+        return Measured(slate, commitJson(decision), elapsed)
     }
 
     private fun seedPersonalFixture(fixture: Fixture, row: JSONObject) {
@@ -273,10 +409,9 @@ class Phase0MeasurementInstrumentedTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
 
         val fixture = buildFixture(context)
-        val baselinePssKiB = Debug.getPss().toDouble()
-        var peakPssKiB = baselinePssKiB
+        val memory = MemoryProbe(Debug.getPss().toDouble())
         args.getString("phase0ModelDir")?.let { installContextModel(context, File(context.filesDir, it)) }
-        peakPssKiB = maxOf(peakPssKiB, Debug.getPss().toDouble())
+        memory.onModelOpened()
 
         val writer = output.bufferedWriter()
         var measured = 0
@@ -292,49 +427,67 @@ class Phase0MeasurementInstrumentedTest {
 
                 val predictions = JSONObject()
                 val latency = JSONObject()
+                val commits = JSONObject()
+                val raw = row.getString("raw")
 
+                // Every system must start from the same state. The previous row left personal
+                // entries seeded and neural strength raised, which leaked into this row's baseline.
+                PersonalizationRuntime.wipe(fixture.context)
+                setMeasurementConfiguration(fixture, personalizedDicts = false, neuralStrength = 0f)
+
+                val baselineComposer = composerFor(fixture, row)
+                val baselineNgram = ngram(row.optString("precedingContext"))
                 var start = System.nanoTime()
                 val classic = fixture.facilitator.getSuggestionResults(
-                    WordComposer().apply {
-                        setComposingWord(
-                            row.getString("raw").codePoints().toArray(),
-                            coordinates(row.getString("raw"),
-                                row.optJSONArray("touchPoints") ?: JSONArray(), fixture.letterBounds),
-                        )
-                    }.composedDataSnapshot,
-                    ngram(row.optString("precedingContext")), fixture.keyboard,
+                    baselineComposer.composedDataSnapshot,
+                    baselineNgram, fixture.keyboard,
                     fixture.settingsForSuggestion, Suggest.SESSION_ID_TYPING,
                     SuggestedWords.INPUT_STYLE_TYPING,
+                )
+                // The classic baseline has no SuggestedWords to read mWillAutoCorrect from, so the
+                // decision comes from production's own shouldBeAutoCorrected via Suggest.
+                val baselineDecision = fixture.suggest.classicCommitDecision(
+                    baselineComposer, baselineNgram, fixture.keyboard,
+                    fixture.settingsForSuggestion, SuggestedWords.INPUT_STYLE_TYPING, classic,
                 )
                 latency.put("heliboard", (System.nanoTime() - start) / 1_000_000.0)
                 val seen = LinkedHashSet<String>()
                 val baseline = JSONArray()
-                for (word in listOf(row.getString("raw")) + classic.map { it.mWord }) {
+                // The classic strip seats the typed word first, exactly as production does; scoring
+                // now reads the commit decision, so this ordering no longer decides top-1.
+                for (word in listOf(raw) + classic.map { it.mWord }) {
                     if (word.isNotBlank() && seen.add(normalizeCandidate(word))) baseline.put(word)
                     if (baseline.length() >= 32) break
                 }
                 predictions.put("heliboard", baseline)
+                commits.put("heliboard", commitJson(baselineDecision))
 
-                setMeasurementConfiguration(fixture, personalizedDicts = false, neuralStrength = 0f)
-                var (fusedSurfaces, fusedMs) = measure(fixture, row)
-                predictions.put("fused", fusedSurfaces); latency.put("fused", fusedMs)
+                val fused = measure(fixture, row)
+                predictions.put("fused", fused.surfaces); latency.put("fused", fused.elapsedMs)
+                commits.put("fused", fused.commit)
 
                 seedPersonalFixture(fixture, row)
                 setMeasurementConfiguration(fixture, personalizedDicts = true, neuralStrength = 0f)
-                val (personalSurfaces, personalMs) = measure(fixture, row)
-                predictions.put("fused_personal", personalSurfaces); latency.put("fused_personal", personalMs)
+                val personal = measure(fixture, row)
+                predictions.put("fused_personal", personal.surfaces)
+                latency.put("fused_personal", personal.elapsedMs)
+                commits.put("fused_personal", personal.commit)
+                memory.onNeuralDisabled()
 
                 setMeasurementConfiguration(fixture, personalizedDicts = true, neuralStrength = 50f)
-                val (neuralSurfaces, neuralMs) = measure(fixture, row)
-                predictions.put("fused_neural", neuralSurfaces); latency.put("fused_neural", neuralMs)
-                peakPssKiB = maxOf(peakPssKiB, Debug.getPss().toDouble())
+                val neural = measure(fixture, row)
+                predictions.put("fused_neural", neural.surfaces)
+                latency.put("fused_neural", neural.elapsedMs)
+                commits.put("fused_neural", neural.commit)
+                memory.onNeuralEnabled()
 
                 writer.write(JSONObject(row.toString()).apply {
-                    put("schemaVersion", 3)
+                    put("schemaVersion", SCHEMA_VERSION)
                     put("environmentKind", environment)
                     put("testRunId", runId)
                     put("predictions", predictions)
                     put("latencyMs", latency)
+                    put("commits", commits)
                 }.toString())
                 writer.write("\n")
                 measured++
@@ -343,7 +496,7 @@ class Phase0MeasurementInstrumentedTest {
         writer.close()
         assertTrue("corpus produced no measurable test rows", measured > 0)
         writeEnvironmentSidecar(context, File(output.parentFile, "environment.json"),
-            runId, environment, peakPssKiB - baselinePssKiB)
+            runId, environment, memory, fixture)
     }
 
     private fun swipeRequest(row: JSONObject, bounds: FloatArray,
@@ -422,8 +575,7 @@ class Phase0MeasurementInstrumentedTest {
         val (shardIndex, shardCount) = shardConfig(args)
 
         val fixture = buildFixture(context)
-        val baselinePssKiB = Debug.getPss().toDouble()
-        var peakPssKiB = baselinePssKiB
+        val memory = MemoryProbe(Debug.getPss().toDouble())
         val (swipeKeyboard, swipeBounds) = buildCanonicalSwipeKeyboard(context, fixture.editorInfo)
         val geometry = HeliBoardGeometricFallback.toEngineGeometry(swipeKeyboard)
         val lexicon = HeliBoardSwipeLexicon(fixture.facilitator)
@@ -443,7 +595,7 @@ class Phase0MeasurementInstrumentedTest {
             }
         }
         args.getString("phase0ModelDir")?.let { installContextModel(context, File(context.filesDir, it)) }
-        peakPssKiB = maxOf(peakPssKiB, Debug.getPss().toDouble())
+        memory.onModelOpened()
 
         val writer = output.bufferedWriter()
         val swipeExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
@@ -498,7 +650,7 @@ class Phase0MeasurementInstrumentedTest {
                     SuggestedWords.INPUT_STYLE_UPDATE_BATCH, measured + 1,
                 )
                 latency.put("fused_swipe", (System.nanoTime() - start) / 1_000_000.0)
-                predictions.put("fused_swipe", surfaces(fused, "").also {
+                predictions.put("fused_swipe", surfaces(fused).also {
                     if (it.length() == 0) it.put(EMPTY_PREDICTION_SENTINEL)
                 })
 
@@ -535,10 +687,12 @@ class Phase0MeasurementInstrumentedTest {
                 )
                 auxiliaryLatency.put("fused_relaxed_neural", (System.nanoTime() - start) / 1_000_000.0)
                 auxiliaryPredictions.put("fused_relaxed_neural", suggestionInfoSurfaces(relaxedNeural.suggestions))
-                peakPssKiB = maxOf(peakPssKiB, Debug.getPss().toDouble())
+                // Swipe replays the neural rescorer on every row, so there is no neural-disabled
+                // sample to subtract here; the recorded breakdown says so rather than implying one.
+                memory.onNeuralEnabled()
 
                 writer.write(JSONObject(row.toString()).apply {
-                    put("schemaVersion", 3)
+                    put("schemaVersion", SCHEMA_VERSION)
                     put("category", "swipe")
                     put("raw", "")
                     put("environmentKind", environment)
@@ -557,12 +711,12 @@ class Phase0MeasurementInstrumentedTest {
         writer.close()
         assertTrue("swipe corpus produced no measurable test rows", measured > 0)
         writeEnvironmentSidecar(context, File(output.parentFile, "environment.json"),
-            runId, environment, peakPssKiB - baselinePssKiB)
+            runId, environment, memory, fixture)
     }
 
     private fun writeEnvironmentSidecar(
         context: android.content.Context, file: File, runId: String, environment: String,
-        peakAddedNeuralKiB: Double,
+        memory: MemoryProbe, fixture: Fixture,
     ) {
         val activityManager = context.getSystemService(android.app.ActivityManager::class.java)
         val memoryInfo = android.app.ActivityManager.MemoryInfo()
@@ -580,7 +734,18 @@ class Phase0MeasurementInstrumentedTest {
             .put("physicalDevice", !emulator)
             .put("isLowRamDevice", activityManager.isLowRamDevice)
             .put("memoryMiB", (memoryInfo.totalMem / 1048576).toInt())
-            .put("peakAddedNeuralMemoryMiB", peakAddedNeuralKiB / 1024.0)
+            .put("peakAddedNeuralMemoryMiB", memory.addedKiB / 1024.0)
+            .put("memoryAttribution", memory.toJson())
+            .put("fixtureReadinessMs", JSONObject()
+                .put("mainDictionary", fixture.dictionaryReadyMs)
+                .put("swipeLexicon", fixture.swipeLexiconReadyMs)
+                .put("scope", "One-time synchronous setup before the first measured row. It is " +
+                    "excluded from every latencyMs value, so a passing suggestion-call latency " +
+                    "says nothing about this cost."))
+            .put("latencyScope", "latencyMs times the suggestion call only: " +
+                "Suggest.getSuggestedWords for the fused systems and the facilitator lookup plus " +
+                "its commit decision for the baseline. It excludes editor commit, composing-span " +
+                "and UI work, and fixture readiness, so it is not end-to-end IME latency.")
         if (environment == "grapheneos_hardware") {
             sidecar.put("grapheneOsBuildNumber", Build.DISPLAY)
             // gmscompat is a GrapheneOS system app present on every profile; the sandboxed
@@ -598,6 +763,11 @@ class Phase0MeasurementInstrumentedTest {
 
         /** Placeholder emitted when a system returns no candidates; always a miss. */
         const val EMPTY_PREDICTION_SENTINEL = "__no_candidates__"
+
+        const val TAG = "Phase0Measurement"
+
+        /** evaluate_engine.py measurement schema. 4 adds the per-system commit decision. */
+        const val SCHEMA_VERSION = 4
 
         /** User-installed package IDs that indicate sandboxed Google Play is provisioned. */
         val SANDBOXED_PLAY_PACKAGES = arrayOf(

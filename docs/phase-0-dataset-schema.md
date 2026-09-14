@@ -3,7 +3,7 @@
 `tools/evaluate_engine.py` is the release-gate evaluator. It accepts one JSON object per line with
 these fields:
 
-- `schemaVersion`: `3`.
+- `schemaVersion`: `4`.
 - `id`: stable, unique example ID.
 - `sessionId`: collection session; a session may occur in exactly one split.
 - `split`: `train`, `validation`, or `test`.
@@ -12,7 +12,12 @@ these fields:
   `low_ram_emulator`; the run ID must exactly match the corresponding metadata record.
 - `category`: `tap_error`, `valid_word`, `spacing`, `lexical`, or `swipe`.
 - `target` and `raw`: expected and observed text.
-- `predictions`: ranked strings for every applicable system, capped at 32.
+- `predictions`: ranked strings for every applicable system, capped at 32, in the order production
+  ranks them. Production seats the typed word first, so this list is not the scoring order.
+- `commits`: required on measured tap rows and forbidden everywhere else. One record per tap system,
+  exactly `{"committed": <surface>, "willAutoCorrect": <bool>}`, describing what the editor actually
+  receives when the word is terminated. A keep must commit `raw` verbatim; a correction must commit
+  something else; either way the committed surface must appear in that system's own slate.
 - `latencyMs`: end-to-end measurement for every applicable system.
 - `strata`: swipe labels. Release evidence must include at least 500 samples in each of `short`,
   `medium`, `long`, `clean`, `sloppy`, `very_sloppy`, `double_letter`, and `return_trip`; labels may
@@ -39,14 +44,36 @@ attached to any category other than `valid_word`.
 
 Every measured LibreBoard tap slate (`fused`, `fused_personal`, and `fused_neural`) must contain the
 exact `raw` surface, including capitalization and punctuation. The evaluator rejects a report that
-cannot prove the one-tap raw-word fallback; normalization is used only for accuracy scoring.
+cannot prove the one-tap raw-word fallback; normalization is used only for accuracy scoring. It does
+not require that surface to come first, and a harness must not hoist it: production already places
+the typed word at index 0.
+
+### How tap rows are scored
+
+Tap top-1 is the `commits` decision, not the head of `predictions`. This is the whole reason schema 4
+exists. Production always seats the typed word ahead of a pending correction — `InputLogic` picks
+`INDEX_OF_AUTO_CORRECTION` only when `SuggestedWords.mWillAutoCorrect` is set, and otherwise commits
+the typed word — so a harness that ranks `raw` first and an evaluator that scores rank one together
+report the typed text back to itself. Every schema-3 measurement did exactly that: all four tap
+systems scored an identical 25.265% overall top-1 and 0% on tap errors, which measured the harness
+rather than the keyboard. Schema-3 tap results cannot be repaired by rescoring, because the rows
+never recorded the commit decision; they must be re-measured.
+
+Tap top-3 is the committed surface together with the first three strip entries, which is what a user
+reaches without and with one extra tap. The false-correction rate counts rows whose committed surface
+differs from `raw`, so merely ranking a candidate above the typed word is not a false correction.
+Swipe rows have no keep-or-correct decision and are still scored by `predictions` rank.
 
 Metadata is a JSON object that binds the report to the artifacts and required environments:
 
-- `schemaVersion`: `3`.
+- `schemaVersion`: `4`.
 - `appCommit`: the full lowercase Git commit tested.
 - `coreApkSha256`, `swipeModelSha256`, and `contextModelSha256`: lowercase SHA-256 values for the
   exact APK and both models used for every reported prediction.
+- `artifactPin`: exactly `candidateId`, `contextModelSha256` and `swipeModelSha256`, naming the model
+  candidate this evidence claims to qualify. Its hashes must equal the metadata's own model hashes,
+  so a report cannot silently qualify a different candidate than the one it measured. The evaluator
+  copies it into the report's evidence. `tools/run_phase0_measurement.py --artifact-pin` writes it.
 - `environments`: exactly one `stock_android_hardware`, one `grapheneos_hardware`, and one
   `low_ram_emulator` record. Every record includes `deviceModel`, `buildFingerprint`, `testRunId`,
   `apiLevel`, `physicalDevice`, and its measured `peakAddedNeuralMemoryMiB`. Hardware must be
@@ -79,5 +106,19 @@ quality, false-correction, latency, memory, and swipe-stratum gate from the prod
 Final release verification requires both the report and its raw JSONL, recomputes every metric and
 requires the result to match the report exactly.
 
-Schema 3 adds mandatory lexical kinds and coverage. Schema 2 measurements and reports must be
-regenerated with source-backed labels; missing kinds must not be inferred merely to pass the gate.
+Schema 4 adds the mandatory per-system `commits` decision and stops treating slate rank one as the
+tap result. Schema 3 measurements and reports must be re-measured on device; the commit decision they
+would need cannot be recovered from their stored rows. Schema 3 added mandatory lexical kinds and
+coverage. Schema 2 measurements and reports must be regenerated with source-backed labels; missing
+kinds must not be inferred merely to pass the gate.
+
+## Artifact pin
+
+`docs/phase-0-artifact-pin.json` names the exact model candidate a qualifying run may measure, and
+`tools/run_phase0_measurement.py --artifact-pin` enforces it: the injected bytes are hashed on the
+host and again on the device, and an artifact listed in `rejectedContextModelSha256` fails the run by
+name. The driver also copies the candidate into metadata as `artifactPin`, and the evaluator refuses
+metadata without one, so a passing report always states which candidate it qualified. Runs without a
+pin are diagnostics and cannot produce a report. The driver also verifies the APK installed on the device
+against the hash bound into metadata, requires every gated instrumented test to run and pass, and
+checks that every pulled row carries the run's own id and environment before saving anything.

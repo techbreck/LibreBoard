@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "candidateId": "context-shared-session-v2",
+  "scope": "The exact artifacts a Phase 0 measurement run must use to qualify the current model candidate. Binding a run to anything else produces diagnostics, never release evidence.",
+  "contextModelSha256": "8566382e57ea5a9af76ddf600e189572d62fcc8b227de8415ce88ad0e172022b",
+  "contextTokenizerSha256": "e2089ddfa01ff69eba73195cb3623c86703a812a712ec356ec5fe837297a8cc9",
+  "swipeModelSha256": "1301f0d076f526fe0b67f2ea86a38abc8448f6de54d2c7191c002dcd4d05d38c",
+  "onnxRuntimeAarSha256": "54118ac8e37bc4833d32e2cb197ef6bd251f56e5aa9e4e51c3899fb616210d88",
+  "rejectedContextModelSha256": {
+    "b6dde70259d75790d8685884a50b9939f88befd55405fa3e78f6d8edebc033df": "macOS independent-split export. Its context training saw 47,931 CTC test paths and 2,226 validation paths, so joint tap/swipe evaluation against it is not valid. This is the artifact the 2026-09-11 GrapheneOS run actually measured.",
+    "53e1a1d29566efaa4ca3fe1b396206c10d211cdb2394d231dc0413b146dc17a2": "Canonical Linux export of the same independent-split weights. Reproducible, but carries the identical split defect.",
+    "9f09d7b37ff4c7f1bc0a7c7e5918ea860eb26e1a809c9758207ade52f22ed0f5": "Experimental small shared-session student. Not the release candidate."
+  },
+  "notes": [
+    "appCommit, coreApkSha256 and testApkSha256 are per-build and cannot be pinned in source. The driver verifies the APK actually installed on the device against the value bound into metadata instead.",
+    "The pinned context model cannot be produced from this checkout, and not merely because the ONNX bytes are absent. Every retained artifact belongs to the rejected independent-split run: the only full context weights present are 95384df3d674f2022c84f0b56528e735db9505295732f6421d90618adefaff14, no training report matching the shared-session run df174d415bbedbbc5424d66f8f598bad84621cb1a114df081d5671fcb1a09860 exists, and the retained teacher-scored corpus counts 61,620/3,364/3,764 train/validation/test, which is the independent split; the shared-session corpus is 61,604/3,253/3,637. Reaching this hash therefore requires regenerating the shared-session split, re-scoring it with the retained teacher, re-running the four-epoch distillation and only then the Linux export.",
+    "The Linux export image that produced this hash is retained as libreboard-context-export:local (sha256:762a8eb3ed9a4252df95cbd4bca31fd58e80e76d0f50c73567896157c0092300), so the export step is reproducible once the weights exist again.",
+    "docs/models/joint-session-splits.md records the split exposure that disqualifies the rejected artifacts."
+  ]
+}

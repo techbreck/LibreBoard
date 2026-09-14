@@ -55,6 +55,16 @@ CTC utilities, production-parity prefix-beam semantics, deterministic held-out s
 path-based length estimation, and ONNX operator-file ordering. These dependency-free tests run for every pull
 request.
 
+Two groups guard the Phase 0 measurement contract specifically. Evaluator tests require tap scoring
+to read the recorded commit decision rather than slate rank one, reject a commit that contradicts its
+own slate or `raw`, and reject `commits` on any row that is not a measured tap row. Measurement-driver
+tests require a run to be proven complete before anything is saved: a requested instrumented test
+that skips, a crashed runner, a partial run, another run's rows, an older schema, or truncated output
+each fail the run, and the artifact pin refuses a superseded model candidate by name. On the JVM side,
+`SuggestTest` locks both commit-decision entry points — `Suggest.commitDecisionOf` for the fused
+systems and `Suggest.classicCommitDecision` for the baseline — including the case where a correction
+sits on the strip but production keeps the typed word.
+
 After a full swipe export, `build/model-venv/bin/python tools/evaluate_swipe_ctc.py` measures the
 real ONNX graph with the production CTC prefix-beam rules on 5,000 deterministically selected
 held-out gestures, including at least 500 from each required stratum. Its corpus-derived lexicon is

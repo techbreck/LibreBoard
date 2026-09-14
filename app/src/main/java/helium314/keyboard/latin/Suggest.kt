@@ -384,6 +384,52 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
         return allowsToBeAutoCorrected to hasAutoCorrection
     }
 
+    /**
+     * Commit decision for a classic, engine-free candidate list.
+     *
+     * The Phase 0 baseline replays [DictionaryFacilitator.getSuggestionResults] directly, so it has
+     * no [SuggestedWords] to read [SuggestedWords.mWillAutoCorrect] from. Routing that baseline
+     * through [shouldBeAutoCorrected] here keeps it on the same auto-correction implementation as
+     * the fused systems, instead of a measurement-side copy that can drift from production.
+     */
+    fun classicCommitDecision(
+        wordComposer: WordComposer,
+        ngramContext: NgramContext,
+        keyboard: Keyboard,
+        settingsValuesForSuggestion: SettingsValuesForSuggestion,
+        inputStyle: Int,
+        suggestionResults: SuggestionResults,
+    ): CommitDecision {
+        val typedWordString = wordComposer.typedWord
+        val container = ArrayList(suggestionResults)
+        val typedWordFirstOccurrenceWordInfo = container.firstOrNull { it.mWord == typedWordString }
+        val firstOccurrenceOfTypedWordInSuggestions =
+            SuggestedWordInfo.removeDupsAndTypedWord(typedWordString, container)
+        // Without a competing suggestion there is nothing to correct to; the terminal checks in
+        // shouldBeAutoCorrected agree, but the empty-word lambda below would dereference an empty
+        // result list on the way there.
+        val correction = container.firstOrNull()
+            ?: return CommitDecision(typedWordString, false)
+        val hasAutoCorrection = shouldBeAutoCorrected(
+            StringUtils.getTrailingSingleQuotesCount(typedWordString),
+            typedWordString,
+            correction,
+            {
+                val suggestions = getNextWordSuggestions(
+                    ngramContext, keyboard, inputStyle, settingsValuesForSuggestion)
+                suggestions.firstOrNull { it.mWord == correction.mWord } to
+                    suggestions.firstOrNull { it.mWord == typedWordString }
+            },
+            true,
+            wordComposer,
+            suggestionResults,
+            firstOccurrenceOfTypedWordInSuggestions,
+            typedWordFirstOccurrenceWordInfo,
+        ).second
+        return if (hasAutoCorrection) CommitDecision(correction.mWord, true)
+            else CommitDecision(typedWordString, false)
+    }
+
     // Retrieves suggestions for the batch input
     // and calls the callback function with the suggestions.
     private fun getSuggestedWordsForBatchInput(
@@ -581,7 +627,32 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
         candidate.copy(surface = surface, normalized = normalizeCandidate(surface))
     }
 
+    /**
+     * What the editor actually receives when a composed word is terminated.
+     *
+     * Measurement harnesses must score this rather than rank one of the suggestion strip: the strip
+     * always carries the typed word at [SuggestedWords.INDEX_OF_TYPED_WORD], ahead of any pending
+     * correction, so scoring rank one reports the typed text back to itself and can never observe a
+     * correction.
+     */
+    data class CommitDecision(val committedWord: String, val willAutoCorrect: Boolean)
+
     companion object {
+        /**
+         * The word production commits for [suggestedWords]; mirrors the selection in
+         * `InputLogic.setSuggestedWords`, which takes [SuggestedWords.INDEX_OF_AUTO_CORRECTION] when
+         * [SuggestedWords.mWillAutoCorrect] is set and the typed word otherwise.
+         */
+        @JvmStatic
+        fun commitDecisionOf(suggestedWords: SuggestedWords, typedWord: String): CommitDecision {
+            val willAutoCorrect = suggestedWords.mWillAutoCorrect &&
+                suggestedWords.size() > SuggestedWords.INDEX_OF_AUTO_CORRECTION
+            if (!willAutoCorrect) {
+                return CommitDecision(suggestedWords.mTypedWordInfo?.mWord ?: typedWord, false)
+            }
+            return CommitDecision(suggestedWords.getWord(SuggestedWords.INDEX_OF_AUTO_CORRECTION), true)
+        }
+
         private const val LEXICAL_PROPOSAL_BUDGET_MILLIS = 8L
         private const val CONTEXT_RESCORING_BUDGET_MILLIS = 35L
         private const val SWIPE_PROPOSAL_BUDGET_MILLIS = 125L

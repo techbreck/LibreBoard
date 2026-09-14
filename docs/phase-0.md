@@ -43,8 +43,11 @@ components as unavailable and must keep the classic/geometric fallback fully usa
 
 The completed context training/export/diagnostic work is recorded in the
 [context model card](../models/context/MODEL_CARD.md). Its two Linux exports are byte-identical,
-and the exact Linux artifact has full distillation validation/test results and Android kernel
-parity. Those results do not establish correction gains on human tap errors.
+and the exact Linux artifact has full distillation validation/test results. Those results do not
+establish correction gains on human tap errors. Android kernel parity was measured against the
+earlier independent-split weights, not against the shared-session candidate
+`8566382e57ea5a9af76ddf600e189572d62fcc8b227de8415ce88ad0e172022b`; the model card records that
+warning, and the parity fixture must be repeated against the pinned hash.
 
 | Required evidence | Current state |
 |---|---|
@@ -54,9 +57,36 @@ parity. Those results do not establish correction gains on human tap errors.
 | Contraction/personal/compound coverage | 3,244 human contractions plus 360/312 project-authored personal/compound held out; all kinds represented |
 | Swipe absolute quality and difficult strata | Offline native-lexicon union remains below absolute top-1/top-3 gates; full live fusion is not qualified |
 | End-to-end latency and combined added peak memory | Not qualified; diagnostic snapshots and generous-deadline replays are insufficient |
-| Required device matrix | Forced-low-RAM emulator checks exist; stock physical Android and physical GrapheneOS evidence are absent |
+| Required device matrix | Physical GrapheneOS tap and swipe rows were collected on 2026-09-11, but they are diagnostics: they measured the superseded independent-split context export, and their tap results came from the defective schema-3 harness. Stock physical Android and a qualifying low-RAM run are absent. No environment currently holds qualifying evidence |
 | Model/runtime release reproducibility | Both fixed model exports repeat on Linux; two independent Linux development-operator runtime AARs are byte-identical. That is not a model-qualified runtime. Signed model-pack builds are not established |
 | Signing and publication | No accepted production key or model-qualified release; artifacts remain local and unsigned/unaccepted |
+
+Three measurement defects are fixed in the harness, and each invalidates previously collected tap
+evidence rather than being repairable by rescoring it. First, the harness hoisted the typed word to
+the front of every slate while the evaluator scored rank one, so all four tap systems reported an
+identical 25.265% top-1 and 0% on tap errors — a measurement of the harness, not the keyboard.
+Measurement schema 4 now records production's own commit decision per system and the evaluator scores
+that; see [the schema](phase-0-dataset-schema.md). Second, the harness built each row with
+`WordComposer.setComposingWord`, which marks the composition resumed, and production never
+auto-corrects a resumed word; every measured row was therefore structurally uncorrectable, which is
+why the correction rate stayed at 0% even on the classic baseline until rows were replayed as key
+events. Third,
+[`phase-0-artifact-pin.json`](phase-0-artifact-pin.json) pins the shared-session candidate, and
+`tools/run_phase0_measurement.py --artifact-pin` fails by name when a run injects a rejected export,
+verifies the APK installed on the device, requires every gated instrumented test to pass, and checks
+that every pulled row belongs to the run before saving it. The physical release checklist stays
+blocked until the exact release APK completes it.
+
+### Planning the qualifying device matrix
+
+The three environments share one dataset, so their row budgets add rather than repeat. A 500-row cap
+per device yields 1,500 swipes and cannot satisfy the 5,000-swipe minimum, nor the 500-per-stratum
+minimums for `short`, `medium`, `long`, `clean`, `sloppy`, `very_sloppy`, `double_letter` and
+`return_trip`; plan disjoint shards sized to the totals, not to the per-device floor of 100. Example
+ids must stay unique across the whole matrix — the evaluator rejects duplicates, so a full emulator
+corpus cannot be pooled with a hardware shard drawn from the same rows. The low-RAM slot needs a
+device that actually reports `isLowRamDevice: true` with at most 2,048 MiB; the 12,500-row emulator
+rehearsal reports false and carries no model or APK hashes, so it cannot fill that slot.
 
 The [tap corpus report](phase-0-tap-corpus.md), [swipe evaluation](swipe-ctc-evaluation.md),
 [device tests](testing.md), and [APK build evidence](release/abi-packaging.md) retain exact scope

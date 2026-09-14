@@ -8,6 +8,15 @@ pipelines, with separate project-authored namespaces. The scored corpus has 68,4
 61,604 train, 3,253 validation and 3,637 test. Independently split context data was rejected for
 cross-task session leakage and must not be mixed with these artifacts.
 
+The shared-session candidate is
+`8566382e57ea5a9af76ddf600e189572d62fcc8b227de8415ce88ad0e172022b`, pinned for measurement by
+[`docs/phase-0-artifact-pin.json`](../../docs/phase-0-artifact-pin.json). That pin also names the
+rejected independent-split exports `b6dde702…` (macOS) and `53e1a1d2…` (canonical Linux), and
+`tools/run_phase0_measurement.py --artifact-pin` fails a run that injects either. The 2026-09-11
+GrapheneOS measurement used `b6dde702…`, so its results are component diagnostics and do not qualify
+this candidate. The pinned bytes are not retained in this checkout and must be re-exported in the
+Linux container before the qualifying device matrix.
+
 A four-epoch 35,662,848-parameter student completed training on 2026-09-08. Two independent Linux
 INT4 exports are byte-identical across all eight files. Distillation ranking diagnostics and the
 export hashes are in [`docs/models/evidence/`](../../docs/models/evidence/). Those metrics are
