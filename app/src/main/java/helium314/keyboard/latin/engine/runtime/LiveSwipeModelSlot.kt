@@ -77,7 +77,11 @@ class LiveSwipeModelSlot(
         }
         return try {
             future.get(remaining, TimeUnit.MILLISECONDS).also { result ->
-                if (result.availability == EngineAvailability.TIMEOUT) circuitBreaker.recordOverrun()
+                // A self-bounded decoder that returns its partial slate respected the deadline;
+                // only an empty timeout means the budget was spent with nothing to show.
+                if (result.availability == EngineAvailability.TIMEOUT && result.candidates.isEmpty()) {
+                    circuitBreaker.recordOverrun()
+                }
             }
         } catch (_: TimeoutException) {
             future.cancel(true)

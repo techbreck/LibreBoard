@@ -133,7 +133,12 @@ class ParallelSwipeDecoder(
         const val GEOMETRIC_TIMEOUT_GRACE_MILLIS = 15L
 
         val sharedGeometricExecutor: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
-            Thread(runnable, "LibreBoardGeometricSwipe").apply { isDaemon = true }
+            // The geometric scan is a best-effort fallback; letting it compete at normal priority
+            // starves the neural decode on devices with few cores.
+            Thread(runnable, "LibreBoardGeometricSwipe").apply {
+                isDaemon = true
+                priority = Thread.MIN_PRIORITY
+            }
         }
     }
 }

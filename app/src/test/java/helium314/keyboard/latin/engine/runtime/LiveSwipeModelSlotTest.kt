@@ -72,6 +72,24 @@ class LiveSwipeModelSlotTest {
     }
 
     @Test
+    fun selfBoundedTimeoutWithPartialSlateDoesNotTripTheCircuit() {
+        LiveSwipeModelSlot(DeadlineCircuitBreaker(maximumOverruns = 1)).use { slot ->
+            slot.install(SwipeDecoder { _, _ ->
+                SwipeDecodeResult(
+                    EngineAvailability.TIMEOUT,
+                    listOf(Candidate("cat", languageTag = "en-US", sources = setOf(CandidateSource.CTC_SWIPE))),
+                )
+            }, AutoCloseable {})
+
+            repeat(3) {
+                val result = slot.decode(request(), Deadline.afterMillis(100))
+                assertEquals(EngineAvailability.TIMEOUT, result.availability)
+                assertEquals("cat", result.candidates.single().surface)
+            }
+        }
+    }
+
+    @Test
     fun refreshingTheSameOwnerResetsItsDeadlineCircuit() {
         val owner = AutoCloseable {}
         LiveSwipeModelSlot(DeadlineCircuitBreaker(maximumOverruns = 1)).use { slot ->
