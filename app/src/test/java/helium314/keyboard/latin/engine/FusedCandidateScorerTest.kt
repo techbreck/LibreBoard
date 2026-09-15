@@ -41,6 +41,34 @@ class FusedCandidateScorerTest {
     }
 
     @Test
+    fun slateWideSoftmaxMassDoesNotSuppressClearWinner() {
+        // Commit confidence is the head-to-head share between the leading correction and the
+        // typed word. Dozens of weak alternatives must not dilute it below the aggressiveness
+        // threshold, or production commits would be structurally impossible.
+        val raw = candidate("thsi", spatial = -3.0, context = -4.0)
+        val correction = candidate("this", spatial = 3.0, context = 4.0,
+            edits = listOf(EditOperation.TRANSPOSE))
+        val fillers = (0..28).map { candidate("alt$it", spatial = -2.5, context = -3.0) }
+        val result = scorer.rank("thsi", fillers + correction + raw,
+            WordLock.Automatic("en-US"), 50, AutoCorrectionAggressiveness.BALANCED)
+
+        assertEquals("this", result.autoCorrection?.surface)
+    }
+
+    @Test
+    fun correctionBarelyOutscoringRawIsNotCommitted() {
+        // A distant distractor flattens the normalized gap between the typed word and the
+        // correction, so the head-to-head probability stays below the balanced threshold.
+        val raw = candidate("gix", spatial = 1.0, context = 1.0)
+        val correction = candidate("gig", spatial = 2.0, context = 2.0)
+        val distractor = candidate("zebra", spatial = -100.0, context = -100.0)
+        val result = scorer.rank("gix", listOf(raw, correction, distractor),
+            WordLock.Automatic("en-US"), 50, AutoCorrectionAggressiveness.BALANCED)
+
+        assertNull(result.autoCorrection)
+    }
+
+    @Test
     fun neuralSliderHasLockedCalibrationPoints() {
         assertEquals(0.0, scorer.neuralCoefficient(0), 0.0001)
         assertEquals(0.7, scorer.neuralCoefficient(50), 0.0001)

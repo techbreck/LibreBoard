@@ -76,12 +76,23 @@ class FusedCandidateScorer(private val weights: ScoreWeights = ScoreWeights()) {
         val calibrated = scored.mapIndexed { index, candidate -> candidate.copy(calibratedProbability = probabilities[index]) }
         val winner = calibrated.firstOrNull()
         val rawCandidate = calibrated.firstOrNull { it.normalized == normalizedRaw }
-        val margin = if (winner == null || rawCandidate == null) 0.0 else winner.calibratedProbability - rawCandidate.calibratedProbability
+        // Auto-correction is a head-to-head decision between the leading correction and the
+        // typed word, so its confidence is the two-way share of those two scores. The
+        // slate-wide softmax spreads mass across dozens of candidates, which keeps every
+        // share far below the aggressiveness thresholds and would veto almost every commit.
+        val pairProbability = if (winner == null || rawCandidate == null || winner === rawCandidate) {
+            0.0
+        } else {
+            val high = maxOf(winner.totalScore, rawCandidate.totalScore)
+            val winnerMass = exp((winner.totalScore - high).coerceIn(-50.0, 0.0))
+            winnerMass / (winnerMass + exp((rawCandidate.totalScore - high).coerceIn(-50.0, 0.0)))
+        }
+        val margin = 2.0 * pairProbability - 1.0
         val safeWinner = winner?.takeIf {
             it.normalized != normalizedRaw &&
                 !rawCandidate!!.exactPersonalMatch &&
                 it.rejectionPenalty <= 0.0 &&
-                it.calibratedProbability >= aggressiveness.probability &&
+                pairProbability >= aggressiveness.probability &&
                 margin >= aggressiveness.margin &&
                 validWordReplacementHasJointEvidence(rawCandidate, it)
         }
