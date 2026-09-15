@@ -17,6 +17,7 @@ import helium314.keyboard.latin.engine.geometric.LexiconWord
 import helium314.keyboard.latin.engine.geometric.SwipeLexicon
 import helium314.keyboard.latin.engine.geometric.SwipeLengthEstimate
 import helium314.keyboard.latin.engine.geometric.SwipeWordGesture
+import helium314.keyboard.latin.engine.integration.RevisingSwipeLexicon
 import helium314.keyboard.latin.engine.normalizeCandidate
 import java.util.Locale
 import kotlin.math.exp
@@ -89,15 +90,35 @@ class CtcSwipeDecoder(
         if (languageTags.isEmpty()) return SwipeDecodeResult(EngineAvailability.INCOMPATIBLE)
         val approximateLength = greedyEmissionLength(inference).takeIf { it > 0 }
             ?: SwipeLengthEstimate.fromPath(request.path, request.geometry)
-        val trie = buildTrie(
-            lexicon.words(languageTags, approximateLength),
-            features.keyLabels,
-            languageTags.toSet(),
-            deadline,
-        ) ?: return SwipeDecodeResult(EngineAvailability.TIMEOUT)
+        // The trie only depends on the lexicon contents, language set, length estimate, and key
+        // labels. Rebuilding it per decode costs a full lexicon pass inside the shared proposal
+        // deadline, so keep a bounded cache keyed on the lexicon's own revision token.
+        val revision = (lexicon as? RevisingSwipeLexicon)?.contentRevision
+        val cacheKey = revision?.let { TrieCacheKey(it, languageTags, approximateLength, features.keyLabels) }
+        val trie = (cacheKey?.let { key -> synchronized(trieCache) { trieCache[key] } }
+            ?: buildTrie(
+                lexicon.words(languageTags, approximateLength),
+                features.keyLabels,
+                languageTags.toSet(),
+                deadline,
+            )?.also { built ->
+                if (cacheKey != null) synchronized(trieCache) { trieCache[cacheKey] = built }
+            }) ?: return SwipeDecodeResult(EngineAvailability.TIMEOUT)
         if (trie.wordCount == 0) return SwipeDecodeResult(EngineAvailability.AVAILABLE)
 
         return decodeLogits(inference, trie, deadline)
+    }
+
+    private data class TrieCacheKey(
+        val contentRevision: Any,
+        val languageTags: List<String>,
+        val approximateLength: Int,
+        val keyLabels: List<String?>,
+    )
+
+    private val trieCache = object : LinkedHashMap<TrieCacheKey, LexiconTrie>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<TrieCacheKey, LexiconTrie>?) =
+            size > MAX_CACHED_TRIES
     }
 
     private fun decodeLogits(
@@ -263,6 +284,7 @@ class CtcSwipeDecoder(
         const val DEFAULT_BEAM_WIDTH = 64
         const val MAX_BEAM_WIDTH = 256
         const val MAX_LEXICON_WORDS = 100_000
+        const val MAX_CACHED_TRIES = 32
         const val MAX_EMISSION_LENGTH = 64
         const val LOG_ZERO = Double.NEGATIVE_INFINITY
 

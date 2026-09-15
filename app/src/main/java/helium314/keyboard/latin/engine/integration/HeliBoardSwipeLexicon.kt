@@ -17,6 +17,12 @@ internal data class SwipeLexiconRuntimePolicy(
     val incognito: Boolean,
 )
 
+/** A swipe lexicon whose contents are versioned; decoders may key derived structures on it. */
+internal interface RevisingSwipeLexicon : SwipeLexicon {
+    /** Opaque token that changes whenever the underlying word lists or policy may have changed. */
+    val contentRevision: Any
+}
+
 /**
  * Data-only bridge from retained AOSP dictionaries and LibreBoard's CE personal store into both
  * open swipe decoders. Static results are cached by immutable dictionary revision and request
@@ -45,7 +51,26 @@ internal class HeliBoardSwipeLexicon(
             )
         },
     private val personalRevisionProvider: () -> Long = PersonalizationRuntime::swipeLexiconRevision,
-) : SwipeLexicon {
+) : RevisingSwipeLexicon {
+    override val contentRevision: Any
+        get() {
+            val policy = policyProvider()
+            return ContentRevision(
+                facilitator.swipeLexiconRevision,
+                personalRevisionProvider(),
+                policy.usePersonalizedWords && policy.fieldPolicy.allowsSuggestions &&
+                    policy.fieldPolicy.allowsPersistence && !policy.incognito,
+                policy.blockPossiblyOffensive,
+            )
+        }
+
+    private data class ContentRevision(
+        val staticRevision: Long,
+        val personalRevision: Long,
+        val personalAllowed: Boolean,
+        val blockPossiblyOffensive: Boolean,
+    )
+
     // A single-slot cache thrashes under real swipe input: approximate length estimates differ
     // per gesture, and each miss re-queries and re-sorts the static index inside the decoder's
     // proposal deadline. Keep a bounded access-ordered map instead.
