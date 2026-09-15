@@ -7,6 +7,7 @@ import helium314.keyboard.latin.engine.Deadline
 import helium314.keyboard.latin.engine.EngineAvailability
 import helium314.keyboard.latin.engine.InputStyle
 import helium314.keyboard.latin.engine.KeyGeometry
+import helium314.keyboard.latin.engine.KeySlot
 import helium314.keyboard.latin.engine.ScoreComponents
 import helium314.keyboard.latin.engine.SwipeDecodeResult
 import helium314.keyboard.latin.engine.SwipeDecoder
@@ -43,28 +44,63 @@ class GeometricSwipeDecoder(private val lexicon: SwipeLexicon) : SwipeDecoder {
             Point(it.x / request.geometry.width, it.y / request.geometry.height)
         }
         val traced = TraceKeySequence.decode(request.path, request.geometry)
+        val pathTurns = turnCount(normalizedPath)
         val approximateLength = SwipeLengthEstimate.fromPath(request.path, request.geometry)
-        val scored = mutableListOf<Candidate>()
+        // KeyGeometry.keyFor is a linear scan; hoisting it to a map keeps the per-word endpoint
+        // check cheap enough to reject most of the lexicon before any template resample.
+        val keyByChar = HashMap<Char, KeySlot>(request.geometry.keys.size * 2)
+        request.geometry.keys.forEach { slot ->
+            val lower = slot.label.lowercase(Locale.ROOT)
+            if (slot.enabled && lower.length == 1 &&
+                slot.label.codePointCount(0, slot.label.length) == 1) {
+                keyByChar.putIfAbsent(lower[0], slot)
+            }
+        }
+        // Normalized key points for the cheap endpoint bound, built once per decode so the
+        // per-word path allocates nothing before a variant earns the template resample.
+        val keyPoint = HashMap<Char, Point>(keyByChar.size * 2)
+        keyByChar.forEach { (char, slot) ->
+            keyPoint[char] = Point(slot.centerX / request.geometry.width, slot.centerY / request.geometry.height)
+        }
+        val pathStart = normalizedPath.first()
+        val pathEnd = normalizedPath.last()
+        val editBufferA = IntArray(MAX_EDIT_LENGTH + 1)
+        val editBufferB = IntArray(MAX_EDIT_LENGTH + 1)
+        // Only the best RESULT_LIMIT candidates are ever published, so retain a bounded worst-first
+        // heap. Its head is the running cutoff: every cost term is non-negative, which makes the
+        // cheap endpoint/edit terms a safe lower bound for skipping the full template resample.
+        // The lexicon arrives frequency-ordered; on equal costs the earlier word keeps the seat,
+        // matching the previous stable sort of the unbounded list.
+        val heap = java.util.PriorityQueue<ScoredWord>(
+            RESULT_LIMIT, compareByDescending<ScoredWord> { it.cost }.thenByDescending { it.seq },
+        )
+        var seq = 0
 
         for (entry in lexicon.words(request.enabledLanguages, approximateLength)) {
             if (deadline.expired) {
-                return SwipeDecodeResult(EngineAvailability.TIMEOUT, scored.sortedByDescending {
-                    it.components.spatial
-                }.take(32))
+                return SwipeDecodeResult(EngineAvailability.TIMEOUT, publish(heap))
             }
             if (entry.languageTag !in request.enabledLanguages) continue
-            val gestureVariants = SwipeWordGesture.variants(entry.word, entry.languageTag)
-            val cost = gestureVariants.mapNotNull { gesture ->
-                val template = template(gesture, request.geometry) ?: return@mapNotNull null
-                val shapeCost = averageDistance(normalizedPath, template)
-                val startEndCost = distance(normalizedPath.first(), template.first()) +
-                    distance(normalizedPath.last(), template.last())
-                val traceEditCost = normalizedEditDistance(traced, gesture)
-                val turnCost = abs(turnCount(normalizedPath) - turnCount(template)).toDouble() /
-                    gesture.length.coerceAtLeast(1)
-                shapeCost * 2.2 + startEndCost * 1.4 + traceEditCost * 0.8 + turnCost * 0.25
-            }.minOrNull() ?: continue
-            scored += Candidate(
+            val worst = heap.peek()?.cost ?: Double.POSITIVE_INFINITY
+            val cutoff = if (heap.size < RESULT_LIMIT) Double.POSITIVE_INFINITY else worst
+            val cost = cheapestVariantCost(
+                entry, normalizedPath, traced, pathTurns, pathStart, pathEnd,
+                request.geometry, keyPoint, editBufferA, editBufferB, cutoff,
+            ) ?: continue
+            if (heap.size < RESULT_LIMIT || cost < worst) {
+                if (heap.size == RESULT_LIMIT) heap.poll()
+                heap.offer(ScoredWord(cost, entry, seq++))
+            }
+        }
+        return SwipeDecodeResult(EngineAvailability.AVAILABLE, publish(heap))
+    }
+
+    private class ScoredWord(val cost: Double, val word: LexiconWord, val seq: Int)
+
+    private fun publish(heap: java.util.PriorityQueue<ScoredWord>): List<Candidate> =
+        heap.sortedWith(compareBy<ScoredWord> { it.cost }.thenBy { it.seq }).map { scored ->
+            val entry = scored.word
+            Candidate(
                 surface = entry.word,
                 languageTag = entry.languageTag,
                 sources = buildSet {
@@ -72,24 +108,60 @@ class GeometricSwipeDecoder(private val lexicon: SwipeLexicon) : SwipeDecoder {
                     if (entry.personal) add(CandidateSource.PERSONAL)
                 },
                 components = ScoreComponents(
-                    spatial = -cost,
+                    spatial = -scored.cost,
                     staticFrequency = ln1p(entry.frequency.coerceAtLeast(0).toDouble()),
                     personal = if (entry.personal) 1.0 else null,
                 ),
                 exactPersonalMatch = entry.personal,
-                totalScore = -cost,
+                totalScore = -scored.cost,
             )
         }
-        return SwipeDecodeResult(
-            EngineAvailability.AVAILABLE,
-            scored.sortedByDescending { it.components.spatial }.take(32),
-        )
+
+    /**
+     * The minimum gesture-variant cost for [entry], or null when no variant maps onto the live
+     * geometry. Variants whose endpoint-plus-trace lower bound already exceeds [cutoff] never
+     * reach the template resample; the bound is exact because the dropped terms are non-negative.
+     */
+    private fun cheapestVariantCost(
+        entry: LexiconWord,
+        normalizedPath: List<Point>,
+        traced: String,
+        pathTurns: Int,
+        pathStart: Point,
+        pathEnd: Point,
+        geometry: KeyGeometry,
+        keyPoint: Map<Char, Point>,
+        editBufferA: IntArray,
+        editBufferB: IntArray,
+        cutoff: Double,
+    ): Double? {
+        var best = Double.POSITIVE_INFINITY
+        for (gesture in SwipeWordGesture.variants(entry.word, entry.languageTag)) {
+            val firstPoint = keyPoint[gesture.first().lowercaseChar()] ?: continue
+            val lastPoint = keyPoint[gesture.last().lowercaseChar()] ?: continue
+            val startEndCost = distance(pathStart, firstPoint) + distance(pathEnd, lastPoint)
+            // The normalized edit distance is at least the length difference over the longer
+            // side; check that free bound before paying for the quadratic distance itself.
+            val lengthBound = abs(traced.length - gesture.length).toDouble() /
+                maxOf(traced.length, gesture.length, 1)
+            var lowerBound = startEndCost * 1.4 + lengthBound * 0.8
+            if (lowerBound >= best || lowerBound >= cutoff) continue
+            val traceEditCost = normalizedEditDistance(traced, gesture, editBufferA, editBufferB)
+            lowerBound = startEndCost * 1.4 + traceEditCost * 0.8
+            if (lowerBound >= best || lowerBound >= cutoff) continue
+            val template = template(gesture, geometry, keyPoint) ?: continue
+            val shapeCost = averageDistance(normalizedPath, template)
+            val turnCost = abs(pathTurns - turnCount(template)).toDouble() /
+                gesture.length.coerceAtLeast(1)
+            val cost = shapeCost * 2.2 + startEndCost * 1.4 + traceEditCost * 0.8 + turnCost * 0.25
+            if (cost < best) best = cost
+        }
+        return if (best.isFinite()) best else null
     }
 
-    private fun template(word: String, geometry: KeyGeometry): List<Point>? {
+    private fun template(word: String, geometry: KeyGeometry, keyPoint: Map<Char, Point>): List<Point>? {
         val keyPoints = word.lowercase().map { character ->
-            val key = geometry.keyFor(character) ?: return null
-            Point(key.centerX / geometry.width, key.centerY / geometry.height)
+            keyPoint[character] ?: return null
         }
         if (keyPoints.isEmpty()) return null
         return resamplePoints(keyPoints, SAMPLE_COUNT)
@@ -98,10 +170,13 @@ class GeometricSwipeDecoder(private val lexicon: SwipeLexicon) : SwipeDecoder {
     private fun averageDistance(a: List<Point>, b: List<Point>): Double =
         a.indices.sumOf { distance(a[it], b[it]) } / a.size
 
-    private fun normalizedEditDistance(first: String, second: String): Double {
+    private fun normalizedEditDistance(
+        first: String, second: String, bufferA: IntArray, bufferB: IntArray,
+    ): Double {
         if (first.isEmpty() || second.isEmpty()) return 1.0
-        val previous = IntArray(second.length + 1) { it }
-        val current = IntArray(second.length + 1)
+        var previous = if (second.length < bufferA.size) bufferA else IntArray(second.length + 1)
+        var current = if (second.length < bufferB.size) bufferB else IntArray(second.length + 1)
+        for (index in 0..second.length) previous[index] = index
         first.forEachIndexed { firstIndex, firstCharacter ->
             current[0] = firstIndex + 1
             second.forEachIndexed { secondIndex, secondCharacter ->
@@ -111,7 +186,7 @@ class GeometricSwipeDecoder(private val lexicon: SwipeLexicon) : SwipeDecoder {
                     previous[secondIndex] + if (firstCharacter == secondCharacter) 0 else 1,
                 )
             }
-            current.copyInto(previous)
+            val swap = previous; previous = current; current = swap
         }
         return previous[second.length].toDouble() / maxOf(first.length, second.length)
     }
@@ -179,6 +254,8 @@ class GeometricSwipeDecoder(private val lexicon: SwipeLexicon) : SwipeDecoder {
 
     companion object {
         private const val SAMPLE_COUNT = 64
+        private const val RESULT_LIMIT = 32
+        private const val MAX_EDIT_LENGTH = 64
     }
 }
 

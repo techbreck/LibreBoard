@@ -46,7 +46,13 @@ internal class HeliBoardSwipeLexicon(
         },
     private val personalRevisionProvider: () -> Long = PersonalizationRuntime::swipeLexiconRevision,
 ) : SwipeLexicon {
-    @Volatile private var cache: Cache? = null
+    // A single-slot cache thrashes under real swipe input: approximate length estimates differ
+    // per gesture, and each miss re-queries and re-sorts the static index inside the decoder's
+    // proposal deadline. Keep a bounded access-ordered map instead.
+    private val cache = object : LinkedHashMap<CacheKey, List<LexiconWord>>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<CacheKey, List<LexiconWord>>?) =
+            size > MAX_CACHED_SLICES
+    }
 
     override fun words(languageTags: List<String>, approximateLength: Int): Sequence<LexiconWord> {
         val languages = languageTags.asSequence()
@@ -66,26 +72,29 @@ internal class HeliBoardSwipeLexicon(
             policy.blockPossiblyOffensive,
             personalAllowed,
         )
-        cache?.takeIf { it.key == key }?.let { return it.words.asSequence() }
+        synchronized(cache) {
+            cache[key]?.let { return it.asSequence() }
+        }
         val words = synchronized(this) {
-            cache?.takeIf { it.key == key }?.let { return@synchronized it.words }
-            val staticWords = facilitator.getSwipeLexiconWords(
-                languages,
-                approximateLength,
-                MAX_STATIC_WORDS,
-                policy.blockPossiblyOffensive,
-            )
-            val personalWords = if (personalAllowed) {
-                personalProvider(languages, approximateLength, MAX_PERSONAL_WORDS, policy)
-            } else emptyList()
-            (personalWords.asSequence() + staticWords.asSequence())
-                .map { word ->
-                    val language = canonicalLanguageTag(word.languageTag)
-                    if (language == word.languageTag) word else word.copy(languageTag = language)
-                }
-                .distinctBy { normalizeCandidate(it.word) to canonicalLanguageTag(it.languageTag) }
-                .toList()
-                .also { cache = Cache(key, it) }
+            synchronized(cache) { cache[key] } ?: run {
+                val staticWords = facilitator.getSwipeLexiconWords(
+                    languages,
+                    approximateLength,
+                    MAX_STATIC_WORDS,
+                    policy.blockPossiblyOffensive,
+                )
+                val personalWords = if (personalAllowed) {
+                    personalProvider(languages, approximateLength, MAX_PERSONAL_WORDS, policy)
+                } else emptyList()
+                (personalWords.asSequence() + staticWords.asSequence())
+                    .map { word ->
+                        val language = canonicalLanguageTag(word.languageTag)
+                        if (language == word.languageTag) word else word.copy(languageTag = language)
+                    }
+                    .distinctBy { normalizeCandidate(it.word) to canonicalLanguageTag(it.languageTag) }
+                    .toList()
+                    .also { built -> synchronized(cache) { cache[key] = built } }
+            }
         }
         return words.asSequence()
     }
@@ -99,11 +108,10 @@ internal class HeliBoardSwipeLexicon(
         val personalAllowed: Boolean,
     )
 
-    private data class Cache(val key: CacheKey, val words: List<LexiconWord>)
-
     private companion object {
         const val MAX_STATIC_WORDS = 100_000
         const val MAX_PERSONAL_WORDS = 256
+        const val MAX_CACHED_SLICES = 32
 
         fun canonicalLanguageTag(tag: String): String =
             Locale.forLanguageTag(tag).takeUnless { it == Locale.ROOT }?.toLanguageTag().orEmpty()
