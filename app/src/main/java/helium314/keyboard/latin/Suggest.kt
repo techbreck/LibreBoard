@@ -472,7 +472,6 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
         settingsValuesForSuggestion: SettingsValuesForSuggestion,
         inputStyle: Int, isCorrectionEnabled: Boolean, sequenceNumber: Int
     ): SuggestedWords {
-        val swipeProposalDeadline = Deadline.afterMillis(SWIPE_PROPOSAL_BUDGET_MILLIS)
         val composedData = wordComposer.composedDataSnapshot
         val suggestionResults = mDictionaryFacilitator.getSuggestionResults(
             composedData, ngramContext, keyboard,
@@ -534,6 +533,9 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
             inputStyle = InputStyle.SWIPE,
             sequenceId = sequenceNumber.toLong(),
         )
+        // The proposal budget bounds the decoder proposal step itself; the two native
+        // getSuggestionResults passes above must not eat into it.
+        val swipeProposalDeadline = Deadline.afterMillis(SWIPE_PROPOSAL_BUDGET_MILLIS)
         val decodedCandidates = if (path.size >= 2 && geometry.keys.isNotEmpty() && fieldPolicy.allowsSuggestions) {
             swipeDecoder.decode(typingRequest, swipeProposalDeadline).candidates
         } else emptyList()
