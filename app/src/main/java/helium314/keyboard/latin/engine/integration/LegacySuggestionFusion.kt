@@ -28,6 +28,7 @@ import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.ln1p
 import kotlin.math.max
+import kotlin.math.sqrt
 
 internal data class LegacyFusionResult(
     val suggestions: ArrayList<SuggestedWordInfo>,
@@ -112,7 +113,20 @@ internal class LegacySuggestionFusion(
         } else {
             updateWordLock(rawText, languageProbabilities)
         }
-        val classicCandidates = classicSuggestions.take(SuggestedWords.MAX_SUGGESTIONS).map { info ->
+        // A single gesture produces one word; the classic matcher's phrase completions are not
+        // valid swipe results and would occupy slate slots the decoded words need.
+        val classicSlice = classicSuggestions.take(SuggestedWords.MAX_SUGGESTIONS)
+            .filter { inputStyle != InputStyle.SWIPE || !it.mWord.contains(' ') }
+        // Native batch-input scores and the decoders' normalized spatial scores do not share a
+        // scale. Pooled together the classic score's raw magnitude dominates the spatial component
+        // and buries decoded candidates; a within-group standardization keeps the classic order
+        // while putting both evidence sources on a comparable footing.
+        val classicSpatial = if (inputStyle == InputStyle.SWIPE) {
+            standardize(classicSlice.map { it.mScore.toDouble() })
+        } else {
+            classicSlice.map { it.mScore.toDouble() }
+        }
+        val classicCandidates = classicSlice.mapIndexed { index, info ->
             val language = languageTag(info, defaultLanguage)
             val userSpecific = info.mSourceDict.isUserSpecific
             val sources = buildSet {
@@ -128,7 +142,7 @@ internal class LegacySuggestionFusion(
                 languageTag = language,
                 sources = sources,
                 components = ScoreComponents(
-                    spatial = info.mScore.toDouble().takeIf { inputStyle != InputStyle.PREDICTION && !userSpecific },
+                    spatial = classicSpatial[index].takeIf { inputStyle != InputStyle.PREDICTION && !userSpecific },
                     staticFrequency = info.mScore.toDouble().takeIf { inputStyle == InputStyle.PREDICTION && !userSpecific },
                     personal = info.mScore.toDouble().takeIf { userSpecific },
                     language = languageProbabilities[language],
@@ -143,7 +157,40 @@ internal class LegacySuggestionFusion(
                 ),
             )
         }
-        val unboundedUnion = classicCandidates + supplementalWithLanguage
+        val unboundedUnion = (classicCandidates + supplementalWithLanguage).let { union ->
+            // Swipe draws on three producers, so the union regularly exceeds the bounded-slate
+            // cap. Take it in list order and the trailing decoded candidates are dropped by
+            // position, not by evidence; duplicates also consume slots the scorer would merge.
+            // Collapse duplicates first and admit the strongest-evidence entries so the cap
+            // removes weak candidates rather than whichever producer happened to run last.
+            if (inputStyle != InputStyle.SWIPE) union else union
+                .groupBy { it.normalized to it.languageTag }
+                .map { (_, duplicates) ->
+                    duplicates.first().copy(
+                        sources = duplicates.flatMapTo(mutableSetOf()) { it.sources },
+                        components = ScoreComponents(
+                            spatial = duplicates.mapNotNull { it.components.spatial }.maxOrNull(),
+                            staticFrequency = duplicates.mapNotNull { it.components.staticFrequency }.maxOrNull(),
+                            personal = duplicates.mapNotNull { it.components.personal }.maxOrNull(),
+                            context = duplicates.mapNotNull { it.components.context }.maxOrNull(),
+                            language = duplicates.mapNotNull { it.components.language }.maxOrNull(),
+                        ),
+                        exactPersonalMatch = duplicates.any { it.exactPersonalMatch },
+                        rejectionPenalty = duplicates.maxOf { it.rejectionPenalty },
+                    )
+                }
+                .sortedByDescending { candidate ->
+                    candidate.components.let {
+                        maxOf(
+                            it.spatial ?: Double.NEGATIVE_INFINITY,
+                            it.staticFrequency ?: Double.NEGATIVE_INFINITY,
+                            it.personal ?: Double.NEGATIVE_INFINITY,
+                            it.context ?: Double.NEGATIVE_INFINITY,
+                            it.language ?: Double.NEGATIVE_INFINITY,
+                        )
+                    }
+                }
+        }
         val rawNormalized = normalizeCandidate(rawText)
         val candidateUnion = if (rawText.isNotEmpty() && unboundedUnion.none { it.normalized == rawNormalized }) {
             val rawLanguage = when (currentLock) {
@@ -338,6 +385,14 @@ internal class LegacySuggestionFusion(
                 .append(candidate.sources.joinToString("+") { it.name.take(4) }).append(',')
         }
         append("]auto=").append(ranked.autoCorrection?.normalized ?: "-")
+    }
+
+    private fun standardize(values: List<Double>): List<Double> {
+        if (values.size == 1) return listOf(1.0)
+        val mean = values.average()
+        val deviation = sqrt(values.sumOf { (it - mean) * (it - mean) } / values.size)
+        if (deviation < 1e-9) return List(values.size) { 0.0 }
+        return values.map { (it - mean) / deviation }
     }
 
     private fun languageTag(info: SuggestedWordInfo, defaultLanguage: String): String =
