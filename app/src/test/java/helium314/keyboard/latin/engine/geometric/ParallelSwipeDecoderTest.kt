@@ -90,6 +90,30 @@ class ParallelSwipeDecoderTest {
         assertEquals("cat", result.candidates.single().surface)
     }
 
+    @Test
+    fun geometricPartialSlateSurvivesDeadlineExhaustedByCtc() {
+        val decoder = ParallelSwipeDecoder(
+            ctcDecoder = SwipeDecoder { _, _ ->
+                Thread.sleep(60)
+                SwipeDecodeResult(EngineAvailability.TIMEOUT)
+            },
+            geometricDecoder = SwipeDecoder { _, _ ->
+                // The production decoder stops scanning at the deadline, then needs a few
+                // milliseconds to sort and publish the partial slate.
+                Thread.sleep(35)
+                SwipeDecodeResult(
+                    EngineAvailability.TIMEOUT,
+                    listOf(candidate("cat", CandidateSource.GEOMETRIC_SWIPE, -0.2)),
+                )
+            },
+        )
+
+        val result = decoder.decode(request(), Deadline.afterMillis(25))
+
+        assertEquals(EngineAvailability.TIMEOUT, result.availability)
+        assertEquals("cat", result.candidates.single().surface)
+    }
+
     private fun candidate(word: String, source: CandidateSource, spatial: Double) = Candidate(
         word,
         languageTag = "en-US",

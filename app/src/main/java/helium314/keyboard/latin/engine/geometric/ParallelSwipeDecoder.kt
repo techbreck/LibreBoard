@@ -34,8 +34,16 @@ class ParallelSwipeDecoder(
         val geometric = try {
             geometricFuture.get(deadline.remainingMillis, TimeUnit.MILLISECONDS)
         } catch (_: TimeoutException) {
-            geometricFuture.cancel(true)
-            SwipeDecodeResult(EngineAvailability.TIMEOUT)
+            // The geometric decoder stops iterating at the same deadline and returns whatever it
+            // already scored. When CTC consumes the whole proposal budget, remainingMillis is zero
+            // and the future would be cancelled microseconds before that partial slate lands. Wait
+            // a short grace window instead of discarding it.
+            try {
+                geometricFuture.get(GEOMETRIC_TIMEOUT_GRACE_MILLIS, TimeUnit.MILLISECONDS)
+            } catch (_: TimeoutException) {
+                geometricFuture.cancel(true)
+                SwipeDecodeResult(EngineAvailability.TIMEOUT)
+            }
         } catch (_: InterruptedException) {
             geometricFuture.cancel(true)
             Thread.currentThread().interrupt()
@@ -121,6 +129,9 @@ class ParallelSwipeDecoder(
     }
 
     private companion object {
+        /** Post-deadline wait for the self-bounded geometric decoder's partial slate. */
+        const val GEOMETRIC_TIMEOUT_GRACE_MILLIS = 15L
+
         val sharedGeometricExecutor: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
             Thread(runnable, "LibreBoardGeometricSwipe").apply { isDaemon = true }
         }
