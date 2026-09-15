@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "diagnostic": "next-word prediction host probe (diagnostic only, not qualification)",
+  "model": {
+    "onnxSha256": "8566382e57ea5a9af76ddf600e189572d62fcc8b227de8415ce88ad0e172022b",
+    "path": "build/linux-exports/context-shared-a/export/context-en-de-v1.onnx"
+  },
+  "method": "Fixed top-N word shortlist (by context-corpus train frequency) scored as candidates per context through the pinned INT4 ONNX model. Target must be inside the shortlist to be reachable (membership ceiling).",
+  "results": {
+    "tapCorpusContextTargetPairs": {
+      "contexts": 2000,
+      "shortlist256": { "coverage": 0.2745, "covered": 549, "freqBaselineTop3": 0.0820, "modelTop1": 0.0455, "modelTop3": 0.1585, "overallTop3": 0.0435 },
+      "shortlist64": { "coverage": 0.179, "covered": 179, "freqBaselineTop3": 0.1229, "modelTop1": 0.0838, "modelTop3": 0.2067, "overallTop3": 0.0370 }
+    },
+    "contextTestSentencesMidWord": {
+      "contexts": 2000,
+      "shortlist256": { "coverage": 0.5355, "covered": 1071, "freqBaselineTop3": 0.2530, "modelTop1": 0.1485, "modelTop3": 0.3100, "overallTop3": 0.1660 }
+    },
+    "onDeviceNgramProposer": {
+      "runId": "lowram-prediction-1",
+      "rows": 600,
+      "fusedTop3": 0.077,
+      "fusedNeuralTop3": 0.077,
+      "medianSlateSize": 3
+    }
+  },
+  "findings": [
+    "Candidate coverage dominates: a static 256-word shortlist reaches only 27.5% of real next-word targets on the tap corpus (53.5% on the model's own corpus distribution).",
+    "The model adds real but modest ranking signal over the frequency baseline (+~8pts top-3 on covered rows in both tasks). It was trained as a candidate-slate scorer, not an open-vocabulary next-word LM.",
+    "On-device the n-gram proposer emits ~3 candidates with 7.7% target membership; neural reranking cannot add candidates and produced identical membership.",
+    "Latency extrapolation: ~90ms for ~30 candidates on the low-RAM emulator implies ~500ms+ for a 256-candidate prediction pass — beyond a responsive post-space strip update and all latency gates.",
+    "Conclusion: SwiftKey-class next-word prediction requires a trained n-gram/adaptive LM with personalization (the bundled dictionary carries almost no bigram signal), not reranking of a fixed shortlist by the pinned context model."
+  ]
+}
