@@ -382,6 +382,7 @@ internal class LegacySuggestionFusion(
             append(candidate.normalized).append('=')
                 .append(String.format(Locale.US, "%.3f", candidate.totalScore)).append('/')
                 .append(String.format(Locale.US, "%.3f", candidate.calibratedProbability)).append('/')
+                .append(String.format(Locale.US, "%.3f", candidate.components.context)).append('/')
                 .append(candidate.sources.joinToString("+") { it.name.take(4) }).append(',')
         }
         append("]auto=").append(ranked.autoCorrection?.normalized ?: "-")

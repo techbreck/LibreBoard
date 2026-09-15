@@ -1,0 +1,95 @@
+{
+ "diagnosticOnly": true,
+ "development": false,
+ "summary": "On-device evaluation of the pinned shared-session context model (8566382e) on the tap path of the low-RAM emulator. The model runs and reorders every slate, but it cannot satisfy the neural commit gates: at production strength 50 commit decisions are identical to fused on every valid_word row, at strength 100 they remain identical on valid_word while false corrections double elsewhere, and no context-margin commit rule separates confusion targets from wrong promotions (best observed precision ~50% vs the ~95% the gates require).",
+ "bindings": {
+  "contextModelOnnxSha256": "8566382e57ea5a9af76ddf600e189572d62fcc8b227de8415ce88ad0e172022b",
+  "tokenizerSha256": "e2089ddfa01ff69eba73195cb3623c86703a812a712ec356ec5fe837297a8cc9",
+  "corpus": "build/evaluation-data/combined-tap-v2/test.jsonl",
+  "environment": "low_ram_emulator",
+  "runs": [
+   {
+    "runId": "lowram-neural-1",
+    "rescorerBudgetMs": 35,
+    "neuralStrength": 50,
+    "rows": 4000,
+    "neuralAvailability": {"TIMEOUT": 18, "CIRCUIT_OPEN": 3982},
+    "finding": "At the production 35 ms budget the on-device rescore never completes: the deadline circuit breaker opens after a handful of overruns and fused_neural is byte-identical to fused for the rest of the run."
+   },
+   {
+    "runId": "lowram-neural-budget500",
+    "rescorerBudgetMs": 500,
+    "neuralStrength": 50,
+    "rows": 400,
+    "neuralAvailability": {"AVAILABLE": 400},
+    "latencyMs": {
+     "fused": {"p50": 8.4, "p95": 20.2},
+     "fused_neural": {"p50": 97.3, "p95": 119.8, "p99": 194.5}
+    },
+    "finding": "With the deadline lifted the model completes every rescore; the true on-device cost is ~88 ms p50 (~100 ms p95), above both the 35 ms rescorer budget and the 80 ms fused_neural p95 tap gate on this environment."
+   },
+   {
+    "runId": "lowram-neural-traced",
+    "rescorerBudgetMs": 500,
+    "neuralStrength": 50,
+    "rows": 400,
+    "neuralAvailability": {"AVAILABLE": 400},
+    "latencyMs": {
+     "fused": {"p50": 8.3, "p95": 20.3},
+     "fused_neural": {"p50": 96.4, "p95": 111.5, "p99": 136.2}
+    },
+    "top3": {
+     "fused/valid_word": 0.5918, "fused_neural/valid_word": 0.6857,
+     "fused/lexical": 0.7711, "fused_neural/lexical": 0.759,
+     "fused/tap_error": 0.9138, "fused_neural/tap_error": 0.8448,
+     "fused/spacing": 0.8571, "fused_neural/spacing": 0.8571
+    },
+    "commitAccuracy": {
+     "fused/valid_word": 0.4367, "fused_neural/valid_word": 0.4367,
+     "fused/lexical": 0.6747, "fused_neural/lexical": 0.6988,
+     "fused/tap_error": 0.7414, "fused_neural/tap_error": 0.6034,
+     "fused/spacing": 0.7857, "fused_neural/spacing": 0.7857
+    },
+    "confusionAnalysis": {
+     "confusionRows": 145,
+     "nonConfusionValidWordRows": 100,
+     "commitAccuracyOnConfusions": {"fused": 0.048, "fused_neural": 0.048},
+     "neuralContextRelativeErrorReduction": 0.0,
+     "topNonRawIsTargetOnConfusions": 0.3448,
+     "topNonRawIsTargetOnNonConfusions": 0.0,
+     "marginSweep": "Flipping the commit to the neural top non-raw candidate whenever its context log-likelihood beats raw's by threshold T yields right/wrong flips of 46/152 (T=0.5), 38/74 (T=2.0), 28/37 (T=3.0); restricting to edit-distance<=1 candidates yields at best 31 right vs 44 wrong (T=2.0). Jointly requiring raw context < -0.8 gives at best 16 right vs 17 wrong. No operating point approaches the ~21 net-correct flips with <=1 added false correction the gates require."
+    },
+    "peakAddedNeuralMemoryMiB": 46.1,
+    "finding": "Neural rescoring improves valid_word top-3 (+9.4 pts overall, 31%->47% on confusions) but never moves a valid_word commit: the raw word's fused score keeps rank 1 on every row. On tap_error rows where commits do change, accuracy drops 74%->60%."
+   },
+   {
+    "runId": "lowram-neural-s100",
+    "rescorerBudgetMs": 500,
+    "neuralStrength": 100,
+    "rows": 400,
+    "commitAccuracy": {
+     "fused/valid_word": 0.437, "fused_neural/valid_word": 0.437,
+     "fused/tap_error": 0.741, "fused_neural/tap_error": 0.466,
+     "fused/lexical": 0.675, "fused_neural/lexical": 0.494,
+     "fused/spacing": 0.786, "fused_neural/spacing": 0.714
+    },
+    "falseCorrections": {"tap_error": "11->28", "lexical": "16->37", "valid_word": "34->34"},
+    "finding": "Doubling the neural strength to the maximum still cannot flip a single valid_word commit (raw prior always keeps rank 1) while roughly doubling false corrections on tap_error and lexical rows."
+   }
+  ]
+ },
+ "gateImpact": {
+  "neuralContextRelativeErrorReduction": {"gate": ">=0.15", "observed": 0.0, "status": "unreachable with this model's commit-level precision on this corpus"},
+  "neuralValidWordAbsoluteGain": {"gate": ">=0.05", "observed": 0.0, "status": "commit accuracy unchanged at any allowed strength"},
+  "falseCorrectionIncrease": {"gate": "<=0.005", "observed": 0.0, "status": "passes only because commits never change"},
+  "tapP95Latency": {"gate": "<=80ms every environment", "observedP95Ms": 111.5, "status": "fails on low_ram_emulator when the rescorer actually completes"},
+  "peakAddedNeuralMemoryMiB": {"gate": "<=64", "observed": 46.1, "status": "within gate on this run; whole-process upper bound, not an isolated neural peak"}
+ },
+ "limitations": [
+  "Emulator-only; the GrapheneOS Pixel was not connected during these runs.",
+  "400-row diagnostic limit; confusion analysis covers the first 145 should_correct rows.",
+  "Latency measured with the diagnostic 500 ms rescorer budget, not the production 35 ms budget.",
+  "Memory figure is whole-process PSS minus fixture; it can miss transient peaks."
+ ],
+ "conclusion": "The pinned context model is functional on-device but is not a net improvement on the tap commit path at any permitted strength, matching the negative swipe-slate result. Passing the neural commit gates would require a materially better context model or a redesigned commit policy; neither is achievable inside the pinned artifacts."
+}
