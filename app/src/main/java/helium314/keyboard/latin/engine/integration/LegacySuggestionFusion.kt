@@ -16,6 +16,7 @@ import helium314.keyboard.latin.engine.LanguageLockController
 import helium314.keyboard.latin.engine.MAX_CANDIDATES
 import helium314.keyboard.latin.engine.NeuralRescorer
 import helium314.keyboard.latin.engine.NeuralScoreResult
+import helium314.keyboard.latin.engine.RankedCandidates
 import helium314.keyboard.latin.engine.ScoreComponents
 import helium314.keyboard.latin.engine.TypingRequest
 import helium314.keyboard.latin.engine.WordLock
@@ -35,6 +36,7 @@ internal data class LegacyFusionResult(
     val wordLock: WordLock,
     val neuralAvailability: EngineAvailability,
     val engineAutoCorrectionNormalized: String?,
+    val diagnostic: String = "",
 )
 
 /**
@@ -235,6 +237,7 @@ internal class LegacySuggestionFusion(
             currentLock,
             neuralResult.availability,
             engineAutoCorrectionNormalized,
+            rankingDiagnostic(ranked, rawNormalized),
         )
     }
 
@@ -325,6 +328,17 @@ internal class LegacySuggestionFusion(
             mIndexOfTouchPointOfSecondWord,
             mAutoCommitFirstWordConfidence,
         )
+
+    private fun rankingDiagnostic(ranked: RankedCandidates, rawNormalized: String): String = buildString {
+        append("fused[")
+        for (candidate in ranked.candidates.take(5)) {
+            append(candidate.normalized).append('=')
+                .append(String.format(Locale.US, "%.3f", candidate.totalScore)).append('/')
+                .append(String.format(Locale.US, "%.3f", candidate.calibratedProbability)).append('/')
+                .append(candidate.sources.joinToString("+") { it.name.take(4) }).append(',')
+        }
+        append("]auto=").append(ranked.autoCorrection?.normalized ?: "-")
+    }
 
     private fun languageTag(info: SuggestedWordInfo, defaultLanguage: String): String =
         info.mSourceDict.mLocale?.toLanguageTag()?.takeIf(String::isNotBlank) ?: defaultLanguage

@@ -302,7 +302,12 @@ class Phase0MeasurementInstrumentedTest {
     }
 
     /** One measured system: the strip as production ranks it plus the word it would commit. */
-    private class Measured(val surfaces: JSONArray, val commit: JSONObject, val elapsedMs: Double)
+    private class Measured(
+        val surfaces: JSONArray,
+        val commit: JSONObject,
+        val elapsedMs: Double,
+        val gateTrace: String,
+    )
 
     /**
      * The suggestion slate in production's own order. Schema 4 deliberately does not hoist the raw
@@ -354,12 +359,15 @@ class Phase0MeasurementInstrumentedTest {
     private fun measure(fixture: Fixture, row: JSONObject): Measured {
         val raw = row.getString("raw")
         val composer = composerFor(fixture, row)
+        val trace = StringBuilder()
+        fixture.suggest.autoCorrectionTrace = trace
         val start = System.nanoTime()
         val suggested = fixture.suggest.getSuggestedWords(
             composer, ngram(row.optString("precedingContext")), fixture.keyboard,
             fixture.settingsForSuggestion, true, SuggestedWords.INPUT_STYLE_TYPING, 1,
         )
         val elapsed = (System.nanoTime() - start) / 1_000_000.0
+        fixture.suggest.autoCorrectionTrace = null
         val slate = surfaces(suggested)
         val decision = Suggest.commitDecisionOf(suggested, raw)
         // Schema 4 still requires the exact raw surface in every LibreBoard slate so the report can
@@ -375,7 +383,7 @@ class Phase0MeasurementInstrumentedTest {
         }) {
             "committed word '${decision.committedWord}' is absent from its own slate"
         }
-        return Measured(slate, commitJson(decision), elapsed)
+        return Measured(slate, commitJson(decision), elapsed, trace.toString())
     }
 
     private fun seedPersonalFixture(fixture: Fixture, row: JSONObject) {
@@ -428,6 +436,7 @@ class Phase0MeasurementInstrumentedTest {
                 val predictions = JSONObject()
                 val latency = JSONObject()
                 val commits = JSONObject()
+                val gateTraces = JSONObject()
                 val raw = row.getString("raw")
 
                 // Every system must start from the same state. The previous row left personal
@@ -437,6 +446,8 @@ class Phase0MeasurementInstrumentedTest {
 
                 val baselineComposer = composerFor(fixture, row)
                 val baselineNgram = ngram(row.optString("precedingContext"))
+                val baselineTrace = StringBuilder()
+                fixture.suggest.autoCorrectionTrace = baselineTrace
                 var start = System.nanoTime()
                 val classic = fixture.facilitator.getSuggestionResults(
                     baselineComposer.composedDataSnapshot,
@@ -450,6 +461,8 @@ class Phase0MeasurementInstrumentedTest {
                     baselineComposer, baselineNgram, fixture.keyboard,
                     fixture.settingsForSuggestion, SuggestedWords.INPUT_STYLE_TYPING, classic,
                 )
+                fixture.suggest.autoCorrectionTrace = null
+                gateTraces.put("heliboard", baselineTrace.toString())
                 latency.put("heliboard", (System.nanoTime() - start) / 1_000_000.0)
                 val seen = LinkedHashSet<String>()
                 val baseline = JSONArray()
@@ -465,6 +478,7 @@ class Phase0MeasurementInstrumentedTest {
                 val fused = measure(fixture, row)
                 predictions.put("fused", fused.surfaces); latency.put("fused", fused.elapsedMs)
                 commits.put("fused", fused.commit)
+                gateTraces.put("fused", fused.gateTrace)
 
                 seedPersonalFixture(fixture, row)
                 setMeasurementConfiguration(fixture, personalizedDicts = true, neuralStrength = 0f)
@@ -472,6 +486,7 @@ class Phase0MeasurementInstrumentedTest {
                 predictions.put("fused_personal", personal.surfaces)
                 latency.put("fused_personal", personal.elapsedMs)
                 commits.put("fused_personal", personal.commit)
+                gateTraces.put("fused_personal", personal.gateTrace)
                 memory.onNeuralDisabled()
 
                 setMeasurementConfiguration(fixture, personalizedDicts = true, neuralStrength = 50f)
@@ -479,6 +494,7 @@ class Phase0MeasurementInstrumentedTest {
                 predictions.put("fused_neural", neural.surfaces)
                 latency.put("fused_neural", neural.elapsedMs)
                 commits.put("fused_neural", neural.commit)
+                gateTraces.put("fused_neural", neural.gateTrace)
                 memory.onNeuralEnabled()
 
                 writer.write(JSONObject(row.toString()).apply {
@@ -488,6 +504,7 @@ class Phase0MeasurementInstrumentedTest {
                     put("predictions", predictions)
                     put("latencyMs", latency)
                     put("commits", commits)
+                    put("gateTraces", gateTraces)
                 }.toString())
                 writer.write("\n")
                 measured++

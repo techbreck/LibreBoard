@@ -50,6 +50,13 @@ import kotlin.math.min
  */
 class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
     private var mAutoCorrectionThreshold = 0f
+
+    /**
+     * Measurement/testing hook: when set, each auto-correction decision appends a compact
+     * `key=value` trace naming the gate that allowed or refused it. Production never sets this;
+     * the Phase 0 harness uses it to explain commit decisions row by row.
+     */
+    var autoCorrectionTrace: StringBuilder? = null
     private val mPlausibilityThreshold = 0f
     private val nextWordSuggestionsCache = HashMap<NgramContext, SuggestionResults>()
     private val liveCandidateFusion = LegacySuggestionFusion()
@@ -184,6 +191,8 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
         suggestionsContainer.addAll(fusion.suggestions)
         makeFirstTwoSuggestionsNonEmoji(suggestionsContainer)
         val rawReplacementVeto = fusion.rawReplacementVeto
+        autoCorrectionTrace?.append(
+            "neural=${fusion.neuralAvailability};rawVeto=$rawReplacementVeto;engineRec=${fusion.engineAutoCorrectionNormalized ?: "-"};${fusion.diagnostic};")
         val correctionDecision = shouldBeAutoCorrected(
             trailingSingleQuotesCount,
             capitalizedTypedWord,
@@ -201,6 +210,7 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
             firstOccurrenceOfTypedWordInSuggestions,
             typedWordFirstOccurrenceWordInfo,
             fusion.engineAutoCorrectionNormalized,
+            autoCorrectionTrace,
         )
         val allowsToBeAutoCorrected = correctionDecision.first
         val hasAutoCorrection = correctionDecision.second && !rawReplacementVeto
@@ -264,7 +274,12 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
         firstOccurrenceOfTypedWordInSuggestions: Int,
         typedWordInfo: SuggestedWordInfo?,
         engineAutoCorrectionNormalized: String? = null,
+        trace: StringBuilder? = null,
     ): Pair<Boolean, Boolean> {
+        fun decision(allow: Boolean, has: Boolean, reason: String): Pair<Boolean, Boolean> {
+            trace?.append("$reason=>$allow,$has;")
+            return allow to has
+        }
         val consideredWord = typedWordString.dropLast(trailingSingleQuotesCount)
         val firstAndTypedEmptyInfos by lazy { getEmptyWordSuggestions() }
         val engineSelectedFirst = engineAutoCorrectionNormalized != null &&
@@ -288,6 +303,7 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
                     )
             ) {
             legacyAllowsToBeAutoCorrected = true
+            trace?.append("allow=nonWhitelist|whitelist|notInDict;")
         } else if (firstSuggestionInContainer != null && typedWordString.isNotEmpty()) {
             // maybe allow autocorrect, depending on scores and emptyWordSuggestions
             val first = firstAndTypedEmptyInfos.first
@@ -298,13 +314,17 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
                 typed == null -> true // allow autocorrect if typed word not known in this ngram context, todo: this may be too aggressive
                 else -> first.mScore - typed.mScore > 20 // autocorrect if suggested word has clearly higher score for empty word suggestions
             }
+            trace?.append("allowGate{firstScore=${firstSuggestionInContainer.mScore},limit=$scoreLimit," +
+                "emptyFirst=${first?.mScore},emptyTyped=${typed?.mScore}};")
         } else {
             legacyAllowsToBeAutoCorrected = false
+            trace?.append("allow=none;")
         }
         // A calibrated engine recommendation has already passed the scorer's confidence, margin,
         // language-lock, personal-word, rejection, and valid-word joint-evidence gates. It may
         // supersede only the legacy score heuristic; the terminal checks below remain authoritative.
         val allowsToBeAutoCorrected = legacyAllowsToBeAutoCorrected || engineShapeIsSafe
+        trace?.append("legacyAllow=$legacyAllowsToBeAutoCorrected;engineSafe=$engineShapeIsSafe;")
         // If correction is not enabled, we never auto-correct. This is for example for when
         // the setting "Auto-correction" is "off": we still suggest, but we don't auto-correct.
         val hasAutoCorrection: Boolean
@@ -325,6 +345,10 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
             || !mDictionaryFacilitator.hasAtLeastOneInitializedMainDictionary()
         ) {
             hasAutoCorrection = false
+            trace?.append("veto{enabled=$isCorrectionEnabled,allow=$allowsToBeAutoCorrected," +
+                "composing=${wordComposer.isComposingWord},empty=${suggestionResults.isEmpty()}," +
+                "digits=${wordComposer.hasDigits()},caps=${wordComposer.isMostlyCaps && !wordComposer.isAllUpperCase}," +
+                "resumed=${wordComposer.isResumed},mainDict=${mDictionaryFacilitator.hasAtLeastOneInitializedMainDictionary()}};")
         } else {
             val firstSuggestion = firstSuggestionInContainer ?: suggestionResults.first()
             val correctionLanguage = firstSuggestion.mSourceDict.mLocale?.toLanguageTag()
@@ -335,19 +359,25 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
                     firstSuggestion.mWord,
                     correctionLanguage,
                 )) {
-                return true to false
+                return decision(true, false, "personalSuppressed")
             }
             if (engineAutoCorrectionNormalized != null) {
-                return true to (engineShapeIsSafe && isAllowedByAutoCorrectionWithSpaceFilter(firstSuggestion))
+                return decision(true,
+                    engineShapeIsSafe && isAllowedByAutoCorrectionWithSpaceFilter(firstSuggestion),
+                    "enginePath{first=${firstSuggestion.mWord},kind=${firstSuggestion.getKind()},flags=${firstSuggestion.mKindAndFlags}}")
             }
             if (suggestionResults.mFirstSuggestionExceedsConfidenceThreshold && firstOccurrenceOfTypedWordInSuggestions != 0) {
                 // mFirstSuggestionExceedsConfidenceThreshold is always set to false, so currently this branch is useless
-                return true to true
+                return decision(true, true, "confidenceThreshold")
             }
             if (!AutoCorrectionUtils.suggestionExceedsThreshold(firstSuggestion, consideredWord, mAutoCorrectionThreshold)) {
                 // Score is too low for autocorrect
                 // todo: maybe also do something here depending on ngram context?
-                return true to false
+                return decision(true, false,
+                    "scoreGate{first=${firstSuggestion.mWord},score=${firstSuggestion.mScore}," +
+                        "kind=${firstSuggestion.getKind()},flags=${firstSuggestion.mKindAndFlags}," +
+                        "appropriate=${firstSuggestion.isAppropriateForAutoCorrection}," +
+                        "threshold=$mAutoCorrectionThreshold}")
             }
             // We have a high score, so we need to check if this suggestion is in the correct
             // form to allow auto-correcting to it in this language. For details of how this
@@ -359,11 +389,11 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
                 val dictLocale = mDictionaryFacilitator.currentLocale
                 if (firstSuggestion.mScore < scoreLimit) {
                     // don't allow if suggestion has too low score
-                    return true to false
+                    return decision(true, false, "validTypedLowSuggestion")
                 }
                 if (firstSuggestion.mSourceDict.mLocale !== typedWordInfo.mSourceDict.mLocale) {
                     // dict locale different -> return the better match
-                    return true to (dictLocale == firstSuggestion.mSourceDict.mLocale)
+                    return decision(true, dictLocale == firstSuggestion.mSourceDict.mLocale, "validTypedLocale")
                 }
                 // the score difference may need tuning, but so far it seems alright
                 val firstWordBonusScore =
@@ -374,14 +404,16 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
                 val typedScoreForEmpty = firstAndTypedEmptyInfos.second?.mScore ?: 0
                 if (firstScoreForEmpty + firstWordBonusScore >= typedScoreForEmpty + 20) {
                     // first word is clearly better match for this ngram context
-                    return true to true
+                    return decision(true, true, "validTypedNgramWin")
                 }
                 hasAutoCorrection = false
+                trace?.append("validTypedNgramLoss{first=$firstScoreForEmpty,typed=$typedScoreForEmpty,bonus=$firstWordBonusScore};")
             } else {
                 hasAutoCorrection = allowed
+                trace?.append("spaceFilter=$allowed;")
             }
         }
-        return allowsToBeAutoCorrected to hasAutoCorrection
+        return decision(allowsToBeAutoCorrected, hasAutoCorrection, "end")
     }
 
     /**
@@ -425,6 +457,8 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
             suggestionResults,
             firstOccurrenceOfTypedWordInSuggestions,
             typedWordFirstOccurrenceWordInfo,
+            null,
+            autoCorrectionTrace,
         ).second
         return if (hasAutoCorrection) CommitDecision(correction.mWord, true)
             else CommitDecision(typedWordString, false)
