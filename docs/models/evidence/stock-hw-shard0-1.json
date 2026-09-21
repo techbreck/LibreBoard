@@ -1,7 +1,7 @@
 {
  "bindings": {
-  "appCommit": "ce805937927a3c60806d69c328d0b75a1ad0d925",
-  "appCommitNote": "The measured APK additionally contains the three uncommitted working-tree harness changes present at run time (prediction replay test, swipe-lexicon dump, rescorer-budget override hook; production paths unchanged, override defaults to null). coreApkSha256 binds the exact measured bytes.",
+  "appCommit": "4d1c990e727c78cf6e74497bb8c414fc8dda978d",
+  "appCommitNote": "The measured APK equals the tree of commit 4d1c990e727c78cf6e74497bb8c414fc8dda978d exactly: it was built from the prior HEAD plus the three harness-change files, which that commit then landed verbatim. coreApkSha256 binds the exact measured bytes.",
   "artifactPinCandidateId": "context-shared-session-v2",
   "contextModelOnnxSha256": "8566382e57ea5a9af76ddf600e189572d62fcc8b227de8415ce88ad0e172022b",
   "contextTokenizerSha256": "e2089ddfa01ff69eba73195cb3623c86703a812a712ec356ec5fe837297a8cc9",

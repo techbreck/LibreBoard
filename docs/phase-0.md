@@ -92,11 +92,10 @@ The disjoint shard assignment now in use is stock hardware = shard 0/3 (run `sto
 completed 2026-09-21), GrapheneOS = shard 1/3, low-RAM = shard 2/3, all against
 [`phase-0-artifact-pin.json`](phase-0-artifact-pin.json) with results merged into one metadata file
 (`build/device-evidence/phase0-matrix-v1.metadata.json`). The stock leg's bindings, metrics, and
-findings are recorded in `build/device-evidence/stock-hw-shard0-1.evidence.json`; its APK contains
-the three then-uncommitted harness changes (prediction replay, swipe-lexicon dump, rescorer-budget
-override hook), which do not alter production paths, and is bound by exact hash. Reuse that exact
-APK or rebuild from a committed tree that contains those changes so the three legs share one source
-state.
+findings are recorded in `build/device-evidence/stock-hw-shard0-1.evidence.json`; its APK content
+is exactly the tree of commit `4d1c990e` (it was built from the prior HEAD plus the three
+measurement-hook files that commit then landed verbatim) and is bound by exact hash. The remaining
+legs should measure from `4d1c990e` or a tree that does not alter measured paths.
 
 The [tap corpus report](phase-0-tap-corpus.md), [swipe evaluation](swipe-ctc-evaluation.md),
 [device tests](testing.md), and [APK build evidence](release/abi-packaging.md) retain exact scope

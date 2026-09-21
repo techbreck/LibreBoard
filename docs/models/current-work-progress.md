@@ -31,8 +31,7 @@ rejects it only for the two still-missing environments, as designed.
 
 These are the stock-environment numbers a pooled evaluation will use, not pooled gate results. The
 GrapheneOS re-run (shard 1/3) and qualifying low-RAM run (shard 2/3) remain to be measured against
-the same pin, ideally from one committed source state that includes the currently uncommitted
-harness changes the stock APK contains.
+the same pin, from `4d1c990e`, whose tree is exactly the measured APK's content.
 
 ## Completed
 
