@@ -1,0 +1,161 @@
+{
+ "bindings": {
+  "appCommit": "ce805937927a3c60806d69c328d0b75a1ad0d925",
+  "appCommitNote": "The measured APK additionally contains the three uncommitted working-tree harness changes present at run time (prediction replay test, swipe-lexicon dump, rescorer-budget override hook; production paths unchanged, override defaults to null). coreApkSha256 binds the exact measured bytes.",
+  "artifactPinCandidateId": "context-shared-session-v2",
+  "contextModelOnnxSha256": "8566382e57ea5a9af76ddf600e189572d62fcc8b227de8415ce88ad0e172022b",
+  "contextTokenizerSha256": "e2089ddfa01ff69eba73195cb3623c86703a812a712ec356ec5fe837297a8cc9",
+  "coreApkSha256": "8b8eb8644ffe309ef007ea3685cd61e8cfa2d3c695fc24c2c7df1f2917a28f4c",
+  "onnxRuntimeAarSha256": "54118ac8e37bc4833d32e2cb197ef6bd251f56e5aa9e4e51c3899fb616210d88",
+  "swipeModelOnnxSha256": "1301f0d076f526fe0b67f2ea86a38abc8448f6de54d2c7191c002dcd4d05d38c"
+ },
+ "device": {
+  "apiLevel": 37,
+  "buildFingerprint": "google/cheetah/cheetah:17/CP2A.260705.006/15641320:user/release-keys",
+  "capture": "build/device-evidence/stock-pixel7pro-cheetah.json",
+  "device": "cheetah",
+  "isLowRamDevice": false,
+  "memoryMiB": 11468,
+  "model": "Pixel 7 Pro",
+  "physicalDevice": true,
+  "sandboxedGooglePlayInstalled": true,
+  "securityPatch": "2026-07-05",
+  "serial": "2A181FDH300MN2"
+ },
+ "environmentKind": "stock_android_hardware",
+ "findings": [
+  "The tap commit path now passes its direction on this environment: fused beats classic HeliBoard by +33.6% relative error reduction on tap errors (gate requires >= +20% pooled), with zero measured false corrections on valid-word keeps and fused_neural p95 39.6 ms against the 80 ms budget. The 2026-09-12 400-row diagnostic measured -5.26%; commit 712342dc's head-to-head commit calibration is what changed the outcome.",
+  "The neural context path still contributes nothing measurable to tap output at production strength 50: fused_neural is identical to fused on every commit-level metric and on top-1, differing only microscopically in top-3. Neural inference does complete here (unlike the low-RAM circuit-breaker case): fused_neural adds only ~1.5 ms p50 over fused.",
+  "Swipe quality improved enormously over the superseded schema-3 GrapheneOS diagnostics (3.8%/5.0%): CTC top-1/top-3 83.97%/90.62%, fused_swipe 77.50%/88.26% on this shard. The absolute gates (90%/95%) are still not met.",
+  "The swipe union fusion degrades CTC output on harder strata: long top-1 falls 74.3% -> 52.7% and return_trip 77.5% -> 63.4% from CTC to fused_swipe. CTC alone beats the fused union overall and on every stratum except top-3 short. The fusion layer, not the CTC model, is now the dominant swipe-quality deficit.",
+  "fused_swipe p95 224.25 ms exceeds the 200 ms per-environment swipe latency budget on this hardware; the standalone geometric decoder still hits its 1,500 ms deadline ceiling (p99 1,500.18 ms).",
+  "The swipe-sidecar whole-process memory headline is 332.22 MiB added PSS across 17,947 samples with both models resident and CTC beam decoding active; per the recorded scope this is an upper bound that includes classic suggestion work and is not an isolated neural peak. It far exceeds the 64 MiB gate and warrants the isolated attribution work the audit called for."
+ ],
+ "limitations": [
+  "Single environment; pooled matrix gates cannot be evaluated until GrapheneOS and low-RAM legs are measured on disjoint shards under the same pin.",
+  "latencyMs times the suggestion call only; it excludes editor commit, UI work, and the one-time 22.75 s swipe-lexicon build recorded in fixtureReadinessMs.",
+  "The single-environment diagnostic script mirrors evaluate_engine.py semantics (commit-decision reachability, normalized comparison, nearest-rank percentiles) but is not the release evaluator and its output is not release evidence.",
+  "The stock device runs sandboxed Google Play; that is defining for this environment slot, not a defect."
+ ],
+ "measurement": {
+  "categoryCounts": {
+   "lexical": 1294,
+   "spacing": 162,
+   "swipe": 17946,
+   "tap_error": 1134,
+   "valid_word": 3628
+  },
+  "completedLocal": "2026-09-21 03:13",
+  "diagnosticScript": "build/reports/phase0_single_env_diagnostic.py",
+  "driverLog": "build/device-evidence/stock-hw-shard0-1.driver.log",
+  "evaluatorPrecheck": "tools/evaluate_engine.py parses every row of the dataset and rejects the metadata only with 'metadata requires exactly the three reference environments', so the stock rows satisfy the full schema-4 per-row contract; pooled gates remain unrunnable by design until the other two legs exist.",
+  "instrumentedTests": {
+   "failed": 0,
+   "passed": 2,
+   "skipped": 2
+  },
+  "metadataFile": "build/device-evidence/phase0-matrix-v1.metadata.json",
+  "outputFile": "build/device-evidence/stock-hw-shard0-1.jsonl",
+  "outputSha256": "34c0f4c9f51e4fe3f562c3054a54cd9a4d000cc1c2ad4bc07f526511f7e81bb6",
+  "shardCount": 3,
+  "shardIndex": 0,
+  "singleEnvironmentDiagnostic": "build/device-evidence/stock-hw-shard0-1.single-env-diagnostic.json",
+  "startedLocal": "2026-09-20 23:18",
+  "swipeRows": 17946,
+  "tapRows": 6218
+ },
+ "releaseEligible": false,
+ "results": {
+  "fixtureReadinessMs": {
+   "mainDictionary": 25,
+   "swipeLexicon": 22751
+  },
+  "peakAddedNeuralMemoryMiB": 332.22,
+  "swipe": {
+   "ctc": {
+    "latencyP50Ms": 67.98,
+    "latencyP95Ms": 103.78,
+    "latencyP99Ms": 178.93,
+    "top1": 0.8397,
+    "top3": 0.9062
+   },
+   "fused_swipe": {
+    "latencyP50Ms": 166.41,
+    "latencyP95Ms": 224.25,
+    "latencyP99Ms": 248.27,
+    "top1": 0.775,
+    "top3": 0.8826
+   },
+   "geometric": {
+    "latencyP50Ms": 435.72,
+    "latencyP95Ms": 1244.71,
+    "latencyP99Ms": 1500.18,
+    "top1": 0.4449,
+    "top3": 0.6776
+   },
+   "perStratumTop1": {
+    "ctc": {
+     "clean": 0.8562,
+     "double_letter": 0.6268,
+     "long": 0.7431,
+     "medium": 0.7864,
+     "return_trip": 0.7754,
+     "short": 0.9485,
+     "sloppy": 0.7726,
+     "very_sloppy": 0.7089
+    },
+    "fused_swipe": {
+     "clean": 0.7857,
+     "double_letter": 0.5792,
+     "long": 0.5265,
+     "medium": 0.715,
+     "return_trip": 0.6343,
+     "short": 0.9421,
+     "sloppy": 0.7314,
+     "very_sloppy": 0.6671
+    }
+   }
+  },
+  "tap": {
+   "contextGainNeuralVsFusedOnConfusions": 0.0,
+   "fused": {
+    "autoCorrectRate": 0.5529,
+    "falseCorrectionRate": 0.0,
+    "latencyP95Ms": 37.03,
+    "top1": 0.5912,
+    "top1TapError": 0.754,
+    "top3": 0.7253
+   },
+   "fused_neural": {
+    "autoCorrectRate": 0.5529,
+    "falseCorrectionRate": 0.0,
+    "latencyP95Ms": 39.6,
+    "top1": 0.5912,
+    "top1TapError": 0.754,
+    "top3": 0.7272
+   },
+   "fused_personal": {
+    "autoCorrectRate": 0.5529,
+    "falseCorrectionRate": 0.0,
+    "latencyP95Ms": 40.14,
+    "top1": 0.5912,
+    "top1TapError": 0.754,
+    "top3": 0.7272
+   },
+   "heliboard": {
+    "autoCorrectRate": 0.494,
+    "falseCorrectionRate": 0.0,
+    "latencyP95Ms": 39.93,
+    "top1": 0.5568,
+    "top1TapError": 0.6296,
+    "top3": 0.7276
+   },
+   "tapRelativeErrorReductionFusedVsHeliboard": 0.3357,
+   "tapRelativeErrorReductionNeuralVsHeliboard": 0.3357
+  }
+ },
+ "retentionNote": "Raw JSONL, driver log, device capture, metadata and the single-environment diagnostic are local build/device-evidence artifacts ignored by Git; preserve an immutable bundle before cleaning that directory.",
+ "runId": "stock-hw-shard0-1",
+ "schemaVersion": 1,
+ "scope": "Stock physical Android environment leg of the Phase 0 device matrix. Collected under the artifact pin with the schema-4 harness. Qualifying pooled evaluation remains blocked until the GrapheneOS and low-RAM legs are re-measured on disjoint shards against the same pin; until then these are the stock-environment numbers a pooled evaluation will use."
+}

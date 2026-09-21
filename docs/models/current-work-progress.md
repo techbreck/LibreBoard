@@ -2,6 +2,38 @@
 
 The Linux native ONNX Runtime A/B pair on the Debian-CMake image is complete and byte-identical. Canonical-model Android checks, human tap/swipe gates, devices, latency/memory, and signing remain open. LibreBoard is not release-qualified.
 
+## Stock hardware Phase 0 leg, 2026-09-21
+
+The stock physical Android environment — the matrix slot no attached device could previously fill — was
+measured on a stock Pixel 7 Pro (cheetah, API 37, Play installed) under the artifact pin. Run
+`stock-hw-shard0-1` replayed tap shard 0/3 (6,218 rows) and swipe shard 0/3 (17,946 rows) with the
+pinned `8566382e…` context model, tokenizer, `1301f0d0…` swipe model and `54118ac8…` runtime AAR;
+the driver verified the installed APK and injected bytes, all gated tests passed, and every pulled
+row carries the run's id and environment. Bindings and findings are in
+`build/device-evidence/stock-hw-shard0-1.evidence.json`; the evaluator parses the full dataset and
+rejects it only for the two still-missing environments, as designed.
+
+- The tap commit path now clears its direction on real hardware: +33.6% fused-vs-classic relative
+  error reduction on tap errors (the 2026-09-12 diagnostic measured −5.26% before commit `712342dc`
+  calibrated the head-to-head commit decision), 0% false corrections on valid-word keeps, and
+  `fused_neural` p95 39.6 ms against the 80 ms budget.
+- The neural context path still changes no tap commit at production strength 50 (`fused_neural`
+  equals `fused` on every commit metric), but inference completes here (~1.5 ms p50 added), unlike
+  the low-RAM circuit-breaker case.
+- Swipe quality is transformed versus the superseded schema-3 diagnostics: CTC top-1/top-3
+  83.97%/90.62%; `fused_swipe` 77.50%/88.26% — still below the 90%/95% gates.
+- The swipe union fusion is now the dominant deficit: CTC alone beats the fused union overall and on
+  every stratum except top-3 short; `long` top-1 falls 74.3% → 52.7% and `return_trip` 77.5% →
+  63.4% when fused. `fused_swipe` p95 224.3 ms also exceeds the 200 ms budget; standalone geometric
+  decoding still pins at its 1,500 ms deadline (p99 1,500.2 ms).
+- The swipe-sidecar whole-process memory headline is 332 MiB added PSS (scope and attribution
+  caveats recorded); isolated attribution remains open.
+
+These are the stock-environment numbers a pooled evaluation will use, not pooled gate results. The
+GrapheneOS re-run (shard 1/3) and qualifying low-RAM run (shard 2/3) remain to be measured against
+the same pin, ideally from one committed source state that includes the currently uncommitted
+harness changes the stock APK contains.
+
 ## Completed
 
 - Integrated the corrected shared-session corpus split, tokenizer binding, and teacher manifest from `codex/context-shared-splits`. Main retains the smaller explicit candidate profile and newer evaluation gates.

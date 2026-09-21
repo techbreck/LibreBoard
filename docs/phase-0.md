@@ -57,7 +57,7 @@ warning, and the parity fixture must be repeated against the pinned hash.
 | Contraction/personal/compound coverage | 3,244 human contractions plus 360/312 project-authored personal/compound held out; all kinds represented |
 | Swipe absolute quality and difficult strata | Offline native-lexicon union remains below absolute top-1/top-3 gates; full live fusion is not qualified |
 | End-to-end latency and combined added peak memory | Not qualified; diagnostic snapshots and generous-deadline replays are insufficient |
-| Required device matrix | Physical GrapheneOS tap and swipe rows were collected on 2026-09-11, but they are diagnostics: they measured the superseded independent-split context export, and their tap results came from the defective schema-3 harness. Stock physical Android and a qualifying low-RAM run are absent. No environment currently holds qualifying evidence |
+| Required device matrix | Stock physical Android was measured on 2026-09-20/21 under the artifact pin: run `stock-hw-shard0-1` on a stock Pixel 7 Pro (Play installed, API 37) replayed tap shard 0/3 (6,218 rows) and swipe shard 0/3 (17,946 rows) with the pinned models; every row passes the schema-4 contract and the shared metadata is `build/device-evidence/phase0-matrix-v1.metadata.json`. The prior GrapheneOS rows remain diagnostics (superseded export, schema-3 harness) and must be re-measured on shard 1/3; the low-RAM qualifying run must take shard 2/3. No pooled gate has been evaluated yet. Stock-environment findings: fused tap relative error reduction +33.6% with 0% false corrections and `fused_neural` p95 39.6 ms; `fused_swipe` top-1/top-3 77.5%/88.3% with p95 224.3 ms (over budget); CTC alone beats the fused swipe union overall and on every stratum but top-3 short, so the union fusion is the dominant remaining swipe-quality deficit |
 | Model/runtime release reproducibility | Both fixed model exports repeat on Linux; two independent Linux development-operator runtime AARs are byte-identical. That is not a model-qualified runtime. Signed model-pack builds are not established |
 | Signing and publication | No accepted production key or model-qualified release; artifacts remain local and unsigned/unaccepted |
 
@@ -87,6 +87,16 @@ ids must stay unique across the whole matrix — the evaluator rejects duplicate
 corpus cannot be pooled with a hardware shard drawn from the same rows. The low-RAM slot needs a
 device that actually reports `isLowRamDevice: true` with at most 2,048 MiB; the 12,500-row emulator
 rehearsal reports false and carries no model or APK hashes, so it cannot fill that slot.
+
+The disjoint shard assignment now in use is stock hardware = shard 0/3 (run `stock-hw-shard0-1`,
+completed 2026-09-21), GrapheneOS = shard 1/3, low-RAM = shard 2/3, all against
+[`phase-0-artifact-pin.json`](phase-0-artifact-pin.json) with results merged into one metadata file
+(`build/device-evidence/phase0-matrix-v1.metadata.json`). The stock leg's bindings, metrics, and
+findings are recorded in `build/device-evidence/stock-hw-shard0-1.evidence.json`; its APK contains
+the three then-uncommitted harness changes (prediction replay, swipe-lexicon dump, rescorer-budget
+override hook), which do not alter production paths, and is bound by exact hash. Reuse that exact
+APK or rebuild from a committed tree that contains those changes so the three legs share one source
+state.
 
 The [tap corpus report](phase-0-tap-corpus.md), [swipe evaluation](swipe-ctc-evaluation.md),
 [device tests](testing.md), and [APK build evidence](release/abi-packaging.md) retain exact scope
