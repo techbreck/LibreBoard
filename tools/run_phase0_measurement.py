@@ -344,6 +344,12 @@ def main(argv=None) -> int:
                              "profile); adds --user to instrument and run-as calls")
     parser.add_argument("--instrument-timeout", type=int, default=4 * 60 * 60,
                         help="seconds to wait for the instrumented run (default 4h)")
+    parser.add_argument("--prediction", action="store_true",
+                        help="also replay the tap corpus's context->target pairs through the "
+                             "next-word prediction path (empty composer, InputStyle.PREDICTION)")
+    parser.add_argument("--rescorer-budget-ms", type=int,
+                        help="diagnostic-only: override the production rescorer budget so neural "
+                             "scores can be observed on runtimes too slow to meet it")
     parser.add_argument("--output", type=pathlib.Path, required=True)
     parser.add_argument("--metadata", type=pathlib.Path,
                         help="schema-%d metadata JSON to create or update with this run's environment"
@@ -411,6 +417,16 @@ def main(argv=None) -> int:
             "-e", "phase0CorpusFile", f"{REMOTE_DIR}/corpus.jsonl",
             "-e", "phase0OutputFile", "measurement.jsonl",
         ]
+    if args.prediction:
+        if args.corpus is None:
+            raise MeasurementRunError("--prediction needs --corpus to supply context->target rows")
+        remote_outputs.append("prediction-measurement.jsonl")
+        instrument_args += [
+            "-e", "libreboardRequirePhase0PredictionMeasurement", "true",
+            "-e", "phase0PredictionOutputFile", "prediction-measurement.jsonl",
+        ]
+        if args.rescorer_budget_ms is not None:
+            instrument_args += ["-e", "phase0RescorerBudgetMs", str(args.rescorer_budget_ms)]
     if args.swipe_corpus is not None:
         push_private(adb_path, args.serial, args.swipe_corpus, "swipe-corpus.jsonl",
                      args.device_user)

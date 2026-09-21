@@ -386,6 +386,31 @@ class Phase0MeasurementInstrumentedTest {
         return Measured(slate, commitJson(decision), elapsed, trace.toString())
     }
 
+    /**
+     * The next-word suggestion path exactly as production runs it: an empty composer means
+     * `!isComposingWord`, so `getSuggestedWords` takes the `resultsArePredictions` branch, calls
+     * `getNextWordSuggestions`, and fuses with `InputStyle.PREDICTION`. There is no commit to
+     * measure; the strip order is the whole result.
+     */
+    private fun measurePrediction(fixture: Fixture, precedingContext: String): Measured {
+        val composer = WordComposer()
+        val trace = StringBuilder()
+        fixture.suggest.autoCorrectionTrace = trace
+        val start = System.nanoTime()
+        val suggested = fixture.suggest.getSuggestedWords(
+            composer, ngram(precedingContext), fixture.keyboard,
+            fixture.settingsForSuggestion, true, SuggestedWords.INPUT_STYLE_TYPING, 1,
+        )
+        val elapsed = (System.nanoTime() - start) / 1_000_000.0
+        fixture.suggest.autoCorrectionTrace = null
+        return Measured(
+            surfaces(suggested),
+            JSONObject().put("committed", JSONObject.NULL).put("willAutoCorrect", false),
+            elapsed,
+            trace.toString(),
+        )
+    }
+
     private fun seedPersonalFixture(fixture: Fixture, row: JSONObject) {
         PersonalizationRuntime.wipe(fixture.context)
         val words = row.optJSONArray("personalWords") ?: return
@@ -395,6 +420,20 @@ class Phase0MeasurementInstrumentedTest {
                 words.getString(index), "en-US", true, null,
             )
         }
+    }
+
+    @Test fun dumpSwipeLexicon() {
+        val args = InstrumentationRegistry.getArguments()
+        assumeTrue(args.getString("libreboardDumpSwipeLexicon") == "true")
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val fixture = buildFixture(context)
+        val words = fixture.facilitator.getSwipeLexiconWords(listOf("en-US"), 0, Int.MAX_VALUE, false)
+        val output = File(context.filesDir, "swipe-lexicon-dump.txt")
+        output.bufferedWriter().use { writer ->
+            for (word in words) writer.append(word.word).append('\n')
+        }
+        Log.i(TAG, "dumped ${words.size} swipe lexicon words to ${output.absolutePath}")
+        assertTrue(words.isNotEmpty())
     }
 
     @Test fun replayTapCorpusThroughMeasuredSystems() {
@@ -418,6 +457,9 @@ class Phase0MeasurementInstrumentedTest {
 
         val fixture = buildFixture(context)
         val memory = MemoryProbe(Debug.getPss().toDouble())
+        args.getString("phase0RescorerBudgetMs")?.toLongOrNull()?.let {
+            fixture.suggest.contextRescoringBudgetOverrideMs = it
+        }
         args.getString("phase0ModelDir")?.let { installContextModel(context, File(context.filesDir, it)) }
         memory.onModelOpened()
 
@@ -512,6 +554,91 @@ class Phase0MeasurementInstrumentedTest {
         }
         writer.close()
         assertTrue("corpus produced no measurable test rows", measured > 0)
+        writeEnvironmentSidecar(context, File(output.parentFile, "environment.json"),
+            runId, environment, memory, fixture)
+    }
+
+    /**
+     * Next-word prediction replay: for every tap-corpus row carrying a non-empty
+     * `precedingContext`, measure the PREDICTION strip that production would show after the user
+     * commits the previous word. The target is the word the corpus author actually typed next.
+     * `phase0RescorerBudgetMs` optionally lifts the production rescorer budget so diagnostics can
+     * observe completed neural scores on slow runtimes; it never changes the default.
+     */
+    @Test fun replayPredictionCorpusThroughMeasuredSystems() {
+        val args = InstrumentationRegistry.getArguments()
+        assumeTrue(args.getString("libreboardRequirePhase0PredictionMeasurement") == "true")
+        val runId = requireNotNull(args.getString("phase0RunId")) { "phase0RunId is required" }
+        require(runId.length in 1..512)
+        val environment = requireNotNull(args.getString("phase0Environment")) { "phase0Environment is required" }
+        require(environment in setOf("stock_android_hardware", "grapheneos_hardware", "low_ram_emulator"))
+        val corpus = File(
+            InstrumentationRegistry.getInstrumentation().targetContext.filesDir,
+            requireNotNull(args.getString("phase0CorpusFile")),
+        )
+        val output = File(corpus.parentFile, requireNotNull(args.getString("phase0PredictionOutputFile")))
+        require(corpus.isFile && corpus.length() in 1..(512L * 1024 * 1024))
+        require(!output.isDirectory)
+        val limit = args.getString("phase0Limit")?.toIntOrNull() ?: Int.MAX_VALUE
+        require(limit > 0)
+        val (shardIndex, shardCount) = shardConfig(args)
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+
+        val fixture = buildFixture(context)
+        val memory = MemoryProbe(Debug.getPss().toDouble())
+        args.getString("phase0RescorerBudgetMs")?.toLongOrNull()?.let {
+            fixture.suggest.contextRescoringBudgetOverrideMs = it
+        }
+        args.getString("phase0ModelDir")?.let { installContextModel(context, File(context.filesDir, it)) }
+        memory.onModelOpened()
+
+        val writer = output.bufferedWriter()
+        var measured = 0
+        var ordinal = 0
+        corpus.bufferedReader().useLines { lines ->
+            for (line in lines) {
+                if (measured >= limit) break
+                if (line.isBlank()) continue
+                val row = JSONObject(line)
+                if (row.getString("split") != "test" || row.getString("category") == "swipe") continue
+                val precedingContext = row.optString("precedingContext")
+                if (precedingContext.isBlank()) continue
+                if (ordinal++ % shardCount != shardIndex) continue
+
+                val predictions = JSONObject()
+                val latency = JSONObject()
+                val gateTraces = JSONObject()
+
+                PersonalizationRuntime.wipe(fixture.context)
+                setMeasurementConfiguration(fixture, personalizedDicts = false, neuralStrength = 0f)
+                val fused = measurePrediction(fixture, precedingContext)
+                predictions.put("fused", fused.surfaces); latency.put("fused", fused.elapsedMs)
+                gateTraces.put("fused", fused.gateTrace)
+                memory.onNeuralDisabled()
+
+                setMeasurementConfiguration(fixture, personalizedDicts = false, neuralStrength = 50f)
+                val neural = measurePrediction(fixture, precedingContext)
+                predictions.put("fused_neural", neural.surfaces)
+                latency.put("fused_neural", neural.elapsedMs)
+                gateTraces.put("fused_neural", neural.gateTrace)
+                memory.onNeuralEnabled()
+
+                writer.write(JSONObject(row.toString()).apply {
+                    put("schemaVersion", SCHEMA_VERSION)
+                    put("category", "prediction")
+                    put("raw", "")
+                    put("environmentKind", environment)
+                    put("testRunId", runId)
+                    put("predictions", predictions)
+                    put("latencyMs", latency)
+                    put("gateTraces", gateTraces)
+                }.toString())
+                writer.write("\n")
+                measured++
+            }
+        }
+        writer.close()
+        assertTrue("prediction corpus produced no measurable test rows", measured > 0)
         writeEnvironmentSidecar(context, File(output.parentFile, "environment.json"),
             runId, environment, memory, fixture)
     }

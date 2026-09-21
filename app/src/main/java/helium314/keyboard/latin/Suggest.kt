@@ -57,6 +57,13 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
      * the Phase 0 harness uses it to explain commit decisions row by row.
      */
     var autoCorrectionTrace: StringBuilder? = null
+
+    /**
+     * Measurement/testing hook: when set, overrides the bounded rescorer budget so diagnostics can
+     * observe what neural scores would be when inference cannot fit the production window.
+     * Production never sets this; the Phase 0 harness uses it to measure true on-device cost.
+     */
+    var contextRescoringBudgetOverrideMs: Long? = null
     private val mPlausibilityThreshold = 0f
     private val nextWordSuggestionsCache = HashMap<NgramContext, SuggestionResults>()
     private val liveCandidateFusion = LegacySuggestionFusion()
@@ -185,7 +192,8 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
             typingRequest = typingRequest,
             neuralStrength = liveSettings.mNeuralStrength.takeIf { allowsEngineContext } ?: 0,
             aggressiveness = liveSettings.mAutoCorrectionAggressiveness,
-            neuralDeadline = Deadline.afterMillis(CONTEXT_RESCORING_BUDGET_MILLIS),
+            neuralDeadline = Deadline.afterMillis(
+                contextRescoringBudgetOverrideMs ?: CONTEXT_RESCORING_BUDGET_MILLIS),
         )
         suggestionsContainer.clear()
         suggestionsContainer.addAll(fusion.suggestions)
