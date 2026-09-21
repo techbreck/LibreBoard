@@ -17,3 +17,6 @@ __pycache__/
 *.patch
 *.diff
 *.sh
+
+# Local portability bundle (see HANDOFF-2026-09-21.md)
+libreboard-phase0-handoff-*.tar.gz
