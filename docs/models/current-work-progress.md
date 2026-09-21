@@ -29,9 +29,32 @@ rejects it only for the two still-missing environments, as designed.
 - The swipe-sidecar whole-process memory headline is 332 MiB added PSS (scope and attribution
   caveats recorded); isolated attribution remains open.
 
-These are the stock-environment numbers a pooled evaluation will use, not pooled gate results. The
-GrapheneOS re-run (shard 1/3) and qualifying low-RAM run (shard 2/3) remain to be measured against
-the same pin, from `4d1c990e`, whose tree is exactly the measured APK's content.
+These are the stock-environment numbers a pooled evaluation will use, not pooled gate results.
+
+## GrapheneOS hardware Phase 0 leg, 2026-09-21
+
+The GrapheneOS environment was re-measured under the same pin and APK on a Play-free Pixel 9 Pro
+XL (GrapheneOS 2026091901): run `grapheneos-hw-shard1-1` replayed tap shard 1/3 in full (6,218
+rows) and 100 swipe rows of shard 1/3. Root cause found for this phone's chronic slowness:
+**GrapheneOS disables the JIT system-wide** (`dalvik.vm.usejit=false`; stock ships `true`) and
+AOSP policy caps debuggable packages to verify-only AOT, so the debug harness replays fully
+interpreted — ~2.2× on tap paths, unbounded on the CTC beam loop. Release builds AOT-compile and
+are unaffected; the condition bounds the harness, not the product. Findings:
+
+- Tap decisions survive interpretation: +31.1% fused-vs-classic RER (stock: +33.6%), 0% false
+  corrections, `fused_neural` p95 74.67 ms inside the 80 ms budget.
+- Swipe rows are deadline-censored on this environment (CTC cannot finish interpreted beam search;
+  the bail returns partial/empty candidates — ctc top-1 0.0). They must not be read as model
+  quality; the same censor explains the superseded September diagnostics' signature.
+- The swipe-lexicon build costs 130 s interpreted (22.7 s on stock), excluded from latencyMs but a
+  real cold-start cost in this condition.
+- Follow-ups: a non-debuggable testOnly measurement build for a future pin would restore
+  representative latency here; the deadline bail returning garbage is a product defect worth
+  fixing regardless (fall back to geometric candidates).
+
+Pooled status: stock + grapheneos rows (30,482) parse the full schema-4 contract; the evaluator now
+rejects the metadata only for the missing low-RAM environment. The low-RAM leg (shard 2/3) is the
+last matrix entry.
 
 ## Completed
 

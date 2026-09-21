@@ -1,0 +1,146 @@
+{
+ "bindings": {
+  "appCommit": "4d1c990e727c78cf6e74497bb8c414fc8dda978d",
+  "artifactPinCandidateId": "context-shared-session-v2",
+  "contextModelOnnxSha256": "8566382e57ea5a9af76ddf600e189572d62fcc8b227de8415ce88ad0e172022b",
+  "contextTokenizerSha256": "e2089ddfa01ff69eba73195cb3623c86703a812a712ec356ec5fe837297a8cc9",
+  "coreApkSha256": "8b8eb8644ffe309ef007ea3685cd61e8cfa2d3c695fc24c2c7df1f2917a28f4c",
+  "onnxRuntimeAarSha256": "54118ac8e37bc4833d32e2cb197ef6bd251f56e5aa9e4e51c3899fb616210d88",
+  "sameApkAsStockLeg": true,
+  "swipeModelOnnxSha256": "1301f0d076f526fe0b67f2ea86a38abc8448f6de54d2c7191c002dcd4d05d38c"
+ },
+ "device": {
+  "apiLevel": 37,
+  "buildFingerprint": "google/komodo/komodo:17/CP2A.260805.005/2026091901:user/release-keys",
+  "capture": "build/device-evidence/grapheneos-pixel9proxl-komodo.json",
+  "device": "komodo",
+  "grapheneOsBuildNumber": "2026091901",
+  "inspectedUser": 0,
+  "isLowRamDevice": false,
+  "memoryMiB": 15090,
+  "model": "Pixel 9 Pro XL",
+  "physicalDevice": true,
+  "sandboxedGooglePlayInstalled": false,
+  "securityPatch": "2026-09-01",
+  "serial": "47311FDAS00026"
+ },
+ "environmentCondition": {
+  "consequences": [
+   "Tap latencies are ~2.2x the stock environment but the per-environment 80 ms fused_neural budget still passes (p95 74.67 ms).",
+   "The CTC beam search cannot complete within its 1500 ms standalone budget under interpretation; rows bail at the deadline and the bail path returns partial or empty candidate sets, so swipe quality metrics on this environment are latency-censored, not model-quality measurements (ctc top-1 0.0, fused_swipe top-1 0.07, while pure-Java geometric still completes some rows at top-1 0.36).",
+   "One-time fixture costs inflate: swipeLexicon build 130,298 ms vs 22,751 ms on stock."
+  ],
+  "evidence": [
+   "adb shell getprop dalvik.vm.usejit -> false",
+   "logcat ArtService: compiler filter adjusted from 'speed' to 'verify' because the package is debuggable",
+   "pm art dump org.libreboard.keyboard.debug -> [status=run-from-apk] before forced compile, [status=verify] after; 'speed' is unreachable for debuggable builds",
+   "/proc/<pid>/task/*/comm shows no 'Jit thread' for the instrumentation process or for any other app on the device",
+   "the same APK on the stock Pixel 7 Pro environment reaches fused p50 15.7 ms taps and 68 ms CTC decodes; this environment records 37.1 ms and deadline-pinned >=1500 ms"
+  ],
+  "followUps": [
+   "A non-debuggable testOnly measurement build (corpora via instrumentation args instead of run-as) would restore representative latency on this environment for a future pin.",
+   "The deadline bail returning garbage candidates is a product defect worth fixing independently: bailing should fall back to the geometric candidate set."
+  ],
+  "headline": "The pinned debug APK runs fully interpreted on this environment: GrapheneOS disables the JIT system-wide (dalvik.vm.usejit=false; stock Android ships true), and AOSP ArtService policy caps debuggable packages to verify-only AOT ('Adjusting the compiler filter ... from speed to verify because the package is debuggable'). No app process on the device, including system release apps, has a JIT thread. Release (non-debuggable) LibreBoard builds receive normal AOT dexopt and are unaffected, so this condition bounds the debug measurement harness, not the product."
+ },
+ "environmentKind": "grapheneos_hardware",
+ "findings": [
+  "The tap commit decision survives full interpretation: fused beats classic by +31.1% relative error reduction (stock environment: +33.6%; gate >= +20%), with zero false corrections, and the fused_neural p95 74.67 ms stays inside the 80 ms budget despite running interpreted.",
+  "GrapheneOS's system-wide JIT disable is invisible to release apps (AOT dexopt) but leaves debuggable instrumentation builds fully interpreted; all per-row latency on this environment measures the interpreter, roughly 2.2x compiled speed on tap paths and unbounded on the CTC beam loop.",
+  "Swipe metrics on this environment are deadline-censored and must not be read as model quality: CTC cannot finish 1500 ms of interpreted beam search, and the bail path returns partial or empty candidates (ctc top-1 0.0). This was also true of the superseded September diagnostics on this same phone (fused p50 26.8 ms, neural overhead +12.4 ms), which retroactively explains their signature.",
+  "The swipe lexicon build costs 130 s one-time under interpretation (stock: 22.7 s); it is excluded from latencyMs but dominates cold-start cost in this condition."
+ ],
+ "limitations": [
+  "Second of three environments; pooled matrix gates cannot be evaluated until the low-RAM leg lands on shard 2/3.",
+  "Per-row latency measures the debug harness under GrapheneOS's no-JIT configuration; it is an upper bound, not representative of AOT-compiled release builds.",
+  "Swipe rows are exactly at the evaluator's per-environment 100-sample floor.",
+  "The single-environment diagnostic script mirrors evaluate_engine.py semantics but is not the release evaluator; its output is not release evidence."
+ ],
+ "measurement": {
+  "categoryCounts": {
+   "lexical": 1316,
+   "spacing": 159,
+   "swipe": 100,
+   "tap_error": 1172,
+   "valid_word": 3571
+  },
+  "completedLocal": "2026-09-21 12:11",
+  "diagnosticScript": "build/reports/phase0_single_env_diagnostic.py",
+  "diagnosticSeries": "grapheneos-smoke-1..5 precede this run as unpinned diagnostics (smoke-1 dozing, smoke-2/3 awake run-from-apk, smoke-4 after forced verify-only compile, smoke-5 during root-cause probing); they established the condition documented in environmentCondition",
+  "driverLog": "build/device-evidence/grapheneos-hw-shard1-1.driver.log",
+  "evaluatorPrecheck": "Pooled with the stock leg (30,482 rows), every row parses the schema-4 contract and the evaluator rejects the metadata only with 'metadata requires exactly the three reference environments' (low_ram_emulator still missing), as designed.",
+  "instrumentedTests": {
+   "failed": 0,
+   "passed": 2,
+   "skipped": 2
+  },
+  "metadataFile": "build/device-evidence/phase0-matrix-v1.metadata.json",
+  "outputFile": "build/device-evidence/grapheneos-hw-shard1-1.jsonl",
+  "outputSha256": "62ba069707306a0b91f24c80d10fbe78062a19d0fb7734bbf42658e15f42de7b",
+  "retentionNote": "Raw JSONL, driver log, device capture, smokes and the single-environment diagnostic are local build/device-evidence artifacts ignored by Git; preserve an immutable bundle before cleaning that directory.",
+  "shardCount": 3,
+  "shardIndex": 1,
+  "singleEnvironmentDiagnostic": "build/device-evidence/grapheneos-hw-shard1-1.single-env-diagnostic.json",
+  "startedLocal": "2026-09-21 11:32",
+  "swipeRowCountNote": "Planned as the first 300 rows of swipe shard 1/3; the harness applies its own ordinal shard filter to the pushed corpus, so the pre-sharded file was filtered again and the run measured the 100 rows whose in-file ordinal is 1 mod 3. Exactly meets the evaluator's 100-sample per-environment swipe minimum; pooled swipe minimums are already satisfied by the stock leg. Rows remain disjoint from shards 0 and 2.",
+  "swipeRows": 100,
+  "tapRows": 6218
+ },
+ "releaseEligible": false,
+ "results": {
+  "fixtureReadinessMs": {
+   "mainDictionary": 0,
+   "swipeLexicon": 130298
+  },
+  "peakAddedNeuralMemoryMiB": 47.81,
+  "swipe": {
+   "ctc": {
+    "censored": "deadline-bailed",
+    "latencyP50Ms": 1500.15,
+    "latencyP95Ms": 4409.97,
+    "top1": 0.0
+   },
+   "fused_swipe": {
+    "censored": "downstream of ctc bail",
+    "latencyP50Ms": 223.71,
+    "latencyP95Ms": 316.03,
+    "top1": 0.07
+   },
+   "geometric": {
+    "latencyP50Ms": 1503.99,
+    "latencyP95Ms": 8417.21,
+    "top1": 0.36
+   }
+  },
+  "tap": {
+   "contextGainNeuralVsFusedOnConfusions": 0.0,
+   "fused": {
+    "autoCorrectRate": 0.5601,
+    "falseCorrectionRate": 0.0,
+    "latencyP95Ms": 54.18,
+    "top1": 0.5865,
+    "top1TapError": 0.7466,
+    "top3": 0.7145
+   },
+   "fused_neural": {
+    "latencyP50Ms": 44.67,
+    "latencyP95Ms": 74.67,
+    "top1": 0.5865,
+    "top3": 0.7158
+   },
+   "heliboard": {
+    "autoCorrectRate": 0.492,
+    "falseCorrectionRate": 0.0,
+    "latencyP95Ms": 63.27,
+    "top1": 0.551,
+    "top1TapError": 0.6323,
+    "top3": 0.716
+   },
+   "tapRelativeErrorReductionFusedVsHeliboard": 0.3109,
+   "tapRelativeErrorReductionNeuralVsHeliboard": 0.3109
+  }
+ },
+ "runId": "grapheneos-hw-shard1-1",
+ "schemaVersion": 1,
+ "scope": "GrapheneOS physical hardware environment leg of the Phase 0 device matrix, collected under the artifact pin with the schema-4 harness. Measured with the pinned debug APK under GrapheneOS's system-wide JIT-disabled configuration, which leaves debuggable builds fully interpreted; see environmentCondition. Qualifying pooled evaluation remains blocked until the low-RAM leg takes shard 2/3; until then these are the grapheneos-environment numbers a pooled evaluation will use."
+}
