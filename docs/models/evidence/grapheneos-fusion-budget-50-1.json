@@ -1,0 +1,38 @@
+{
+  "bindings": {
+    "artifactPinCandidateId": "context-shared-session-v2",
+    "coreApkSha256": "4d4ed36453cf4b92af5841197967d2f7d60661b650f54a12b89aa54786530ad2",
+    "sameApkAsPinnedDebugLeg": false,
+    "variant": "measure (CTC-first, geometric only on CTC miss)"
+  },
+  "comparedTo": {
+    "runId": "grapheneos-measure-swipe-shard1-1",
+    "sameRowIds": 50,
+    "fusedSwipeBefore": {"empty": 6, "over200Ms": 40, "p50Ms": 214.4, "p95Ms": 262.2, "top1": 0.50}
+  },
+  "environmentKind": "grapheneos_hardware",
+  "findings": [
+    "Speculative parallel geometric plus ignoring CTC TIMEOUT partials was waiting out the 200 ms proposal budget (mode 210–220 ms on the 17,945-row shard). Sequential CTC-first publishes those partials and skips geometric on a hit.",
+    "Same 50 shard-1 rows: fused_swipe 86%/90% vs CTC 84%/90% (was fused 50% top-1). p50/p95 185/235 ms (was 214/262). 12/50 over 200 ms (was 40/50). Geometric candidates in the fused slate on 1/50 rows.",
+    "Stage split: decode p50/p95 168.5/216.4 ms, fusion 8.9/57.5 ms (50 ms neural budget on cold rows), next-word ~0 ms. Remaining p95 over 200 ms is CTC decode through LiveSwipeModelSlot, not geometric wait."
+  ],
+  "measurement": {
+    "outputFile": "build/device-evidence/grapheneos-fusion-budget-50-1.jsonl",
+    "outputSha256": "0855cc36c4ed11d863c66ac380f1247db5e4c7ed6fe8310bb4c93b30e7fe5593",
+    "shardCount": 3,
+    "shardIndex": 1,
+    "swipeRows": 50,
+    "wallClockSeconds": 105.1
+  },
+  "releaseEligible": false,
+  "results": {
+    "swipe": {
+      "ctc": {"top1": 0.84, "top3": 0.90, "latencyP50Ms": 103.0, "latencyP95Ms": 755.3},
+      "fused_swipe": {"top1": 0.86, "top3": 0.90, "latencyP50Ms": 185.2, "latencyP95Ms": 235.3, "empty": 2, "over200Ms": 12},
+      "stagesMs": {"decodeP50": 168.5, "fusionP50": 8.9, "nextWordP50": 0.0}
+    }
+  },
+  "runId": "grapheneos-fusion-budget-50-1",
+  "schemaVersion": 1,
+  "scope": "Diagnostic 50-row GrapheneOS check that sequential CTC-first removed the 200 ms wait. Not a Phase 0 matrix replacement."
+}

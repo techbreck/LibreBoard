@@ -1,0 +1,103 @@
+{
+  "bindings": {
+    "artifactPinCandidateId": "context-shared-session-v2",
+    "contextModelOnnxSha256": "8566382e57ea5a9af76ddf600e189572d62fcc8b227de8415ce88ad0e172022b",
+    "contextTokenizerSha256": "e2089ddfa01ff69eba73195cb3623c86703a812a712ec356ec5fe837297a8cc9",
+    "coreApkSha256": "5b91a54f3f8c19c4f868fb459c443e01b2a9644a8652f4e7407caea8febed54a",
+    "onnxRuntimeAarSha256": "54118ac8e37bc4833d32e2cb197ef6bd251f56e5aa9e4e51c3899fb616210d88",
+    "sameApkAsPinnedDebugLeg": false,
+    "swipeModelOnnxSha256": "1301f0d076f526fe0b67f2ea86a38abc8448f6de54d2c7191c002dcd4d05d38c",
+    "variant": "measure (non-debuggable testOnly, applicationId org.libreboard.keyboard.debug, CTC-first fusion APK)"
+  },
+  "device": {
+    "apiLevel": 37,
+    "artCompilerFilter": "speed",
+    "buildFingerprint": "google/komodo/komodo:17/CP2A.260805.005/2026091901:user/release-keys",
+    "device": "komodo",
+    "grapheneOsBuildNumber": "2026091901",
+    "inspectedUser": 0,
+    "jit": false,
+    "model": "Pixel 9 Pro XL",
+    "physicalDevice": true,
+    "sandboxedGooglePlayInstalled": false,
+    "serial": "47311FDAS00026"
+  },
+  "environmentKind": "grapheneos_hardware",
+  "findings": [
+    "Full swipe shard 1/3 completed: 17,945 rows (corpus remainder 53,836 = 17,946 + 17,945 + 17,945). Driver exit 0, instrumentation OK (1 passed, 3 skipped), wall 24,869.8 s (~6.91 h).",
+    "CTC is AVAILABLE on every row: top-1/top-3 84.16%/90.97%, p50/p95 94.3/131.0 ms, max 900.5 ms, 8 empty slates, 82 rows over 200 ms. Still short of the 90%/95% absolute gates.",
+    "Production fused_swipe is 68.48%/74.28% with p50/p95 213.8/229.6 ms. That is up from the pre-fusion 500-row diagnostic (46.6%/50.4%) and still well behind CTC. 11,019/17,945 rows (61.4%) exceed the 200 ms budget; 8,927 sit in 210–220 ms. 111 fused slates are empty; 96 of those had the target at CTC rank 1.",
+    "fused_relaxed (standalone CTC+geometric into the same fusion boundary, no proposal deadline) is 86.43%/91.94% and beats CTC, so the ranking rule works when both decoders are allowed to finish. The production path is the remaining deficit: fused top-1 equals CTC top-1 on only 71.0% of rows, and CTC hits top-1 while fused misses on 3,251 rows.",
+    "Strata: short fused top-3 96.66% clears 90%; return_trip fused top-3 56.72% does not. long fused top-1 46.11% vs CTC 73.93%. Geometric relative-error-reduction vs fused is +41.9% (clears the 20% geometric-RER gate while the absolute swipe gates fail).",
+    "The 20-row fusion smoke (75%/80%, matching CTC) was a different unsharded sample and does not hold on the full shard. Quality is stable across quintiles (fused top-1 67.6–70.4%), so this is not a mid-run circuit-breaker collapse.",
+    "Geometric still times out on 5,384/17,945 rows (30.0%) at the 1,500 ms standalone deadline. Lexicon cold-start 9.4 s. peakAddedNeuralMemoryMiB 385.2."
+  ],
+  "limitations": [
+    "Diagnostic only. The measure APK is the CTC-first fusion build (SHA-256 5b91a54f…), not the pinned debugNoMinify APK 8b8eb864… used by stock-hw-shard0-1 and grapheneos-hw-shard1-1, so these rows cannot enter the Phase 0 matrix as-is.",
+    "Shard 1/3 only. Stock swipe evidence remains the 17,946-row shard 0/3 under the pre-fusion ranking.",
+    "Compiling the androidTest package to speed caused an ART class-loader-context abort on this device; the test APK was left at verify. The app package is speed.",
+    "releaseEligible is false. Pooled matrix evaluation still needs the low-RAM environment."
+  ],
+  "measurement": {
+    "completedLocal": "2026-09-29 05:18",
+    "driverLog": "build/device-evidence/grapheneos-measure-swipe-shard1-1.driver.log",
+    "instrumentedTests": {"failed": 0, "passed": 1, "skipped": 3},
+    "metadataFile": "build/device-evidence/grapheneos-measure-swipe-shard1-1.metadata.json",
+    "outputFile": "build/device-evidence/grapheneos-measure-swipe-shard1-1.jsonl",
+    "outputSha256": "a79d63ca65312bd46cec8655bb239af8e4b6961ead64d29bde6d78a263342622",
+    "precedingSmoke": "build/device-evidence/grapheneos-fusion-smoke-2.jsonl (20 unsharded rows; fused_swipe matched CTC 75%/80%)",
+    "precedingDiagnostic": "docs/models/evidence/grapheneos-measure-swipe-500-1.json (pre-fusion measure APK 975362e4…)",
+    "shardCount": 3,
+    "shardIndex": 1,
+    "swipeRows": 17945,
+    "wallClockSeconds": 24869.792
+  },
+  "releaseEligible": false,
+  "results": {
+    "fixtureReadinessMs": {"mainDictionary": 25, "swipeLexicon": 9394},
+    "peakAddedNeuralMemoryMiB": 385.216796875,
+    "swipe": {
+      "ctc": {
+        "available": 17945,
+        "empty": 8,
+        "latencyP50Ms": 94.3,
+        "latencyP95Ms": 131.0,
+        "timeouts": 0,
+        "top1": 0.841627,
+        "top3": 0.909668
+      },
+      "fused_relaxed": {
+        "empty": 0,
+        "latencyP50Ms": 7.4,
+        "latencyP95Ms": 10.1,
+        "top1": 0.864252,
+        "top3": 0.919365
+      },
+      "fused_swipe": {
+        "empty": 111,
+        "fusedTop1EqualsCtcTop1": 0.710337,
+        "latencyP50Ms": 213.8,
+        "latencyP95Ms": 229.6,
+        "over200Ms": 11019,
+        "top1": 0.684759,
+        "top3": 0.742825
+      },
+      "geometric": {
+        "available": 12561,
+        "latencyP50Ms": 1029.1,
+        "latencyP95Ms": 1500.5,
+        "timeouts": 5384,
+        "top1": 0.457063,
+        "top3": 0.685428
+      },
+      "strata": {
+        "long": {"ctcTop1": 0.7393, "fusedTop1": 0.4611, "n": 2071},
+        "return_trip": {"ctcTop3": 0.8444, "fusedTop3": 0.5672, "n": 5340},
+        "short": {"ctcTop3": 0.9853, "fusedTop3": 0.9666, "n": 6443}
+      }
+    }
+  },
+  "runId": "grapheneos-measure-swipe-shard1-1",
+  "schemaVersion": 1,
+  "scope": "Diagnostic GrapheneOS swipe shard 1/3 with the CTC-first fusion measure APK AOT-compiled at speed. Tests whether the 20-row fusion smoke holds on a full shard. Not a Phase 0 matrix replacement."
+}

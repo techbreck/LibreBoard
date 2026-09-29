@@ -1,0 +1,85 @@
+{
+  "bindings": {
+    "artifactPinCandidateId": "context-shared-session-v2",
+    "contextModelOnnxSha256": "8566382e57ea5a9af76ddf600e189572d62fcc8b227de8415ce88ad0e172022b",
+    "contextTokenizerSha256": "e2089ddfa01ff69eba73195cb3623c86703a812a712ec356ec5fe837297a8cc9",
+    "coreApkSha256": "975362e48e2dd403890ee453e894a4d0c87029465cc504b41ab75e7b8b2ca80e",
+    "onnxRuntimeAarSha256": "54118ac8e37bc4833d32e2cb197ef6bd251f56e5aa9e4e51c3899fb616210d88",
+    "sameApkAsPinnedDebugLeg": false,
+    "swipeModelOnnxSha256": "1301f0d076f526fe0b67f2ea86a38abc8448f6de54d2c7191c002dcd4d05d38c",
+    "variant": "measure (non-debuggable testOnly, applicationId org.libreboard.keyboard.debug)"
+  },
+  "device": {
+    "apiLevel": 37,
+    "artCompilerFilter": "speed",
+    "buildFingerprint": "google/komodo/komodo:17/CP2A.260805.005/2026091901:user/release-keys",
+    "device": "komodo",
+    "grapheneOsBuildNumber": "2026091901",
+    "inspectedUser": 0,
+    "jit": false,
+    "model": "Pixel 9 Pro XL",
+    "physicalDevice": true,
+    "sandboxedGooglePlayInstalled": false,
+    "serial": "47311FDAS00026"
+  },
+  "environmentKind": "grapheneos_hardware",
+  "findings": [
+    "A non-debuggable testOnly measure APK AOT-compiles at speed on GrapheneOS even though dalvik.vm.usejit remains false. pm art dump reports [status=speed] [reason=cmdline] for the app package. Debuggable debugNoMinify stays capped at verify.",
+    "CTC is AVAILABLE on all 500 rows and never hits the 1500 ms standalone deadline (p50 99.8 ms, p95 152.6 ms, max 1301.3 ms). The Sep 21 grapheneos-hw-shard1-1 swipe numbers were interpreter-censored, not model quality.",
+    "CTC top-1/top-3 on this 500-row slice of swipe shard 1/3 is 81.0%/87.2%. fused_swipe is 46.6%/50.4% with the same fusion deficit seen on stock: CTC alone beats the fused union, and long/return_trip/double_letter collapse when fused (long top-1 79.6% → 10.2%).",
+    "fused_swipe p95 is 226.4 ms against the 200 ms budget, matching the stock-environment overrun (224.3 ms). Geometric still times out on 155/500 rows.",
+    "Swipe lexicon cold-start is 8.9 s AOT versus 130.3 s interpreted on the same phone."
+  ],
+  "limitations": [
+    "Diagnostic only. The measure APK is not the pinned debugNoMinify APK 8b8eb864… used by stock-hw-shard0-1 and grapheneos-hw-shard1-1, so these rows cannot enter the Phase 0 matrix as-is.",
+    "500 rows of shard 1/3, not a full shard. Stock swipe evidence remains the 17,946-row shard 0/3.",
+    "Compiling the androidTest package to speed caused an ART class-loader-context abort on this device; the test APK was left at verify. The app package is speed.",
+    "releaseEligible is false. Pooled matrix evaluation still needs the low-RAM environment."
+  ],
+  "measurement": {
+    "completedLocal": "2026-09-28 21:59",
+    "driverLog": "build/device-evidence/grapheneos-measure-swipe-500-1.driver.log",
+    "instrumentedTests": {"failed": 0, "passed": 1, "skipped": 3},
+    "limit": 500,
+    "metadataFile": "build/device-evidence/grapheneos-measure-swipe-500-1.metadata.json",
+    "outputFile": "build/device-evidence/grapheneos-measure-swipe-500-1.jsonl",
+    "outputSha256": "f719310749804fd928d5fca2b20bd0f25baa8b8e886af2e61060d312e5824440",
+    "precedingSmoke": "build/device-evidence/grapheneos-measure-swipe-smoke-1.jsonl (20 rows, CTC available on all)",
+    "shardCount": 3,
+    "shardIndex": 1,
+    "swipeRows": 500,
+    "wallClockSeconds": 698
+  },
+  "releaseEligible": false,
+  "results": {
+    "fixtureReadinessMs": {"mainDictionary": 25, "swipeLexicon": 8925},
+    "peakAddedNeuralMemoryMiB": 526.83,
+    "swipe": {
+      "ctc": {
+        "available": 500,
+        "latencyP50Ms": 99.8,
+        "latencyP95Ms": 152.6,
+        "timeouts": 0,
+        "top1": 0.81,
+        "top3": 0.872
+      },
+      "fused_swipe": {
+        "latencyP50Ms": 185.4,
+        "latencyP95Ms": 226.4,
+        "top1": 0.466,
+        "top3": 0.504
+      },
+      "geometric": {
+        "available": 345,
+        "latencyP50Ms": 1005.5,
+        "latencyP95Ms": 1500.5,
+        "timeouts": 155,
+        "top1": 0.45,
+        "top3": 0.69
+      }
+    }
+  },
+  "runId": "grapheneos-measure-swipe-500-1",
+  "schemaVersion": 1,
+  "scope": "Diagnostic GrapheneOS swipe measurement with a non-debuggable testOnly APK AOT-compiled at speed. Restores representative CTC latency after grapheneos-hw-shard1-1's interpreted debug APK censored swipe quality. Not a Phase 0 matrix replacement."
+}

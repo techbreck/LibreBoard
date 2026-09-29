@@ -52,9 +52,115 @@ are unaffected; the condition bounds the harness, not the product. Findings:
   representative latency here; the deadline bail returning garbage is a product defect worth
   fixing regardless (fall back to geometric candidates).
 
+## GrapheneOS AOT measure swipe, 2026-09-28
+
+The follow-up is implemented: build type `measure` is non-debuggable `testOnly`, the driver stages
+corpora under `/data/local/tmp` and publishes outputs via `getExternalFilesDir`, and ART compiles
+the app package to `speed` on this phone (`dalvik.vm.usejit` still false). Compiling the
+androidTest package to `speed` aborted with an ART class-loader-context mismatch; leave it at
+`verify`.
+
+Run `grapheneos-measure-swipe-500-1` replayed 500 swipe rows of shard 1/3 on Pixel 9 Pro XL
+(`47311FDAS00026`, GrapheneOS 2026091901) with APK `975362e4…` (not the pinned debug APK). CTC was
+AVAILABLE on every row: top-1/top-3 81.0%/87.2%, p50/p95 99.8/152.6 ms, max 1301 ms, 0 timeouts.
+Lexicon cold-start 8.9 s (interpreted debug: 130.3 s). `fused_swipe` 46.6%/50.4% and p95 226.4 ms
+reproduce the stock fusion deficit and 200 ms overrun. Diagnostic only; evidence
+`docs/models/evidence/grapheneos-measure-swipe-500-1.json`. The Phase 0 matrix still uses the
+interpreted debug GrapheneOS tap leg plus the missing low-RAM environment.
+
+## Swipe fusion, 2026-09-28
+
+Production `fused_swipe` was ranking the native batch matcher and geometric scan over CTC, and
+waiting out the leftover 125 ms proposal budget for geometric even after CTC had finished. CTC now
+owns the fused swipe slate whenever it proposes; geometric fills only when CTC misses. Native
+batch/trace matching is skipped when a swipe model is installed, and the proposal budget is 200 ms.
+
+On a 20-row unsharded GrapheneOS AOT smoke, `fused_swipe` moved from 40%/40% with 6 empty slates to
+75%/80%, matching standalone CTC. That sample does not hold at shard scale.
+
+## GrapheneOS fusion swipe shard 1/3, 2026-09-29
+
+Run `grapheneos-measure-swipe-shard1-1` replayed the full swipe shard 1/3 (17,945 rows) on Pixel 9
+Pro XL (`47311FDAS00026`) with fusion measure APK `5b91a54f…` at ART `speed`. Evidence
+`docs/models/evidence/grapheneos-measure-swipe-shard1-1.json`. Diagnostic only; not a Phase 0
+matrix replacement.
+
+- CTC: 84.16%/90.97% top-1/top-3, p50/p95 94.3/131.0 ms, AVAILABLE on every row. Still short of 90/95.
+- `fused_swipe`: 68.48%/74.28%, p50/p95 213.8/229.6 ms. Up from the pre-fusion 500-row 46.6%/50.4%,
+  still 15.7 pp behind CTC top-1, and 61.4% of rows exceed 200 ms (mode 210–220 ms).
+- `fused_relaxed`: 86.43%/91.94%. Ranking works when both decoders finish; production is the gap
+  (fused top-1 equals CTC top-1 on 71.0% of rows; 3,251 CTC hits that fused misses; 111 empty fused
+  slates).
+- Short fused top-3 96.66% clears 90%; return-trip fused top-3 56.72% does not. Geometric RER +41.9%.
+
+## Production swipe budget, 2026-09-29
+
+`fused_swipe` p50 sat at 214 ms (mode 210–220 ms) because `ParallelSwipeDecoder` still launched
+geometric speculatively and treated CTC `TIMEOUT` partials as a miss, then waited out the 200 ms
+proposal budget. CTC now runs first; geometric starts only when CTC publishes nothing. TIMEOUT
+partials count as a CTC hit.
+
+Same 50 shard-1 rows, fusion measure APK `4d4ed364…` at ART `speed`
+(`grapheneos-fusion-budget-50-1`):
+
+- Before: fused 50%/— top-1, p50/p95 214/262 ms, 40/50 over 200 ms, 6 empty, 27/50 fused top-1 = CTC.
+- After: fused 86%/90% vs CTC 84%/90%, p50/p95 185/235 ms, 12/50 over 200 ms, 2 empty, 43/50 agree.
+  Geometric ran on 1/50 rows. Stage split: decode p50 169 ms, fusion 9 ms, next-word 0 ms.
+
+The 210–220 ms wait-out-budget mode is gone. Remaining p95 over 200 ms is the CTC decode itself
+(p50 169 ms through `LiveSwipeModelSlot`) plus occasional 50 ms neural rescoring, not geometric.
+Diagnostic only.
+
+## GrapheneOS sequential CTC 500-row, 2026-09-29
+
+Run `grapheneos-fusion-budget-500-1` replayed 500 swipe rows of shard 1/3 on the same sequential
+CTC measure APK `4d4ed364…` at ART `speed`. Evidence
+`docs/models/evidence/grapheneos-fusion-budget-500-1.json`. Diagnostic only.
+
+- CTC: 84.6%/92.0% top-1/top-3, p50/p95 96.4/157.7 ms, AVAILABLE on every row.
+- `fused_swipe`: 78.2%/84.0%, p50/p95 185.9/233.8 ms, 183/500 over 200 ms, 0 empty. Same IDs were
+  47.0%/50.8% pre-fusion. `fused_relaxed` 86.6%/93.0%.
+- The 50-row sequential check (86%/90%) overstated overall fused quality. Those same first 50 IDs
+  scored 60%/66% here (33 CTC-empty in the fused path). When fused has CTC candidates (373/500),
+  fused top-1 is 85.5% vs CTC 83.4%. Last 200 rows: fused 85.5%/92.5% vs CTC 84.5%/92.5%.
+- 125 rows sit in 200–210 ms (decode p50 200.4 ms); the old 210–220 ms mode is 8 rows. 127 fused
+  slates had zero CTC candidates and geometric ran on 114 of them. Standalone CTC on those rows is
+  p50 89 ms, so the production 200 ms slot is emptying CTC.
+
+## GrapheneOS LiveSwipeModelSlot partials, 2026-09-29
+
+`LiveSwipeModelSlot` now waits 15 ms for a self-bounded TIMEOUT slate before interrupting, and will
+not submit the next swipe while leftover ONNX still occupies the single decoder thread. Measure APK
+`bc1dccb4…` at ART `speed`. Run `grapheneos-fusion-budget-500-2`, same 500 shard-1 rows. Evidence
+`docs/models/evidence/grapheneos-fusion-budget-500-2.json`. Diagnostic only.
+
+- CTC unchanged: 84.6%/92.0%, p50/p95 100.3/137.8 ms.
+- `fused_swipe`: 83.0%/91.8% (was 78.2%/84.0%), p50/p95 179.5/221.4 ms, 99/500 over 200 ms (was 183),
+  2 empty (was 127 CTC-empty; geometric in fused slate 114 → 0). `fused_relaxed` 86.6%/93.0%.
+- First 50 IDs 86%/92% fused, matching the 50-row sequential check (they were 60%/66% on 500-1).
+  Quintile 0–99 fused 87% with 1 CTC-empty (was 69% / 51).
+
 Pooled status: stock + grapheneos rows (30,482) parse the full schema-4 contract; the evaluator now
 rejects the metadata only for the missing low-RAM environment. The low-RAM leg (shard 2/3) is the
 last matrix entry.
+
+## CTC quality, 2026-09-29
+
+On GrapheneOS swipe shard 1/3 (17,945 rows) CTC misses top-1 on 15.8% (84.16%/90.97%, in-slate
+94.1%). Rank 2–3 is 43% of those misses, absent 37%, rank 4+ 20%. The greedy length window fails on
+3 rows. Host greedy exact is 66.8%; the lexicon beam is the rest of the 84%.
+
+Long (2,071): 73.9%/79.8%, 17.5% absent. Greedy exact 25.4%. Of the absences, 124 are in the 100k
+en-US lexicon (logits/search: `massachusetts` → `mascara`) and 223 are OOV (names, hyphenated).
+Return-trip (5,340): 77.4%/84.4% against the 90% top-3 gate; in-slate 88.1%, so coverage is the
+limiter. Double-letter is the weakest ranking stratum (61.5% top-1): Viterbi says `still`, the
+summed beam prefers `sill`.
+
+`CtcSwipeDecoder` now hoists the unconstrained greedy spelling when it is already on the beam.
+Simulated on this shard: +136 top-1 / −73, 84.16% → 84.92%. Long +0.19 pp, return-trip +0.30 pp.
+`fused_relaxed` 86.43%/91.94% remains the both-decoder ceiling. Perfect ranking of the current CTC
+slate would be 94.1% top-1/top-3 — clears 90% top-1, still short of 95% top-3. Next lever is a new
+`swipe-latin-v1` candidate with stratum-weighted long / double-letter / return-trip training.
 
 ## Completed
 

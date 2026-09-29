@@ -1,0 +1,111 @@
+{
+  "bindings": {
+    "artifactPinCandidateId": "context-shared-session-v2",
+    "contextModelOnnxSha256": "8566382e57ea5a9af76ddf600e189572d62fcc8b227de8415ce88ad0e172022b",
+    "contextTokenizerSha256": "e2089ddfa01ff69eba73195cb3623c86703a812a712ec356ec5fe837297a8cc9",
+    "coreApkSha256": "bc1dccb4344eb1933a5e5a908db663a281e83aa3886b042c9d4e5f78bd5088dd",
+    "onnxRuntimeAarSha256": "54118ac8e37bc4833d32e2cb197ef6bd251f56e5aa9e4e51c3899fb616210d88",
+    "sameApkAsPinnedDebugLeg": false,
+    "swipeModelOnnxSha256": "1301f0d076f526fe0b67f2ea86a38abc8448f6de54d2c7191c002dcd4d05d38c",
+    "variant": "measure (CTC-first; LiveSwipeModelSlot publishes TIMEOUT partials and does not queue behind leftover ONNX)"
+  },
+  "comparedTo": {
+    "runId": "grapheneos-fusion-budget-500-1",
+    "sameRowIds": 500,
+    "fusedSwipeBefore": {
+      "ctcEmptyInFused": 127,
+      "geometricInFusedSlate": 114,
+      "over200Ms": 183,
+      "p50Ms": 185.9,
+      "p95Ms": 233.8,
+      "top1": 0.782,
+      "top3": 0.84
+    }
+  },
+  "device": {
+    "apiLevel": 37,
+    "artCompilerFilter": "speed",
+    "buildFingerprint": "google/komodo/komodo:17/CP3A.260905.009/2026092501:user/release-keys",
+    "device": "komodo",
+    "grapheneOsBuildNumber": "2026092501",
+    "inspectedUser": 0,
+    "jit": false,
+    "model": "Pixel 9 Pro XL",
+    "physicalDevice": true,
+    "sandboxedGooglePlayInstalled": false,
+    "serial": "47311FDAS00026"
+  },
+  "environmentKind": "grapheneos_hardware",
+  "findings": [
+    "LiveSwipeModelSlot was discarding in-flight CTC on TimeoutException (empty TIMEOUT) and queueing the next swipe behind leftover ONNX on the single decoder thread. After publishing late TIMEOUT partials (15 ms grace, no interrupt first) and refusing to queue behind leftover work, the same 500 shard-1 rows go fused_swipe 83.0%/91.8% vs CTC 84.6%/92.0% (was fused 78.2%/84.0%). fused_relaxed 86.6%/93.0%.",
+    "CTC-empty fused slates 127 → 2. Geometric candidates in the fused slate 114 → 0. First 50 IDs, which scored fused 60%/66% on the previous 500-row run, are 86%/92% here (the 50-row sequential check). Quintile 0-99 fused 87% with 1 CTC-empty (was 69% / 51 empty).",
+    "fused_swipe p50/p95 179.5/221.4 ms (was 185.9/233.8). 99/500 over 200 ms (was 183). Decode p50/p95 168.4/201.3 ms, fusion 8.4/56.5 ms. The 200–210 ms clamp is 46 rows (was 125). Remaining p95 over 200 ms is CTC through the production slot plus occasional 50 ms neural."
+  ],
+  "limitations": [
+    "Diagnostic only. The measure APK is not the pinned debugNoMinify APK 8b8eb864… used by stock-hw-shard0-1 and grapheneos-hw-shard1-1.",
+    "500 rows of shard 1/3, not a full shard. Each measured row also runs standalone geometric (1500 ms) and standalone CTC before fused_swipe.",
+    "releaseEligible is false. CTC itself is 84.6%/92.0% on this slice, short of the 90%/95% fused_swipe gates. Pooled matrix evaluation still needs the low-RAM environment."
+  ],
+  "measurement": {
+    "completedLocal": "2026-09-29 13:29",
+    "driverLog": "build/device-evidence/grapheneos-fusion-budget-500-2.driver.log",
+    "instrumentedTests": {"failed": 0, "passed": 1, "skipped": 3},
+    "limit": 500,
+    "metadataFile": "build/device-evidence/grapheneos-fusion-budget-500-2.metadata.json",
+    "outputFile": "build/device-evidence/grapheneos-fusion-budget-500-2.jsonl",
+    "outputSha256": "5526a46104e7efe07c5bb50811dc7e76ce857aa7f7631fb031656c9b6a69e91e",
+    "precedingDiagnostic": "docs/models/evidence/grapheneos-fusion-budget-500-1.json",
+    "shardCount": 3,
+    "shardIndex": 1,
+    "swipeRows": 500,
+    "wallClockSeconds": 714.8
+  },
+  "releaseEligible": false,
+  "results": {
+    "fixtureReadinessMs": {"mainDictionary": 30, "swipeLexicon": 8688},
+    "peakAddedNeuralMemoryMiB": 295.0478515625,
+    "swipe": {
+      "ctc": {
+        "available": 500,
+        "empty": 1,
+        "latencyP50Ms": 100.3,
+        "latencyP95Ms": 137.8,
+        "timeouts": 0,
+        "top1": 0.846,
+        "top3": 0.92
+      },
+      "fused_relaxed": {
+        "empty": 0,
+        "latencyP50Ms": 7.2,
+        "latencyP95Ms": 9.6,
+        "top1": 0.866,
+        "top3": 0.93
+      },
+      "fused_swipe": {
+        "empty": 2,
+        "fusedTop1EqualsCtcTop1": 0.89,
+        "geometricInFusedSlate": 0,
+        "latencyP50Ms": 179.5,
+        "latencyP95Ms": 221.4,
+        "over200Ms": 99,
+        "top1": 0.83,
+        "top3": 0.918
+      },
+      "geometric": {
+        "latencyP50Ms": 1006.0,
+        "latencyP95Ms": 1500.4,
+        "top1": 0.478,
+        "top3": 0.732
+      },
+      "stagesMs": {
+        "decodeP50": 168.4,
+        "decodeP95": 201.3,
+        "fusionP50": 8.4,
+        "fusionP95": 56.5
+      }
+    }
+  },
+  "runId": "grapheneos-fusion-budget-500-2",
+  "schemaVersion": 1,
+  "scope": "Diagnostic 500-row GrapheneOS check that LiveSwipeModelSlot TIMEOUT partials and no-queue-behind-leftover restore fused_swipe to CTC. Not a Phase 0 matrix replacement."
+}
