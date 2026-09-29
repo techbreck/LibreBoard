@@ -50,6 +50,29 @@ record.
 7. Capture p50/p95/p99 tap/swipe latency, cold/warm start, peak RSS, circuit-breaker activation, and
    crash-free results. Attach the device build fingerprint and GrapheneOS version to the release.
 
+## Representative-latency measurement (debug vs testOnly)
+
+GrapheneOS disables the JIT system-wide (`dalvik.vm.usejit=false`). Debuggable packages are
+capped to verify-only AOT, so `debugNoMinify` instrumented replays run fully interpreted and
+cannot be read as product latency — CTC swipe in particular misses its 1500 ms deadline.
+
+For representative Phase 0 latency on this platform, install the non-debuggable `measure`
+variant (`android:testOnly="true"`) and AOT-compile it before the run:
+
+```sh
+./gradlew :app:assembleMeasure :app:assembleMeasureAndroidTest --max-workers=1 \
+  -PlibreboardTestBuildType=measure \
+  -PlibreboardOnnxRuntimeAar=build/linux-runtime-debian-a/output/onnxruntime-mobile-1.26.0.aar \
+  -PlibreboardOnnxRuntimeManifest=build/linux-runtime-debian-a/output/onnxruntime-mobile-1.26.0.build.json \
+  -PlibreboardOnnxRuntimeOperators=build/model-export/onnxruntime-development-types/required_operators-development.config
+adb install -t -r -d app/build/outputs/apk/measure/LibreBoard_0.1.0-alpha01-measure.apk
+adb install -t -r -d app/build/outputs/apk/androidTest/measure/app-measure-androidTest.apk
+python3 tools/run_phase0_measurement.py --serial "$SERIAL" --external-staging --compile-filter speed ...
+```
+
+The driver stages corpora under `/data/local/tmp` because `run-as` is unavailable on a
+non-debuggable package. This is a measurement-harness path, not the release APK.
+
 Automated unit/emulator tests do not satisfy this gate. The release evidence must contain a completed
 physical-device record and the matching machine-readable JSON described in
 `docs/release/grapheneos-evidence-schema.md`; an absent or verifier-rejected record means “not

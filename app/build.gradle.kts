@@ -165,7 +165,10 @@ plugins {
 
 android {
     compileSdk = 36
-    testBuildType = "debugNoMinify"
+    // Default stays debugNoMinify for the connected suite. GrapheneOS representative-latency
+    // runs need a non-debuggable testOnly APK; pass -PlibreboardTestBuildType=measure so the
+    // androidTest APK is built against that variant (run-as is unavailable there).
+    testBuildType = providers.gradleProperty("libreboardTestBuildType").orElse("debugNoMinify").get()
 
     defaultConfig {
         applicationId = "org.libreboard.keyboard"
@@ -209,6 +212,14 @@ android {
             isJniDebuggable = false
             signingConfig = signingConfigs.getByName("debug")
             applicationIdSuffix = ".debug"
+        }
+        // Non-debuggable testOnly sibling of debugNoMinify. GrapheneOS disables the JIT and
+        // caps debuggable packages to verify-only AOT, so instrumented debug replays run
+        // interpreted. This variant is adb-installable (`adb install -t`) and AOT-compiles.
+        create("measure") {
+            initWith(getByName("debugNoMinify"))
+            isDebuggable = false
+            isJniDebuggable = false
         }
 
         androidComponents.onVariants { variant: ApplicationVariant ->
@@ -276,6 +287,13 @@ android {
     dependenciesInfo {
         includeInApk = false
         includeInBundle = false
+    }
+
+    sourceSets {
+        getByName("measure") {
+            java.srcDir("src/debugNoMinify/java")
+            res.srcDir("src/debugNoMinify/res")
+        }
     }
 
     namespace = "helium314.keyboard.latin"

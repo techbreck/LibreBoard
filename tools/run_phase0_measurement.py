@@ -33,6 +33,8 @@ PACKAGE = "org.libreboard.keyboard.debug"
 RUNNER = "org.libreboard.keyboard.debug.test/androidx.test.runner.AndroidJUnitRunner"
 TEST_CLASS = "helium314.keyboard.latin.engine.Phase0MeasurementInstrumentedTest"
 REMOTE_DIR = "phase0-measurement"
+STAGING_DIR = "/data/local/tmp/phase0-staging"
+PUBLISH_DIR = f"/sdcard/Android/data/{PACKAGE}/files/{REMOTE_DIR}"
 SAFE_NAME = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 ENVIRONMENTS = {"stock_android_hardware", "grapheneos_hardware", "low_ram_emulator"}
 SHA256_LINE = re.compile(r"^([0-9a-f]{64})\s")
@@ -205,6 +207,69 @@ def push_private(adb_path: str, serial: str | None, local: pathlib.Path, remote_
     return local_sha256
 
 
+def package_allows_run_as(adb_path: str, serial: str | None,
+                          device_user: int | None = None) -> bool:
+    """Debuggable packages expose `run-as`; GrapheneOS testOnly measurement builds do not."""
+    run_as = ["run-as", PACKAGE]
+    if device_user is not None:
+        run_as += ["--user", str(device_user)]
+    try:
+        output = adb(adb_path, serial, "shell", *run_as, "id")
+    except MeasurementRunError:
+        return False
+    return "uid=" in output
+
+
+def ensure_staging_dir(adb_path: str, serial: str | None) -> None:
+    """Readable corpora live here; GrapheneOS apps cannot write to /data/local/tmp."""
+    adb(adb_path, serial, "shell", "mkdir", "-p", STAGING_DIR)
+    adb(adb_path, serial, "shell", "chmod", "777", STAGING_DIR)
+
+
+def ensure_publish_dir(adb_path: str, serial: str | None) -> None:
+    """App-owned external files dir: the test writes here, adb pulls without run-as."""
+    adb(adb_path, serial, "shell", "mkdir", "-p", PUBLISH_DIR)
+    adb(adb_path, serial, "shell", "chmod", "775", PUBLISH_DIR)
+
+
+def push_staging(adb_path: str, serial: str | None, local: pathlib.Path, remote_name: str,
+                 expected_sha256: str | None = None) -> str:
+    """Stage a file under /data/local/tmp for a non-debuggable testOnly APK."""
+    if not SAFE_NAME.fullmatch(remote_name):
+        raise MeasurementRunError(f"unsafe remote name {remote_name}")
+    local_sha256 = sha256_file(local)
+    if expected_sha256 is not None and local_sha256 != expected_sha256:
+        raise MeasurementRunError(
+            f"{local} hashes to {local_sha256}, but metadata binds {expected_sha256}")
+    ensure_staging_dir(adb_path, serial)
+    dest = f"{STAGING_DIR}/{remote_name}"
+    adb(adb_path, serial, "push", str(local), dest)
+    adb(adb_path, serial, "shell", "chmod", "644", dest)
+    output = adb(adb_path, serial, "exec-out", "sha256sum", dest)
+    match = SHA256_LINE.match(output.strip())
+    if not match:
+        raise MeasurementRunError(f"could not hash {dest} on the device: {output[:256]}")
+    if match.group(1) != local_sha256:
+        raise MeasurementRunError(
+            f"{remote_name} landed on the device as {match.group(1)}, not {local_sha256}")
+    return local_sha256
+
+
+def compile_package(adb_path: str, serial: str | None, compile_filter: str,
+                    device_user: int | None = None) -> None:
+    """Force AOT so GrapheneOS representative-latency runs are not interpreted."""
+    if not SAFE_NAME.fullmatch(compile_filter):
+        raise MeasurementRunError(f"unsafe compile filter {compile_filter}")
+    command = ["shell", "cmd", "package", "compile", "-m", compile_filter, "-f"]
+    if device_user is not None:
+        command += ["--user", str(device_user)]
+    command.append(PACKAGE)
+    output = adb(adb_path, serial, *command, timeout=300)
+    if "Failure" in output or "Error" in output:
+        raise MeasurementRunError(
+            f"cmd package compile -m {compile_filter} failed: {output[:512]}")
+
+
 PIN_KEYS = {
     "schemaVersion", "candidateId", "scope", "contextModelSha256", "contextTokenizerSha256",
     "swipeModelSha256", "onnxRuntimeAarSha256", "rejectedContextModelSha256", "notes",
@@ -344,6 +409,12 @@ def main(argv=None) -> int:
                              "profile); adds --user to instrument and run-as calls")
     parser.add_argument("--instrument-timeout", type=int, default=4 * 60 * 60,
                         help="seconds to wait for the instrumented run (default 4h)")
+    parser.add_argument("--external-staging", action="store_true",
+                        help="stage corpora under /data/local/tmp and skip run-as (required for "
+                             "non-debuggable testOnly APKs; auto-selected when run-as is refused)")
+    parser.add_argument("--compile-filter",
+                        help="run `cmd package compile -m FILTER -f` before measuring (use "
+                             "`speed` for GrapheneOS representative-latency runs)")
     parser.add_argument("--prediction", action="store_true",
                         help="also replay the tap corpus's context->target pairs through the "
                              "next-word prediction path (empty composer, InputStyle.PREDICTION)")
@@ -380,6 +451,22 @@ def main(argv=None) -> int:
     adb(adb_path, args.serial, "wait-for-device", timeout=600)
     if args.core_apk_sha256 is not None:
         verify_installed_apk(adb_path, args.serial, args.core_apk_sha256, args.device_user)
+    use_run_as = (not args.external_staging) and package_allows_run_as(
+        adb_path, args.serial, args.device_user)
+    if args.compile_filter:
+        compile_package(adb_path, args.serial, args.compile_filter, args.device_user)
+
+    def inject(local: pathlib.Path, remote_name: str, expected: str | None = None) -> str:
+        if use_run_as:
+            return push_private(adb_path, args.serial, local, remote_name, args.device_user,
+                                expected_sha256=expected)
+        return push_staging(adb_path, args.serial, local, remote_name, expected_sha256=expected)
+
+    def extra_path(remote_name: str) -> str:
+        return f"{REMOTE_DIR}/{remote_name}" if use_run_as else f"{STAGING_DIR}/{remote_name}"
+
+    def extra_output(remote_name: str) -> str:
+        return remote_name
 
     model_arg: list[str] = []
     if args.model_dir is not None:
@@ -393,11 +480,9 @@ def main(argv=None) -> int:
         if injected in rejected:
             raise MeasurementRunError(
                 f"{onnx_files[0]} is the rejected context model {injected}: {rejected[injected]}")
-        push_private(adb_path, args.serial, onnx_files[0], "context.onnx", args.device_user,
-                     expected_sha256=context_model_sha256)
-        push_private(adb_path, args.serial, tokenizer, "tokenizer.json", args.device_user,
-                     expected_sha256=(pin or {}).get("contextTokenizerSha256"))
-        model_arg = ["-e", "phase0ModelDir", REMOTE_DIR]
+        inject(onnx_files[0], "context.onnx", context_model_sha256)
+        inject(tokenizer, "tokenizer.json", (pin or {}).get("contextTokenizerSha256"))
+        model_arg = ["-e", "phase0ModelDir", REMOTE_DIR if use_run_as else STAGING_DIR]
     elif context_model_sha256 is not None:
         raise MeasurementRunError(
             "--context-model-sha256 binds metadata to a model this run never injected; "
@@ -409,13 +494,15 @@ def main(argv=None) -> int:
         "-e", "phase0Environment", args.environment,
         *model_arg,
     ]
+    if not use_run_as:
+        instrument_args += ["-e", "phase0UseExternalFiles", "true"]
     if args.corpus is not None:
-        push_private(adb_path, args.serial, args.corpus, "corpus.jsonl", args.device_user)
+        inject(args.corpus, "corpus.jsonl")
         remote_outputs.append("measurement.jsonl")
         instrument_args += [
             "-e", "libreboardRequirePhase0Measurement", "true",
-            "-e", "phase0CorpusFile", f"{REMOTE_DIR}/corpus.jsonl",
-            "-e", "phase0OutputFile", "measurement.jsonl",
+            "-e", "phase0CorpusFile", extra_path("corpus.jsonl"),
+            "-e", "phase0OutputFile", extra_output("measurement.jsonl"),
         ]
     if args.prediction:
         if args.corpus is None:
@@ -423,23 +510,21 @@ def main(argv=None) -> int:
         remote_outputs.append("prediction-measurement.jsonl")
         instrument_args += [
             "-e", "libreboardRequirePhase0PredictionMeasurement", "true",
-            "-e", "phase0PredictionOutputFile", "prediction-measurement.jsonl",
+            "-e", "phase0PredictionOutputFile", extra_output("prediction-measurement.jsonl"),
         ]
         if args.rescorer_budget_ms is not None:
             instrument_args += ["-e", "phase0RescorerBudgetMs", str(args.rescorer_budget_ms)]
     if args.swipe_corpus is not None:
-        push_private(adb_path, args.serial, args.swipe_corpus, "swipe-corpus.jsonl",
-                     args.device_user)
+        inject(args.swipe_corpus, "swipe-corpus.jsonl")
         remote_outputs.append("swipe-measurement.jsonl")
         instrument_args += [
             "-e", "libreboardRequirePhase0SwipeMeasurement", "true",
-            "-e", "phase0SwipeCorpusFile", f"{REMOTE_DIR}/swipe-corpus.jsonl",
-            "-e", "phase0SwipeOutputFile", "swipe-measurement.jsonl",
+            "-e", "phase0SwipeCorpusFile", extra_path("swipe-corpus.jsonl"),
+            "-e", "phase0SwipeOutputFile", extra_output("swipe-measurement.jsonl"),
         ]
         if args.swipe_model is not None:
-            push_private(adb_path, args.serial, args.swipe_model, "swipe.onnx", args.device_user,
-                         expected_sha256=swipe_model_sha256)
-            instrument_args += ["-e", "phase0SwipeModelFile", f"{REMOTE_DIR}/swipe.onnx"]
+            inject(args.swipe_model, "swipe.onnx", swipe_model_sha256)
+            instrument_args += ["-e", "phase0SwipeModelFile", extra_path("swipe.onnx")]
         elif swipe_model_sha256 is not None:
             raise MeasurementRunError(
                 "--swipe-model-sha256 binds metadata to a model this run never injected; "
@@ -459,8 +544,14 @@ def main(argv=None) -> int:
         run_as += ["--user", str(args.device_user)]
     # Clear the previous run's artifacts. Without this a run that dies before writing leaves an
     # older file in place, and every downstream check would be inspecting stale measurements.
-    stale = " ".join(f"files/{REMOTE_DIR}/{name}" for name in (*remote_outputs, "environment.json"))
-    adb(adb_path, args.serial, "shell", *run_as, "sh", "-c", f"'rm -f {stale}'")
+    if use_run_as:
+        stale = " ".join(f"files/{REMOTE_DIR}/{name}" for name in (*remote_outputs, "environment.json"))
+        adb(adb_path, args.serial, "shell", *run_as, "sh", "-c", f"'rm -f {stale}'")
+    else:
+        ensure_staging_dir(adb_path, args.serial)
+        stale = " ".join(f"{PUBLISH_DIR}/{name}" for name in (*remote_outputs, "environment.json"))
+        adb(adb_path, args.serial, "shell", "sh", "-c", f"'rm -f {stale}'")
+        print("using external staging (non-debuggable / no run-as)", file=sys.stderr)
 
     instrument_cmd = ["am", "instrument", "-w", "-r"]
     if args.device_user is not None:
@@ -472,19 +563,26 @@ def main(argv=None) -> int:
     test_counts = parse_instrumentation_result(instrument_output, len(remote_outputs))
 
     adb(adb_path, args.serial, "wait-for-device", timeout=600)
-    pulled = b"".join(
-        adb_bytes(adb_path, args.serial, "exec-out", *run_as,
-                  "cat", f"files/{REMOTE_DIR}/{name}")
-        for name in remote_outputs
-    )
+    if use_run_as:
+        pulled = b"".join(
+            adb_bytes(adb_path, args.serial, "exec-out", *run_as,
+                      "cat", f"files/{REMOTE_DIR}/{name}")
+            for name in remote_outputs
+        )
+        sidecar_raw = adb(adb_path, args.serial, "exec-out", *run_as,
+                          "cat", f"files/{REMOTE_DIR}/environment.json")
+    else:
+        pulled = b"".join(
+            adb_bytes(adb_path, args.serial, "exec-out", "cat", f"{PUBLISH_DIR}/{name}")
+            for name in remote_outputs
+        )
+        sidecar_raw = adb(adb_path, args.serial, "exec-out", "cat",
+                          f"{PUBLISH_DIR}/environment.json")
     row_counts = verify_measurement_rows(pulled, args.run_id, args.environment)
     if args.corpus is not None and not row_counts["tap"]:
         raise MeasurementRunError("the tap corpus produced no measured rows")
     if args.swipe_corpus is not None and not row_counts["swipe"]:
         raise MeasurementRunError("the swipe corpus produced no measured rows")
-
-    sidecar_raw = adb(adb_path, args.serial, "exec-out", *run_as,
-                      "cat", f"files/{REMOTE_DIR}/environment.json")
     sidecar = json.loads(sidecar_raw)
     if sidecar.get("testRunId") != args.run_id or sidecar.get("kind") != args.environment:
         raise MeasurementRunError(
@@ -527,6 +625,8 @@ def main(argv=None) -> int:
         "measuredRows": row_counts,
         "instrumentedTests": test_counts,
         "artifactPin": (pin or {}).get("candidateId"),
+        "externalStaging": not use_run_as,
+        "compileFilter": args.compile_filter,
         "releaseEligible": False,
     }, indent=2, sort_keys=True))
     return 0

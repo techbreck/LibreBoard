@@ -12,6 +12,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import evaluate_engine  # noqa: E402
 from run_phase0_measurement import (  # noqa: E402
     MeasurementRunError,
+    compile_package,
     load_artifact_pin,
     parse_instrumentation_result,
     pinned_hash,
@@ -87,6 +88,12 @@ class ParseInstrumentationResultTest(unittest.TestCase):
         # Both corpora were requested but only the tap test ran.
         with self.assertRaisesRegex(MeasurementRunError, "expected 2 instrumented"):
             parse_instrumentation_result(instrumentation(1, 0), 2)
+
+
+class CompilePackageTest(unittest.TestCase):
+    def test_unsafe_filters_are_rejected_before_adb(self):
+        with self.assertRaisesRegex(MeasurementRunError, "unsafe compile filter"):
+            compile_package("adb", None, "speed; reboot")
 
 
 class VerifyMeasurementRowsTest(unittest.TestCase):
