@@ -281,6 +281,75 @@ class LegacySuggestionFusionTest {
     }
 
     @Test
+    fun swipeFusionPublishesCtcRankingAheadOfNativeMatcherScores() {
+        val fusion = LegacySuggestionFusion()
+        val result = fusion.fuse(
+            rawText = "",
+            classicSuggestions = listOf(
+                suggestion("system", 2_000_000, english),
+                suggestion("design", 1_500_000, english),
+            ),
+            supplementalCandidates = listOf(
+                Candidate(
+                    "division",
+                    languageTag = "en-US",
+                    sources = setOf(CandidateSource.CTC_SWIPE),
+                    components = ScoreComponents(spatial = -0.4, staticFrequency = 1.0),
+                ),
+                Candidate(
+                    "divisor",
+                    languageTag = "en-US",
+                    sources = setOf(CandidateSource.CTC_SWIPE),
+                    components = ScoreComponents(spatial = -0.8, staticFrequency = 0.4),
+                ),
+            ),
+            enabledLanguageTags = listOf("en-US"),
+            defaultLocale = english,
+            inputStyle = InputStyle.SWIPE,
+            typingRequest = TypingRequest.bounded(
+                rawText = "",
+                geometry = KeyGeometry(1f, 1f, emptyList()),
+                enabledLanguages = listOf("en-US"),
+                fieldPolicy = FieldPolicy.NORMAL,
+                inputStyle = InputStyle.SWIPE,
+                sequenceId = 19,
+            ),
+        )
+
+        assertEquals(listOf("division", "divisor"), result.suggestions.map { it.mWord })
+    }
+
+    @Test
+    fun swipeFusionFallsBackToGeometricWhenCtcIsAbsent() {
+        val fusion = LegacySuggestionFusion()
+        val result = fusion.fuse(
+            rawText = "",
+            classicSuggestions = emptyList(),
+            supplementalCandidates = listOf(
+                Candidate(
+                    "highway",
+                    languageTag = "en-US",
+                    sources = setOf(CandidateSource.GEOMETRIC_SWIPE),
+                    components = ScoreComponents(spatial = 1.0, staticFrequency = 1.0),
+                ),
+            ),
+            enabledLanguageTags = listOf("en-US"),
+            defaultLocale = english,
+            inputStyle = InputStyle.SWIPE,
+            typingRequest = TypingRequest.bounded(
+                rawText = "",
+                geometry = KeyGeometry(1f, 1f, emptyList()),
+                enabledLanguages = listOf("en-US"),
+                fieldPolicy = FieldPolicy.NORMAL,
+                inputStyle = InputStyle.SWIPE,
+                sequenceId = 20,
+            ),
+        )
+
+        assertEquals(listOf("highway"), result.suggestions.map { it.mWord })
+    }
+
+    @Test
     fun completeSwipeLocksToStrongestLanguageEvenWhenCtcScoresAreNegative() {
         val fusion = LegacySuggestionFusion()
         val result = fusion.fuse(

@@ -2,7 +2,6 @@
 package helium314.keyboard.latin.engine.geometric
 
 import helium314.keyboard.latin.engine.Candidate
-import helium314.keyboard.latin.engine.CandidateKey
 import helium314.keyboard.latin.engine.Deadline
 import helium314.keyboard.latin.engine.EngineAvailability
 import helium314.keyboard.latin.engine.MAX_CANDIDATES
@@ -11,50 +10,42 @@ import helium314.keyboard.latin.engine.SwipeDecodeResult
 import helium314.keyboard.latin.engine.SwipeDecoder
 import helium314.keyboard.latin.engine.TypingRequest
 import helium314.keyboard.latin.engine.key
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.TimeoutException
 import kotlin.math.max
 import kotlin.math.sqrt
 
-/** Runs the pure-Kotlin fallback beside optional CTC inference and preserves either partial slate. */
+/**
+ * CTC owns the swipe slate whenever it proposes. Geometric runs only after CTC misses, using
+ * leftover proposal budget (or a short grace window if CTC already exhausted it).
+ *
+ * Speculative parallel geometric scan was burning the 200 ms proposal budget even after CTC had
+ * finished: cancel() does not stop the scan, TIMEOUT partials were treated as a miss, and the
+ * caller then waited out the remainder.
+ */
 class ParallelSwipeDecoder(
     private val ctcDecoder: SwipeDecoder,
     private val geometricDecoder: SwipeDecoder,
-    private val geometricExecutor: ExecutorService = sharedGeometricExecutor,
 ) : SwipeDecoder {
     override fun decode(request: TypingRequest, deadline: Deadline): SwipeDecodeResult {
-        val geometricFuture = geometricExecutor.submit<SwipeDecodeResult> {
-            runCatching { geometricDecoder.decode(request, deadline) }
-                .getOrElse { SwipeDecodeResult(EngineAvailability.UNAVAILABLE) }
-        }
         val ctc = runCatching { ctcDecoder.decode(request, deadline) }
             .getOrElse { SwipeDecodeResult(EngineAvailability.UNAVAILABLE) }
-        val geometric = try {
-            geometricFuture.get(deadline.remainingMillis, TimeUnit.MILLISECONDS)
-        } catch (_: TimeoutException) {
-            // The geometric decoder stops iterating at the same deadline and returns whatever it
-            // already scored. When CTC consumes the whole proposal budget, remainingMillis is zero
-            // and the future would be cancelled microseconds before that partial slate lands. Wait
-            // a short grace window instead of discarding it.
-            try {
-                geometricFuture.get(GEOMETRIC_TIMEOUT_GRACE_MILLIS, TimeUnit.MILLISECONDS)
-            } catch (_: TimeoutException) {
-                geometricFuture.cancel(true)
-                SwipeDecodeResult(EngineAvailability.TIMEOUT)
-            }
-        } catch (_: InterruptedException) {
-            geometricFuture.cancel(true)
-            Thread.currentThread().interrupt()
-            SwipeDecodeResult(EngineAvailability.UNAVAILABLE)
-        } catch (_: Throwable) {
-            SwipeDecodeResult(EngineAvailability.UNAVAILABLE)
+        if (hasUsableCtc(ctc)) {
+            return SwipeDecodeResult(EngineAvailability.AVAILABLE, leading(ctc.candidates, emptyList()))
         }
-        val candidates = merge(ctc.candidates, geometric.candidates)
+        val geometricDeadline = if (deadline.remainingMillis > 0) {
+            deadline
+        } else {
+            Deadline.afterMillis(GEOMETRIC_TIMEOUT_GRACE_MILLIS)
+        }
+        val geometric = runCatching { geometricDecoder.decode(request, geometricDeadline) }
+            .getOrElse { SwipeDecodeResult(EngineAvailability.UNAVAILABLE) }
+        val candidates = if (geometric.candidates.isNotEmpty()) {
+            leading(geometric.candidates, ctc.candidates)
+        } else {
+            ctc.candidates.take(MAX_CANDIDATES)
+        }
         val availability = when {
-            ctc.availability == EngineAvailability.AVAILABLE ||
-                geometric.availability == EngineAvailability.AVAILABLE -> EngineAvailability.AVAILABLE
+            geometric.availability == EngineAvailability.AVAILABLE || candidates.isNotEmpty() ->
+                EngineAvailability.AVAILABLE
             ctc.availability == EngineAvailability.TIMEOUT ||
                 geometric.availability == EngineAvailability.TIMEOUT -> EngineAvailability.TIMEOUT
             ctc.availability == EngineAvailability.CIRCUIT_OPEN -> EngineAvailability.CIRCUIT_OPEN
@@ -66,35 +57,28 @@ class ParallelSwipeDecoder(
         return SwipeDecodeResult(availability, candidates)
     }
 
-    private fun merge(ctcCandidates: List<Candidate>, geometricCandidates: List<Candidate>): List<Candidate> {
-        // CTC log probabilities and geometric template costs do not share a numerical scale.
-        // Normalize each completed slate before the bounded union so either decoder can contribute
-        // candidates; the shared scorer normalizes the resulting spatial component again alongside
-        // static, personal, language, and context evidence.
-        val candidates = normalizeSpatial(ctcCandidates) + normalizeSpatial(geometricCandidates)
-        val merged = linkedMapOf<CandidateKey, Candidate>()
-        candidates.forEach { candidate ->
-            val previous = merged[candidate.key]
-            merged[candidate.key] = if (previous == null) candidate else previous.copy(
-                sources = previous.sources + candidate.sources,
+    /** Keep the leading decoder's order; append unique trailing surfaces up to the slate cap. */
+    private fun leading(primary: List<Candidate>, secondary: List<Candidate>): List<Candidate> {
+        val head = normalizeSpatial(primary)
+        val extra = normalizeSpatial(secondary).associateBy { it.key }
+        val mergedHead = head.map { candidate ->
+            val other = extra[candidate.key] ?: return@map candidate
+            candidate.copy(
+                sources = candidate.sources + other.sources,
                 components = ScoreComponents(
-                    spatial = maximum(previous.components.spatial, candidate.components.spatial),
-                    staticFrequency = maximum(previous.components.staticFrequency, candidate.components.staticFrequency),
-                    personal = maximum(previous.components.personal, candidate.components.personal),
-                    context = maximum(previous.components.context, candidate.components.context),
-                    language = maximum(previous.components.language, candidate.components.language),
+                    spatial = candidate.components.spatial,
+                    staticFrequency = maximum(candidate.components.staticFrequency, other.components.staticFrequency),
+                    personal = maximum(candidate.components.personal, other.components.personal),
+                    context = maximum(candidate.components.context, other.components.context),
+                    language = maximum(candidate.components.language, other.components.language),
                 ),
-                exactPersonalMatch = previous.exactPersonalMatch || candidate.exactPersonalMatch,
-                rejectionPenalty = max(previous.rejectionPenalty, candidate.rejectionPenalty),
-                totalScore = max(previous.totalScore, candidate.totalScore),
-                calibratedProbability = max(previous.calibratedProbability, candidate.calibratedProbability),
+                exactPersonalMatch = candidate.exactPersonalMatch || other.exactPersonalMatch,
+                rejectionPenalty = max(candidate.rejectionPenalty, other.rejectionPenalty),
             )
         }
-        return merged.values.sortedWith(
-            compareByDescending<Candidate> { it.components.spatial ?: Double.NEGATIVE_INFINITY }
-                .thenByDescending { it.components.staticFrequency ?: Double.NEGATIVE_INFINITY }
-                .thenBy { it.surface },
-        ).take(MAX_CANDIDATES)
+        val seen = mergedHead.mapTo(linkedSetOf()) { it.key }
+        val tail = extra.values.filter { seen.add(it.key) }
+        return (mergedHead + tail).take(MAX_CANDIDATES)
     }
 
     private fun normalizeSpatial(candidates: List<Candidate>): List<Candidate> {
@@ -129,16 +113,12 @@ class ParallelSwipeDecoder(
     }
 
     private companion object {
-        /** Post-deadline wait for the self-bounded geometric decoder's partial slate. */
+        /** Fallback window when CTC already spent the proposal budget and published nothing. */
         const val GEOMETRIC_TIMEOUT_GRACE_MILLIS = 15L
 
-        val sharedGeometricExecutor: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
-            // The geometric scan is a best-effort fallback; letting it compete at normal priority
-            // starves the neural decode on devices with few cores.
-            Thread(runnable, "LibreBoardGeometricSwipe").apply {
-                isDaemon = true
-                priority = Thread.MIN_PRIORITY
-            }
-        }
+        fun hasUsableCtc(result: SwipeDecodeResult): Boolean =
+            result.candidates.isNotEmpty() &&
+                (result.availability == EngineAvailability.AVAILABLE ||
+                    result.availability == EngineAvailability.TIMEOUT)
     }
 }

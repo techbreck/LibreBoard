@@ -45,14 +45,14 @@ class ParallelSwipeDecoderTest {
 
         val candidate = decoder.decode(request(), Deadline.afterMillis(100)).candidates.single()
 
+        assertEquals("cat", candidate.surface)
         assertTrue(CandidateSource.CTC_SWIPE in candidate.sources)
-        assertTrue(CandidateSource.GEOMETRIC_SWIPE in candidate.sources)
         assertEquals(1.0, candidate.components.spatial!!, 0.0)
     }
 
     @Test
     fun unrelatedRawScoreScalesCannotSuppressOneDecoderSlate() {
-        val ctc = (0 until 32).map { index ->
+        val ctc = (0 until 31).map { index ->
             candidate("ctc$index", CandidateSource.CTC_SWIPE, -index / 100.0)
         }
         val geometric = listOf(
@@ -67,9 +67,9 @@ class ParallelSwipeDecoderTest {
 
         val result = decoder.decode(request(), Deadline.afterMillis(100))
 
-        assertEquals(32, result.candidates.size)
-        assertTrue(result.candidates.any { it.surface == "geometric" })
-        assertTrue(result.candidates.any { CandidateSource.CTC_SWIPE in it.sources })
+        assertEquals("ctc0", result.candidates.first().surface)
+        assertEquals(31, result.candidates.size)
+        assertTrue(result.candidates.all { CandidateSource.CTC_SWIPE in it.sources })
     }
 
     @Test
@@ -91,16 +91,89 @@ class ParallelSwipeDecoderTest {
     }
 
     @Test
-    fun geometricPartialSlateSurvivesDeadlineExhaustedByCtc() {
+    fun availableCtcDoesNotWaitForSlowGeometric() {
+        var geometricCalled = false
+        val started = System.nanoTime()
         val decoder = ParallelSwipeDecoder(
             ctcDecoder = SwipeDecoder { _, _ ->
-                Thread.sleep(60)
+                SwipeDecodeResult(
+                    EngineAvailability.AVAILABLE,
+                    listOf(candidate("cities", CandidateSource.CTC_SWIPE, -0.1)),
+                )
+            },
+            geometricDecoder = SwipeDecoder { _, _ ->
+                geometricCalled = true
+                Thread.sleep(200)
+                SwipeDecodeResult(
+                    EngineAvailability.AVAILABLE,
+                    listOf(candidate("system", CandidateSource.GEOMETRIC_SWIPE, 5.0)),
+                )
+            },
+        )
+
+        val result = decoder.decode(request(), Deadline.afterMillis(100))
+        val elapsedMs = (System.nanoTime() - started) / 1_000_000.0
+
+        assertEquals(EngineAvailability.AVAILABLE, result.availability)
+        assertEquals("cities", result.candidates.first().surface)
+        assertTrue("elapsed ${elapsedMs}ms", elapsedMs < 80)
+        assertTrue("geometric must not run when CTC proposed", !geometricCalled)
+    }
+
+    @Test
+    fun timedOutCtcFallsBackToGeometricCandidates() {
+        val decoder = ParallelSwipeDecoder(
+            ctcDecoder = SwipeDecoder { _, _ -> SwipeDecodeResult(EngineAvailability.TIMEOUT) },
+            geometricDecoder = SwipeDecoder { _, _ ->
+                SwipeDecodeResult(
+                    EngineAvailability.AVAILABLE,
+                    listOf(candidate("highway", CandidateSource.GEOMETRIC_SWIPE, -0.2)),
+                )
+            },
+        )
+
+        val result = decoder.decode(request(), Deadline.afterMillis(50))
+
+        assertEquals(EngineAvailability.AVAILABLE, result.availability)
+        assertEquals("highway", result.candidates.first().surface)
+    }
+
+    @Test
+    fun timeoutCtcPartialsArePublishedWithoutWaitingForGeometric() {
+        val started = System.nanoTime()
+        val decoder = ParallelSwipeDecoder(
+            ctcDecoder = SwipeDecoder { _, _ ->
+                SwipeDecodeResult(
+                    EngineAvailability.TIMEOUT,
+                    listOf(candidate("cities", CandidateSource.CTC_SWIPE, -0.1)),
+                )
+            },
+            geometricDecoder = SwipeDecoder { _, _ ->
+                Thread.sleep(200)
+                SwipeDecodeResult(
+                    EngineAvailability.AVAILABLE,
+                    listOf(candidate("system", CandidateSource.GEOMETRIC_SWIPE, 5.0)),
+                )
+            },
+        )
+
+        val result = decoder.decode(request(), Deadline.afterMillis(100))
+        val elapsedMs = (System.nanoTime() - started) / 1_000_000.0
+
+        assertEquals(EngineAvailability.AVAILABLE, result.availability)
+        assertEquals("cities", result.candidates.first().surface)
+        assertTrue(CandidateSource.CTC_SWIPE in result.candidates.first().sources)
+        assertTrue("elapsed ${elapsedMs}ms", elapsedMs < 80)
+    }
+
+    @Test
+    fun emptyCtcFallsBackToGeometricAfterDeadline() {
+        val decoder = ParallelSwipeDecoder(
+            ctcDecoder = SwipeDecoder { _, _ ->
+                Thread.sleep(30)
                 SwipeDecodeResult(EngineAvailability.TIMEOUT)
             },
             geometricDecoder = SwipeDecoder { _, _ ->
-                // The production decoder stops scanning at the deadline, then needs a few
-                // milliseconds to sort and publish the partial slate.
-                Thread.sleep(35)
                 SwipeDecodeResult(
                     EngineAvailability.TIMEOUT,
                     listOf(candidate("cat", CandidateSource.GEOMETRIC_SWIPE, -0.2)),
@@ -108,9 +181,9 @@ class ParallelSwipeDecoderTest {
             },
         )
 
-        val result = decoder.decode(request(), Deadline.afterMillis(25))
+        val result = decoder.decode(request(), Deadline.afterMillis(5))
 
-        assertEquals(EngineAvailability.TIMEOUT, result.availability)
+        assertEquals(EngineAvailability.AVAILABLE, result.availability)
         assertEquals("cat", result.candidates.single().surface)
     }
 

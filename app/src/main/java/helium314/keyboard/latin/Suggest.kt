@@ -19,9 +19,12 @@ import helium314.keyboard.latin.define.DecoderSpecificConstants.SHOULD_AUTO_CORR
 import helium314.keyboard.latin.define.DecoderSpecificConstants.SHOULD_REMOVE_PREVIOUSLY_REJECTED_SUGGESTION
 import helium314.keyboard.latin.dictionary.Dictionary
 import helium314.keyboard.latin.engine.Candidate
+import helium314.keyboard.latin.engine.CandidateSource
 import helium314.keyboard.latin.engine.Deadline
+import helium314.keyboard.latin.engine.EngineAvailability
 import helium314.keyboard.latin.engine.FieldClassResolver
 import helium314.keyboard.latin.engine.InputStyle
+import helium314.keyboard.latin.engine.SwipeDecodeResult
 import helium314.keyboard.latin.engine.TypingRequest
 import helium314.keyboard.latin.engine.WordLock
 import helium314.keyboard.latin.engine.integration.HeliBoardGeometricFallback
@@ -64,6 +67,12 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
      * Production never sets this; the Phase 0 harness uses it to measure true on-device cost.
      */
     var contextRescoringBudgetOverrideMs: Long? = null
+
+    /**
+     * Measurement hook: stage timings and decoder provenance for the last swipe batch call.
+     * Production never sets this; the Phase 0 harness uses it to split fused_swipe latency.
+     */
+    var swipeBatchTrace: SwipeBatchTrace? = null
     private val mPlausibilityThreshold = 0f
     private val nextWordSuggestionsCache = HashMap<NgramContext, SuggestionResults>()
     private val liveCandidateFusion = LegacySuggestionFusion()
@@ -481,22 +490,25 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
         inputStyle: Int, isCorrectionEnabled: Boolean, sequenceNumber: Int
     ): SuggestedWords {
         val composedData = wordComposer.composedDataSnapshot
-        val suggestionResults = mDictionaryFacilitator.getSuggestionResults(
-            composedData, ngramContext, keyboard,
-            settingsValuesForSuggestion, SESSION_ID_GESTURE, inputStyle
+        val suggestionResults = SuggestionResults(
+            SuggestedWords.MAX_SUGGESTIONS, false, false
         )
-        // HeliBoard's open native dictionary contains no gesture policy. LibreBoard always runs a
-        // data-only geometric fallback by converting the live path to a nearest-key trace and then
-        // asking the retained AOSP typing matcher for spatial corrections. Neural CTC candidates
-        // are unioned at this same boundary when an approved model is available.
-        HeliBoardGeometricFallback.toTypingComposedData(composedData.mInputPointers, keyboard)
-            ?.let { fallbackData ->
-                val fallback = mDictionaryFacilitator.getSuggestionResults(
-                    fallbackData, ngramContext, keyboard, settingsValuesForSuggestion,
-                    SESSION_ID_GESTURE, inputStyle
-                )
-                suggestionResults.addAll(fallback)
-            }
+        // Native batch/trace matching is the fallback when CTC is not installed. Running it
+        // first spends tens of milliseconds of the fused-swipe call and then those scores
+        // compete with CTC. Skip it whenever a swipe model is loaded.
+        if (!LiveTypingEngine.swipeDecoder.hasDecoder()) {
+            suggestionResults.addAll(mDictionaryFacilitator.getSuggestionResults(
+                composedData, ngramContext, keyboard,
+                settingsValuesForSuggestion, SESSION_ID_GESTURE, inputStyle
+            ))
+            HeliBoardGeometricFallback.toTypingComposedData(composedData.mInputPointers, keyboard)
+                ?.let { fallbackData ->
+                    suggestionResults.addAll(mDictionaryFacilitator.getSuggestionResults(
+                        fallbackData, ngramContext, keyboard, settingsValuesForSuggestion,
+                        SESSION_ID_GESTURE, inputStyle
+                    ))
+                }
+        }
 
         val locale = mDictionaryFacilitator.mainLocale
         val capsMode = getCapsModeForGesture(wordComposer, keyboard)
@@ -544,16 +556,32 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
         // The proposal budget bounds the decoder proposal step itself; the two native
         // getSuggestionResults passes above must not eat into it.
         val swipeProposalDeadline = Deadline.afterMillis(SWIPE_PROPOSAL_BUDGET_MILLIS)
-        val decodedCandidates = if (path.size >= 2 && geometry.keys.isNotEmpty() && fieldPolicy.allowsSuggestions) {
-            swipeDecoder.decode(typingRequest, swipeProposalDeadline).candidates
-        } else emptyList()
+        val decodeStart = System.nanoTime()
+        val decoded = if (path.size >= 2 && geometry.keys.isNotEmpty() && fieldPolicy.allowsSuggestions) {
+            swipeDecoder.decode(typingRequest, swipeProposalDeadline)
+        } else {
+            SwipeDecodeResult(EngineAvailability.UNAVAILABLE)
+        }
+        val decodedCandidates = decoded.candidates
+        val fusionStart = System.nanoTime()
+        swipeBatchTrace?.let { trace ->
+            trace.decodeMs = (fusionStart - decodeStart) / 1_000_000.0
+            trace.decodeAvailability = decoded.availability.name
+            trace.ctcCandidates = decodedCandidates.count { CandidateSource.CTC_SWIPE in it.sources }
+            trace.geometricCandidates = decodedCandidates.count {
+                CandidateSource.GEOMETRIC_SWIPE in it.sources && CandidateSource.CTC_SWIPE !in it.sources
+            }
+        }
         decodedCandidates.forEach { candidate ->
             uncapitalizedSurfaces.putIfAbsent(candidate.normalized, candidate.surface)
         }
         val transformedDecodedCandidates = transformEngineCandidates(decodedCandidates, capsMode, 0, locale)
+        val hasCtc = transformedDecodedCandidates.any { CandidateSource.CTC_SWIPE in it.sources }
         val fusion = liveCandidateFusion.fuse(
             rawText = "",
-            classicSuggestions = suggestionsContainer,
+            // Native batch/trace matches bury CTC when both are scored together. CTC is the
+            // fused swipe slate whenever it proposed; classic fills only as the fallback.
+            classicSuggestions = if (hasCtc) emptyList() else suggestionsContainer,
             supplementalCandidates = transformedDecodedCandidates,
             enabledLanguageTags = enabledLanguageTags,
             defaultLocale = locale,
@@ -565,6 +593,23 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
         )
         suggestionsContainer.clear()
         suggestionsContainer.addAll(fusion.suggestions)
+        if (suggestionsContainer.isEmpty() && transformedDecodedCandidates.isNotEmpty()) {
+            suggestionsContainer.addAll(
+                liveCandidateFusion.fuse(
+                    rawText = "",
+                    classicSuggestions = emptyList(),
+                    supplementalCandidates = transformedDecodedCandidates,
+                    enabledLanguageTags = enabledLanguageTags,
+                    defaultLocale = locale,
+                    inputStyle = InputStyle.SWIPE,
+                    typingRequest = typingRequest,
+                    neuralStrength = 0,
+                    aggressiveness = liveSettings.mAutoCorrectionAggressiveness,
+                    neuralDeadline = Deadline.afterMillis(1),
+                ).suggestions,
+            )
+        }
+        swipeBatchTrace?.fusionMs = (System.nanoTime() - fusionStart) / 1_000_000.0
 
         val rejected: SuggestedWordInfo?
         if (SHOULD_REMOVE_PREVIOUSLY_REJECTED_SUGGESTION && suggestionsContainer.size > 1 && TextUtils.equals(
@@ -606,9 +651,12 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
         // Exception is when using shift to change capitalization of suggestions.
         // Note that because this method is never used to get predictions, there is no need to
         // modify inputType such in getSuggestedWordsForNonBatchInput.
+        val nextWordStart = System.nanoTime()
+        val nextWordSuggestions = getNextWordSuggestions(ngramContext, keyboard, inputStyle, settingsValuesForSuggestion)
+        swipeBatchTrace?.nextWordMs = (System.nanoTime() - nextWordStart) / 1_000_000.0
         val pseudoTypedWordInfo = preferNextWordSuggestion(
             pseudoTypedWord, suggestionsContainer,
-            getNextWordSuggestions(ngramContext, keyboard, inputStyle, settingsValuesForSuggestion), rejected
+            nextWordSuggestions, rejected
         )
         val suggestionsList = if (SuggestionStripView.DEBUG_SUGGESTIONS && suggestionsContainer.isNotEmpty()) {
             getSuggestionsInfoListWithDebugInfo(suggestionsContainer.first().mWord, suggestionsContainer)
@@ -681,6 +729,16 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
      */
     data class CommitDecision(val committedWord: String, val willAutoCorrect: Boolean)
 
+    /** Filled when [swipeBatchTrace] is set. Times are milliseconds. */
+    class SwipeBatchTrace {
+        var decodeMs: Double = 0.0
+        var fusionMs: Double = 0.0
+        var nextWordMs: Double = 0.0
+        var decodeAvailability: String = ""
+        var ctcCandidates: Int = 0
+        var geometricCandidates: Int = 0
+    }
+
     companion object {
         /**
          * The word production commits for [suggestedWords]; mirrors the selection in
@@ -699,7 +757,7 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
 
         private const val LEXICAL_PROPOSAL_BUDGET_MILLIS = 8L
         private const val CONTEXT_RESCORING_BUDGET_MILLIS = 35L
-        private const val SWIPE_PROPOSAL_BUDGET_MILLIS = 125L
+        private const val SWIPE_PROPOSAL_BUDGET_MILLIS = 200L
         private const val SWIPE_CONTEXT_RESCORING_BUDGET_MILLIS = 50L
         private val TAG: String = Suggest::class.java.simpleName
 

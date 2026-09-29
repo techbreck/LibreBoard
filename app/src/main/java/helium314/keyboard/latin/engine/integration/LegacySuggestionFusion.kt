@@ -158,38 +158,28 @@ internal class LegacySuggestionFusion(
             )
         }
         val unboundedUnion = (classicCandidates + supplementalWithLanguage).let { union ->
-            // Swipe draws on three producers, so the union regularly exceeds the bounded-slate
-            // cap. Take it in list order and the trailing decoded candidates are dropped by
-            // position, not by evidence; duplicates also consume slots the scorer would merge.
-            // Collapse duplicates first and admit the strongest-evidence entries so the cap
-            // removes weak candidates rather than whichever producer happened to run last.
-            if (inputStyle != InputStyle.SWIPE) union else union
-                .groupBy { it.normalized to it.languageTag }
-                .map { (_, duplicates) ->
-                    duplicates.first().copy(
-                        sources = duplicates.flatMapTo(mutableSetOf()) { it.sources },
-                        components = ScoreComponents(
-                            spatial = duplicates.mapNotNull { it.components.spatial }.maxOrNull(),
-                            staticFrequency = duplicates.mapNotNull { it.components.staticFrequency }.maxOrNull(),
-                            personal = duplicates.mapNotNull { it.components.personal }.maxOrNull(),
-                            context = duplicates.mapNotNull { it.components.context }.maxOrNull(),
-                            language = duplicates.mapNotNull { it.components.language }.maxOrNull(),
-                        ),
-                        exactPersonalMatch = duplicates.any { it.exactPersonalMatch },
-                        rejectionPenalty = duplicates.maxOf { it.rejectionPenalty },
-                    )
-                }
-                .sortedByDescending { candidate ->
-                    candidate.components.let {
-                        maxOf(
-                            it.spatial ?: Double.NEGATIVE_INFINITY,
-                            it.staticFrequency ?: Double.NEGATIVE_INFINITY,
-                            it.personal ?: Double.NEGATIVE_INFINITY,
-                            it.context ?: Double.NEGATIVE_INFINITY,
-                            it.language ?: Double.NEGATIVE_INFINITY,
-                        )
+            if (inputStyle != InputStyle.SWIPE) union else {
+                // CTC already beats geometric and the native matcher on held-out swipe quality.
+                // Mixing those slates lets classic scores occupy the cap and bury the CTC ranking.
+                // When CTC proposed anything, that slate is the fused result; geometric/classic
+                // fill only when CTC missed.
+                val ctc = supplementalWithLanguage.filter { CandidateSource.CTC_SWIPE in it.sources }
+                if (ctc.isNotEmpty()) {
+                    collapseSwipeDuplicates(ctc)
+                } else {
+                    collapseSwipeDuplicates(union).sortedByDescending { candidate ->
+                        candidate.components.let {
+                            maxOf(
+                                it.spatial ?: Double.NEGATIVE_INFINITY,
+                                it.staticFrequency ?: Double.NEGATIVE_INFINITY,
+                                it.personal ?: Double.NEGATIVE_INFINITY,
+                                it.context ?: Double.NEGATIVE_INFINITY,
+                                it.language ?: Double.NEGATIVE_INFINITY,
+                            )
+                        }
                     }
                 }
+            }
         }
         val rawNormalized = normalizeCandidate(rawText)
         val candidateUnion = if (rawText.isNotEmpty() && unboundedUnion.none { it.normalized == rawNormalized }) {
@@ -387,6 +377,22 @@ internal class LegacySuggestionFusion(
         }
         append("]auto=").append(ranked.autoCorrection?.normalized ?: "-")
     }
+
+    private fun collapseSwipeDuplicates(candidates: List<Candidate>): List<Candidate> =
+        candidates.groupBy { it.normalized to it.languageTag }.map { (_, duplicates) ->
+            duplicates.first().copy(
+                sources = duplicates.flatMapTo(mutableSetOf()) { it.sources },
+                components = ScoreComponents(
+                    spatial = duplicates.mapNotNull { it.components.spatial }.maxOrNull(),
+                    staticFrequency = duplicates.mapNotNull { it.components.staticFrequency }.maxOrNull(),
+                    personal = duplicates.mapNotNull { it.components.personal }.maxOrNull(),
+                    context = duplicates.mapNotNull { it.components.context }.maxOrNull(),
+                    language = duplicates.mapNotNull { it.components.language }.maxOrNull(),
+                ),
+                exactPersonalMatch = duplicates.any { it.exactPersonalMatch },
+                rejectionPenalty = duplicates.maxOf { it.rejectionPenalty },
+            )
+        }
 
     private fun standardize(values: List<Double>): List<Double> {
         if (values.size == 1) return listOf(1.0)
