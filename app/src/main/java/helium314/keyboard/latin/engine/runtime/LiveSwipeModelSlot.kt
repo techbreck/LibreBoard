@@ -10,11 +10,14 @@ import helium314.keyboard.latin.engine.TypingRequest
 import helium314.keyboard.latin.engine.ctc.CtcSwipeDecoder
 import helium314.keyboard.latin.engine.geometric.SwipeLexicon
 import helium314.keyboard.latin.engine.onnx.LoadedSwipeModel
+import java.util.concurrent.CancellationException
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
+import java.util.concurrent.atomic.AtomicReference
 
 /** Hard-deadline process owner for the optional CTC model session. */
 class LiveSwipeModelSlot(
@@ -22,10 +25,12 @@ class LiveSwipeModelSlot(
     private val executor: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "LibreBoardLiveSwipe").apply { isDaemon = true }
     },
+    private val partialGraceMillis: Long = PARTIAL_GRACE_MILLIS,
 ) : SwipeDecoder, AutoCloseable {
     private val monitor = Any()
     private var installed: Entry? = null
     private var closed = false
+    private val inFlight = AtomicReference<Future<SwipeDecodeResult>?>()
 
     fun install(decoder: SwipeDecoder, owner: AutoCloseable) {
         var closeNow: AutoCloseable? = null
@@ -46,6 +51,8 @@ class LiveSwipeModelSlot(
         closeNow?.closeQuietly()
     }
 
+    fun hasDecoder(): Boolean = synchronized(monitor) { !closed && installed != null }
+
     fun clear() {
         var closeNow: AutoCloseable? = null
         synchronized(monitor) {
@@ -65,6 +72,10 @@ class LiveSwipeModelSlot(
         synchronized(monitor) {
             if (closed || installed == null) return SwipeDecodeResult(EngineAvailability.UNAVAILABLE)
         }
+        if (!awaitIdle(deadline)) {
+            circuitBreaker.recordOverrun()
+            return SwipeDecodeResult(EngineAvailability.TIMEOUT)
+        }
         val remaining = deadline.remainingMillis
         if (remaining <= 0) return SwipeDecodeResult(EngineAvailability.TIMEOUT)
         val future = executor.submit<SwipeDecodeResult> {
@@ -75,25 +86,108 @@ class LiveSwipeModelSlot(
                 release(entry)
             }
         }
+        inFlight.set(future)
         return try {
-            future.get(remaining, TimeUnit.MILLISECONDS).also { result ->
-                // A self-bounded decoder that returns its partial slate respected the deadline;
-                // only an empty timeout means the budget was spent with nothing to show.
-                if (result.availability == EngineAvailability.TIMEOUT && result.candidates.isEmpty()) {
-                    circuitBreaker.recordOverrun()
-                }
-            }
+            publish(future.get(remaining, TimeUnit.MILLISECONDS), future)
         } catch (_: TimeoutException) {
+            // Self-bounded CTC may still return TIMEOUT partials a few ms late. Interrupting
+            // now would turn that slate into UNAVAILABLE; wait the grace window first.
+            awaitTimedOutResult(future)
+        } catch (_: ExecutionException) {
+            clearInFlight(future)
+            SwipeDecodeResult(EngineAvailability.UNAVAILABLE)
+        } catch (_: CancellationException) {
+            clearInFlight(future)
+            SwipeDecodeResult(EngineAvailability.TIMEOUT)
+        } catch (_: InterruptedException) {
+            future.cancel(true)
+            clearInFlight(future)
+            Thread.currentThread().interrupt()
+            SwipeDecodeResult(EngineAvailability.UNAVAILABLE)
+        }
+    }
+
+    /**
+     * The decoder thread is single-slot and ONNX ignores interrupt. Queueing another decode
+     * behind leftover inference spends the next swipe's budget waiting and publishes nothing.
+     */
+    private fun awaitIdle(deadline: Deadline): Boolean {
+        val previous = inFlight.get() ?: return true
+        if (previous.isDone) {
+            clearInFlight(previous)
+            return true
+        }
+        val wait = deadline.remainingMillis
+        if (wait <= 0) return false
+        return try {
+            previous.get(wait, TimeUnit.MILLISECONDS)
+            clearInFlight(previous)
+            true
+        } catch (_: TimeoutException) {
+            false
+        } catch (_: ExecutionException) {
+            clearInFlight(previous)
+            true
+        } catch (_: CancellationException) {
+            clearInFlight(previous)
+            true
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            false
+        }
+    }
+
+    private fun awaitTimedOutResult(future: Future<SwipeDecodeResult>): SwipeDecodeResult {
+        completedResult(future)?.let { return it }
+        val grace = partialGraceMillis.coerceAtLeast(0L)
+        return try {
+            publish(future.get(grace, TimeUnit.MILLISECONDS), future)
+        } catch (_: TimeoutException) {
+            completedResult(future)?.let { return it }
             future.cancel(true)
             circuitBreaker.recordOverrun()
             SwipeDecodeResult(EngineAvailability.TIMEOUT)
         } catch (_: ExecutionException) {
+            clearInFlight(future)
             SwipeDecodeResult(EngineAvailability.UNAVAILABLE)
+        } catch (_: CancellationException) {
+            clearInFlight(future)
+            SwipeDecodeResult(EngineAvailability.TIMEOUT)
         } catch (_: InterruptedException) {
             future.cancel(true)
+            clearInFlight(future)
             Thread.currentThread().interrupt()
             SwipeDecodeResult(EngineAvailability.UNAVAILABLE)
         }
+    }
+
+    private fun completedResult(future: Future<SwipeDecodeResult>): SwipeDecodeResult? {
+        if (!future.isDone) return null
+        return try {
+            publish(future.get(), future)
+        } catch (_: ExecutionException) {
+            clearInFlight(future)
+            SwipeDecodeResult(EngineAvailability.UNAVAILABLE)
+        } catch (_: CancellationException) {
+            clearInFlight(future)
+            SwipeDecodeResult(EngineAvailability.TIMEOUT)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            clearInFlight(future)
+            SwipeDecodeResult(EngineAvailability.UNAVAILABLE)
+        }
+    }
+
+    private fun publish(result: SwipeDecodeResult, future: Future<SwipeDecodeResult>): SwipeDecodeResult {
+        clearInFlight(future)
+        if (result.availability == EngineAvailability.TIMEOUT && result.candidates.isEmpty()) {
+            circuitBreaker.recordOverrun()
+        }
+        return result
+    }
+
+    private fun clearInFlight(future: Future<SwipeDecodeResult>) {
+        inFlight.compareAndSet(future, null)
     }
 
     override fun close() {
@@ -134,6 +228,10 @@ class LiveSwipeModelSlot(
         var activeCalls: Int = 0,
         var retired: Boolean = false,
     )
+
+    private companion object {
+        const val PARTIAL_GRACE_MILLIS = 15L
+    }
 }
 
 fun LiveSwipeModelSlot.install(model: LoadedSwipeModel, lexicon: SwipeLexicon) {

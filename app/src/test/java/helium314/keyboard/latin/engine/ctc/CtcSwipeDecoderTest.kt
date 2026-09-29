@@ -254,6 +254,100 @@ class CtcSwipeDecoderTest {
         assertEquals(baseline.candidates, withUndecodableWord.candidates)
     }
 
+    @Test
+    fun greedyEmissionCollapsesBlanksAndSelfRepeats() {
+        val logits = FloatArray(CtcSwipeDecoder.OUTPUT_FRAMES * CtcSwipeDecoder.OUTPUT_CLASSES) { -12f }
+        fun set(frame: Int, outputClass: Int, value: Float) {
+            logits[frame * CtcSwipeDecoder.OUTPUT_CLASSES + outputClass] = value
+        }
+        set(0, classFor("a"), 12f)
+        set(1, classFor("l"), 12f)
+        set(2, classFor("l"), 12f)
+        set(3, CtcSwipeDecoder.BLANK_CLASS, 12f)
+        set(4, classFor("l"), 12f)
+        for (frame in 5 until CtcSwipeDecoder.OUTPUT_FRAMES) {
+            set(frame, CtcSwipeDecoder.BLANK_CLASS, 12f)
+        }
+        val emission = CtcSwipeDecoder.greedyEmission(
+            CtcInferenceResult(
+                EngineAvailability.AVAILABLE,
+                logits,
+                CtcSwipeDecoder.OUTPUT_FRAMES,
+                CtcSwipeDecoder.OUTPUT_CLASSES,
+            ),
+        )
+        assertTrue(emission.contentEquals(intArrayOf(classFor("a"), classFor("l"), classFor("l"))))
+        assertEquals(3, CtcSwipeDecoder.greedyEmissionLength(
+            CtcInferenceResult(
+                EngineAvailability.AVAILABLE,
+                logits,
+                CtcSwipeDecoder.OUTPUT_FRAMES,
+                CtcSwipeDecoder.OUTPUT_CLASSES,
+            ),
+        ))
+    }
+
+    @Test
+    fun unconstrainedGreedySpellingIsHoistedAboveACollapsedNeighbor() {
+        // Viterbi (greedy) emits "tall"; the summed prefix beam prefers collapsed "all".
+        // Production still/sill misses are this disagreement; hoist the greedy spelling.
+        val logits = FloatArray(CtcSwipeDecoder.OUTPUT_FRAMES * CtcSwipeDecoder.OUTPUT_CLASSES) { -2f }
+        fun set(frame: Int, outputClass: Int, value: Float) {
+            logits[frame * CtcSwipeDecoder.OUTPUT_CLASSES + outputClass] = value
+        }
+        set(0, classFor("t"), 0.7f)
+        set(0, CtcSwipeDecoder.BLANK_CLASS, 0.65f)
+        set(0, classFor("a"), 0.4f)
+        set(1, classFor("a"), 8f)
+        set(2, classFor("l"), 8f)
+        set(3, CtcSwipeDecoder.BLANK_CLASS, 2f)
+        set(3, classFor("l"), 1.5f)
+        set(4, classFor("l"), 8f)
+        for (frame in 5 until CtcSwipeDecoder.OUTPUT_FRAMES) {
+            set(frame, CtcSwipeDecoder.BLANK_CLASS, 6f)
+        }
+        val greedy = CtcSwipeDecoder.greedyEmission(
+            CtcInferenceResult(
+                EngineAvailability.AVAILABLE,
+                logits,
+                CtcSwipeDecoder.OUTPUT_FRAMES,
+                CtcSwipeDecoder.OUTPUT_CLASSES,
+            ),
+        )
+        assertTrue(
+            greedy.contentEquals(intArrayOf(classFor("t"), classFor("a"), classFor("l"), classFor("l"))),
+        )
+        val decoder = CtcSwipeDecoder(
+            CtcInferenceSession { _, _ ->
+                CtcInferenceResult(
+                    EngineAvailability.AVAILABLE,
+                    logits,
+                    CtcSwipeDecoder.OUTPUT_FRAMES,
+                    CtcSwipeDecoder.OUTPUT_CLASSES,
+                )
+            },
+            SwipeLexicon { languageTags, _ ->
+                sequenceOf(
+                    LexiconWord("all", languageTags.first(), 200),
+                    LexiconWord("tall", languageTags.first(), 10),
+                )
+            },
+        )
+
+        val result = decoder.decode(request(), Deadline.afterMillis(500))
+        val tall = result.candidates.first { it.surface == "tall" }
+        val all = result.candidates.first { it.surface == "all" }
+        val tallSpatial = requireNotNull(tall.components.spatial)
+        val allSpatial = requireNotNull(all.components.spatial)
+
+        assertEquals("tall", result.candidates.first().surface)
+        assertTrue(
+            "hoist must rank greedy 'tall' first even when collapsed spatial is higher " +
+                "(tall=$tallSpatial all=$allSpatial)",
+            tallSpatial <= allSpatial,
+        )
+    }
+
     private fun decoder(emissions: List<Int>, words: List<String>) = CtcSwipeDecoder(
         fixedSession(emissions),
         SwipeLexicon { languageTags, _ ->

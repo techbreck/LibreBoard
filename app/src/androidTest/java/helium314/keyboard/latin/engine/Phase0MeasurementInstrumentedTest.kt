@@ -69,15 +69,18 @@ import org.junit.runner.RunWith
  * word first, so no correction could ever be observed.
  *
  * Instrumentation arguments:
- *   phase0CorpusFile   prepared corpus JSONL under filesDir (required)
- *   phase0OutputFile   measurement JSONL written under filesDir (required)
+ *   phase0CorpusFile   prepared corpus JSONL under filesDir, or an absolute path (required)
+ *   phase0OutputFile   measurement JSONL written beside the corpus, or an absolute path (required)
  *   phase0RunId        testRunId bound into every test row (required)
  *   phase0Environment  environmentKind: stock_android_hardware | grapheneos_hardware | low_ram_emulator
- *   phase0ModelDir     optional filesDir directory holding context.onnx + tokenizer.json
+ *   phase0ModelDir     optional filesDir-relative or absolute directory holding context.onnx + tokenizer.json
  *   phase0Limit        optional row cap for rehearsals
- *   phase0SwipeCorpusFile  prepared swipe JSONL under filesDir (gates the swipe test)
- *   phase0SwipeOutputFile  swipe measurement JSONL filename beside the swipe corpus
- *   phase0SwipeModelFile   optional filesDir CTC swipe .onnx
+ *   phase0SwipeCorpusFile  prepared swipe JSONL under filesDir, or an absolute path (gates the swipe test)
+ *   phase0SwipeOutputFile  swipe measurement JSONL filename beside the swipe corpus, or an absolute path
+ *   phase0SwipeModelFile   optional filesDir-relative or absolute CTC swipe .onnx
+ *
+ * Absolute paths exist so a non-debuggable testOnly APK can be measured without `run-as`. The
+ * driver then stages corpora under /data/local/tmp and pulls outputs from the same directory.
  */
 @RunWith(AndroidJUnit4::class)
 class Phase0MeasurementInstrumentedTest {
@@ -443,24 +446,24 @@ class Phase0MeasurementInstrumentedTest {
         require(runId.length in 1..512)
         val environment = requireNotNull(args.getString("phase0Environment")) { "phase0Environment is required" }
         require(environment in setOf("stock_android_hardware", "grapheneos_hardware", "low_ram_emulator"))
-        val corpus = File(
-            InstrumentationRegistry.getInstrumentation().targetContext.filesDir,
-            requireNotNull(args.getString("phase0CorpusFile")),
-        )
-        val output = File(corpus.parentFile, requireNotNull(args.getString("phase0OutputFile")))
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val corpus = measuredFile(context.filesDir, requireNotNull(args.getString("phase0CorpusFile")))
+        val output = measuredFile(
+            outputBase(context, args, requireNotNull(corpus.parentFile)),
+            requireNotNull(args.getString("phase0OutputFile")))
         require(corpus.isFile && corpus.length() in 1..(512L * 1024 * 1024))
         require(!output.isDirectory)
+        output.parentFile?.mkdirs()
         val limit = args.getString("phase0Limit")?.toIntOrNull() ?: Int.MAX_VALUE
         require(limit > 0)
         val (shardIndex, shardCount) = shardConfig(args)
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
 
         val fixture = buildFixture(context)
         val memory = MemoryProbe(Debug.getPss().toDouble())
         args.getString("phase0RescorerBudgetMs")?.toLongOrNull()?.let {
             fixture.suggest.contextRescoringBudgetOverrideMs = it
         }
-        args.getString("phase0ModelDir")?.let { installContextModel(context, File(context.filesDir, it)) }
+        args.getString("phase0ModelDir")?.let { installContextModel(context, measuredFile(context.filesDir, it)) }
         memory.onModelOpened()
 
         val writer = output.bufferedWriter()
@@ -554,8 +557,9 @@ class Phase0MeasurementInstrumentedTest {
         }
         writer.close()
         assertTrue("corpus produced no measurable test rows", measured > 0)
-        writeEnvironmentSidecar(context, File(output.parentFile, "environment.json"),
-            runId, environment, memory, fixture)
+        val sidecar = File(output.parentFile, "environment.json")
+        writeEnvironmentSidecar(context, sidecar, runId, environment, memory, fixture)
+        publishForHost(output, sidecar)
     }
 
     /**
@@ -572,24 +576,24 @@ class Phase0MeasurementInstrumentedTest {
         require(runId.length in 1..512)
         val environment = requireNotNull(args.getString("phase0Environment")) { "phase0Environment is required" }
         require(environment in setOf("stock_android_hardware", "grapheneos_hardware", "low_ram_emulator"))
-        val corpus = File(
-            InstrumentationRegistry.getInstrumentation().targetContext.filesDir,
-            requireNotNull(args.getString("phase0CorpusFile")),
-        )
-        val output = File(corpus.parentFile, requireNotNull(args.getString("phase0PredictionOutputFile")))
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val corpus = measuredFile(context.filesDir, requireNotNull(args.getString("phase0CorpusFile")))
+        val output = measuredFile(
+            outputBase(context, args, requireNotNull(corpus.parentFile)),
+            requireNotNull(args.getString("phase0PredictionOutputFile")))
         require(corpus.isFile && corpus.length() in 1..(512L * 1024 * 1024))
         require(!output.isDirectory)
+        output.parentFile?.mkdirs()
         val limit = args.getString("phase0Limit")?.toIntOrNull() ?: Int.MAX_VALUE
         require(limit > 0)
         val (shardIndex, shardCount) = shardConfig(args)
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
 
         val fixture = buildFixture(context)
         val memory = MemoryProbe(Debug.getPss().toDouble())
         args.getString("phase0RescorerBudgetMs")?.toLongOrNull()?.let {
             fixture.suggest.contextRescoringBudgetOverrideMs = it
         }
-        args.getString("phase0ModelDir")?.let { installContextModel(context, File(context.filesDir, it)) }
+        args.getString("phase0ModelDir")?.let { installContextModel(context, measuredFile(context.filesDir, it)) }
         memory.onModelOpened()
 
         val writer = output.bufferedWriter()
@@ -639,8 +643,9 @@ class Phase0MeasurementInstrumentedTest {
         }
         writer.close()
         assertTrue("prediction corpus produced no measurable test rows", measured > 0)
-        writeEnvironmentSidecar(context, File(output.parentFile, "environment.json"),
-            runId, environment, memory, fixture)
+        val sidecar = File(output.parentFile, "environment.json")
+        writeEnvironmentSidecar(context, sidecar, runId, environment, memory, fixture)
+        publishForHost(output, sidecar)
     }
 
     private fun swipeRequest(row: JSONObject, bounds: FloatArray,
@@ -681,6 +686,37 @@ class Phase0MeasurementInstrumentedTest {
         return out
     }
 
+    /** filesDir-relative extras stay the debug-APK contract; absolute paths skip `run-as`. */
+    private fun measuredFile(base: File, path: String): File {
+        val file = File(path)
+        return if (file.isAbsolute) file else File(base, path)
+    }
+
+    /**
+     * Non-debuggable testOnly APKs cannot use `run-as`. Outputs go to the app's own
+     * getExternalFilesDir so the host can adb-cat them after publishForHost.
+     */
+    private fun outputBase(context: android.content.Context, args: android.os.Bundle, fallback: File): File {
+        if (args.getString("phase0UseExternalFiles") == "true") {
+            return requireNotNull(context.getExternalFilesDir("phase0-measurement")) {
+                "getExternalFilesDir(phase0-measurement) returned null"
+            }
+        }
+        args.getString("phase0OutputDir")?.let { return measuredFile(context.filesDir, it) }
+        return fallback
+    }
+
+    /** World-readable so the host can `adb cat` outputs of a non-debuggable testOnly APK. */
+    private fun publishForHost(vararg files: File) {
+        for (file in files) {
+            if (file.isFile) {
+                check(file.setReadable(true, false)) {
+                    "cannot make ${file.path} world-readable for adb pull"
+                }
+            }
+        }
+    }
+
     /** Disjoint row partition for multi-environment runs; duplicate ids fail dataset checks. */
     private fun shardConfig(args: android.os.Bundle): Pair<Int, Int> {
         val count = args.getString("phase0ShardCount")?.toIntOrNull() ?: 1
@@ -710,10 +746,13 @@ class Phase0MeasurementInstrumentedTest {
         val environment = requireNotNull(args.getString("phase0Environment")) { "phase0Environment is required" }
         require(environment in setOf("stock_android_hardware", "grapheneos_hardware", "low_ram_emulator"))
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val corpus = File(context.filesDir, requireNotNull(args.getString("phase0SwipeCorpusFile")))
-        val output = File(corpus.parentFile, requireNotNull(args.getString("phase0SwipeOutputFile")))
+        val corpus = measuredFile(context.filesDir, requireNotNull(args.getString("phase0SwipeCorpusFile")))
+        val output = measuredFile(
+            outputBase(context, args, requireNotNull(corpus.parentFile)),
+            requireNotNull(args.getString("phase0SwipeOutputFile")))
         require(corpus.isFile && corpus.length() in 1..(512L * 1024 * 1024))
         require(!output.isDirectory)
+        output.parentFile?.mkdirs()
         val limit = args.getString("phase0Limit")?.toIntOrNull() ?: Int.MAX_VALUE
         require(limit > 0)
         val (shardIndex, shardCount) = shardConfig(args)
@@ -730,7 +769,7 @@ class Phase0MeasurementInstrumentedTest {
         val geometricDecoder = GeometricSwipeDecoder(lexicon)
         val ctcDecoder = args.getString("phase0SwipeModelFile")?.let { name ->
             val opened = OnnxRuntimeSessionFactory.open(
-                File(context.filesDir, name), LibreBoardOnnxContracts.swipeCtc)
+                measuredFile(context.filesDir, name), LibreBoardOnnxContracts.swipeCtc)
             val runtime = requireNotNull(opened.session) {
                 "swipe ONNX session unavailable: ${opened.availability}" }
             val session = OnnxCtcInferenceSession(runtime)
@@ -738,7 +777,7 @@ class Phase0MeasurementInstrumentedTest {
                 LiveTypingEngine.swipeDecoder.install(decoder, session)
             }
         }
-        args.getString("phase0ModelDir")?.let { installContextModel(context, File(context.filesDir, it)) }
+        args.getString("phase0ModelDir")?.let { installContextModel(context, measuredFile(context.filesDir, it)) }
         memory.onModelOpened()
 
         val writer = output.bufferedWriter()
@@ -787,6 +826,8 @@ class Phase0MeasurementInstrumentedTest {
                 // the real proposal budget; on slow runtimes decoders may not land in time.
                 val composer = WordComposer()
                 composer.setBatchInputPointers(pointers)
+                val swipeTrace = Suggest.SwipeBatchTrace()
+                fixture.suggest.swipeBatchTrace = swipeTrace
                 start = System.nanoTime()
                 val fused = fixture.suggest.getSuggestedWords(
                     composer, ngramContext,
@@ -794,9 +835,17 @@ class Phase0MeasurementInstrumentedTest {
                     SuggestedWords.INPUT_STYLE_UPDATE_BATCH, measured + 1,
                 )
                 latency.put("fused_swipe", (System.nanoTime() - start) / 1_000_000.0)
+                fixture.suggest.swipeBatchTrace = null
                 predictions.put("fused_swipe", surfaces(fused).also {
                     if (it.length() == 0) it.put(EMPTY_PREDICTION_SENTINEL)
                 })
+                availability.put("fused", swipeTrace.decodeAvailability)
+                val auxiliaryLatency = JSONObject()
+                auxiliaryLatency.put("fused_decode", swipeTrace.decodeMs)
+                auxiliaryLatency.put("fused_fusion", swipeTrace.fusionMs)
+                auxiliaryLatency.put("fused_next_word", swipeTrace.nextWordMs)
+                auxiliaryLatency.put("fused_ctc_candidates", swipeTrace.ctcCandidates.toDouble())
+                auxiliaryLatency.put("fused_geometric_candidates", swipeTrace.geometricCandidates.toDouble())
 
                 // fused_relaxed composes the same fusion boundary the production batch path uses,
                 // but feeds it the standalone decoded candidates and the geometric-trace fallback
@@ -816,7 +865,6 @@ class Phase0MeasurementInstrumentedTest {
                     inputStyle = InputStyle.SWIPE, typingRequest = request,
                     neuralStrength = 0, neuralDeadline = Deadline.afterMillis(2000),
                 )
-                val auxiliaryLatency = JSONObject()
                 val auxiliaryPredictions = JSONObject()
                 auxiliaryLatency.put("fused_relaxed", (System.nanoTime() - start) / 1_000_000.0)
                 auxiliaryPredictions.put("fused_relaxed", suggestionInfoSurfaces(relaxed.suggestions))
@@ -854,8 +902,9 @@ class Phase0MeasurementInstrumentedTest {
         swipeExecutor.shutdown()
         writer.close()
         assertTrue("swipe corpus produced no measurable test rows", measured > 0)
-        writeEnvironmentSidecar(context, File(output.parentFile, "environment.json"),
-            runId, environment, memory, fixture)
+        val sidecar = File(output.parentFile, "environment.json")
+        writeEnvironmentSidecar(context, sidecar, runId, environment, memory, fixture)
+        publishForHost(output, sidecar)
     }
 
     private fun writeEnvironmentSidecar(

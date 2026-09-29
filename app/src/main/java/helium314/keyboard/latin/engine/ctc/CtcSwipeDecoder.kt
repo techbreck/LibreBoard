@@ -88,7 +88,8 @@ class CtcSwipeDecoder(
             else -> request.enabledLanguages
         }
         if (languageTags.isEmpty()) return SwipeDecodeResult(EngineAvailability.INCOMPATIBLE)
-        val approximateLength = greedyEmissionLength(inference).takeIf { it > 0 }
+        val greedy = greedyEmission(inference)
+        val approximateLength = greedy.size.takeIf { it > 0 }
             ?: SwipeLengthEstimate.fromPath(request.path, request.geometry)
         // The trie only depends on the lexicon contents, language set, length estimate, and key
         // labels. Rebuilding it per decode costs a full lexicon pass inside the shared proposal
@@ -106,7 +107,7 @@ class CtcSwipeDecoder(
             }) ?: return SwipeDecodeResult(EngineAvailability.TIMEOUT)
         if (trie.wordCount == 0) return SwipeDecodeResult(EngineAvailability.AVAILABLE)
 
-        return decodeLogits(inference, trie, deadline)
+        return decodeLogits(inference, trie, deadline, greedy)
     }
 
     private data class TrieCacheKey(
@@ -125,6 +126,7 @@ class CtcSwipeDecoder(
         inference: CtcInferenceResult,
         trie: LexiconTrie,
         deadline: Deadline,
+        greedy: IntArray,
     ): SwipeDecodeResult {
         val logits = requireNotNull(inference.logits)
         var beam = mapOf(IntArrayKey.EMPTY to BeamProbability(blank = 0.0))
@@ -132,7 +134,7 @@ class CtcSwipeDecoder(
         for (frame in 0 until inference.frameCount) {
             if (deadline.expired) {
                 return SwipeDecodeResult(
-                    EngineAvailability.TIMEOUT, candidatesForBeam(beam, trie, inference.frameCount),
+                    EngineAvailability.TIMEOUT, candidatesForBeam(beam, trie, inference.frameCount, greedy),
                 )
             }
             val frameOffset = frame * inference.classCount
@@ -180,7 +182,7 @@ class CtcSwipeDecoder(
         // Intermediate slates are never published. Materialize only the final (or timed-out)
         // beam, retaining the same scores and ordering without sorting 32 candidate lists.
         return SwipeDecodeResult(
-            EngineAvailability.AVAILABLE, candidatesForBeam(beam, trie, inference.frameCount),
+            EngineAvailability.AVAILABLE, candidatesForBeam(beam, trie, inference.frameCount, greedy),
         )
     }
 
@@ -188,10 +190,12 @@ class CtcSwipeDecoder(
         beam: Map<IntArrayKey, BeamProbability>,
         trie: LexiconTrie,
         frameCount: Int,
+        greedy: IntArray,
     ): List<Candidate> = beam.flatMap { (prefix, probability) ->
         val ctcScore = logAdd(probability.blank, probability.nonBlank) / frameCount
+        val matchesGreedy = greedy.isNotEmpty() && prefix.values.contentEquals(greedy)
         trie.node(prefix.values)?.words.orEmpty().map { entry ->
-            Candidate(
+            matchesGreedy to Candidate(
                 surface = entry.word,
                 languageTag = entry.languageTag,
                 sources = buildSet {
@@ -208,10 +212,11 @@ class CtcSwipeDecoder(
             )
         }
     }.sortedWith(
-        compareByDescending<Candidate> { it.components.spatial }
-            .thenByDescending { it.components.staticFrequency }
-            .thenBy { it.surface },
-    ).distinctBy { normalizeCandidate(it.surface) to it.languageTag }.take(MAX_RESULTS)
+        compareByDescending<Pair<Boolean, Candidate>> { it.first }
+            .thenByDescending { it.second.components.spatial }
+            .thenByDescending { it.second.components.staticFrequency }
+            .thenBy { it.second.surface },
+    ).map { it.second }.distinctBy { normalizeCandidate(it.surface) to it.languageTag }.take(MAX_RESULTS)
 
     private fun buildTrie(
         words: Sequence<LexiconWord>,
@@ -373,13 +378,14 @@ class CtcSwipeDecoder(
             return DoubleArray(count) { values[offset + it] - denominator }
         }
 
-        internal fun greedyEmissionLength(result: CtcInferenceResult): Int {
-            val logits = result.logits ?: return 0
+        internal fun greedyEmission(result: CtcInferenceResult): IntArray {
+            val logits = result.logits ?: return IntArray(0)
             if (result.frameCount <= 0 || result.classCount <= 1 ||
                 logits.size != result.frameCount * result.classCount
-            ) return 0
+            ) return IntArray(0)
+            val emissions = IntArray(result.frameCount)
             var previous = -1
-            var emissions = 0
+            var count = 0
             for (frame in 0 until result.frameCount) {
                 val offset = frame * result.classCount
                 var bestClass = 0
@@ -391,11 +397,15 @@ class CtcSwipeDecoder(
                         bestClass = outputClass
                     }
                 }
-                if (bestClass != BLANK_CLASS && bestClass != previous) emissions++
+                if (bestClass != BLANK_CLASS && bestClass != previous) {
+                    emissions[count++] = bestClass
+                }
                 previous = bestClass
             }
-            return emissions
+            return if (count == emissions.size) emissions else emissions.copyOf(count)
         }
+
+        internal fun greedyEmissionLength(result: CtcInferenceResult): Int = greedyEmission(result).size
 
         private fun logAdd(first: Double, second: Double): Double {
             if (first == LOG_ZERO) return second

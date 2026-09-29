@@ -18,6 +18,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 class LiveSwipeModelSlotTest {
     @Test
@@ -99,6 +100,67 @@ class LiveSwipeModelSlotTest {
 
             slot.install(decoder("recovered"), owner)
             assertEquals("recovered", slot.decode(request(), Deadline.afterMillis(100)).candidates.single().surface)
+        }
+    }
+
+    @Test
+    fun timeoutPublishesLateSelfBoundedPartialsWithoutTrippingTheCircuit() {
+        LiveSwipeModelSlot(
+            DeadlineCircuitBreaker(maximumOverruns = 1),
+            partialGraceMillis = 200,
+        ).use { slot ->
+            slot.install(SwipeDecoder { _, _ ->
+                Thread.sleep(30)
+                SwipeDecodeResult(
+                    EngineAvailability.TIMEOUT,
+                    listOf(Candidate("cat", languageTag = "en-US", sources = setOf(CandidateSource.CTC_SWIPE))),
+                )
+            }, AutoCloseable {})
+
+            val late = slot.decode(request(), Deadline.afterMillis(10))
+            assertEquals(EngineAvailability.TIMEOUT, late.availability)
+            assertEquals("cat", late.candidates.single().surface)
+
+            val again = slot.decode(request(), Deadline.afterMillis(100))
+            assertEquals(EngineAvailability.TIMEOUT, again.availability)
+            assertEquals("cat", again.candidates.single().surface)
+        }
+    }
+
+    @Test
+    fun leftoverWorkDoesNotQueueAnotherDecode() {
+        val calls = AtomicInteger()
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        LiveSwipeModelSlot(DeadlineCircuitBreaker(maximumOverruns = 5)).use { slot ->
+            slot.install(SwipeDecoder { _, _ ->
+                calls.incrementAndGet()
+                entered.countDown()
+                while (true) {
+                    try {
+                        if (release.await(1, TimeUnit.SECONDS)) break
+                    } catch (_: InterruptedException) {
+                        // Native inference ignores interrupt and keeps the worker occupied.
+                    }
+                }
+                SwipeDecodeResult(EngineAvailability.AVAILABLE)
+            }, AutoCloseable {})
+
+            try {
+                assertEquals(
+                    EngineAvailability.TIMEOUT,
+                    slot.decode(request(), Deadline.afterMillis(20)).availability,
+                )
+                assertTrue(entered.await(200, TimeUnit.MILLISECONDS))
+                assertEquals(1, calls.get())
+
+                val blocked = slot.decode(request(), Deadline.afterMillis(20))
+                assertEquals(EngineAvailability.TIMEOUT, blocked.availability)
+                assertTrue(blocked.candidates.isEmpty())
+                assertEquals(1, calls.get())
+            } finally {
+                release.countDown()
+            }
         }
     }
 
