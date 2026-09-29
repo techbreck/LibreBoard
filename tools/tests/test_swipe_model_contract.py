@@ -22,6 +22,47 @@ class SwipeModelContractTest(unittest.TestCase):
             tensor["name"] for tensor in spec.export["inputs"]
         })
 
+    def test_strata_candidate_spec_loads_with_its_weights(self):
+        default = contract.load_spec()
+        self.assertIsNone(default.strata_weights)
+        candidate_path = (
+            contract.DEFAULT_SPEC.parent / "model-spec-strata-candidate.json"
+        )
+        candidate = contract.load_spec(candidate_path)
+        self.assertEqual(
+            {"double_letter": 3.0, "long": 3.0, "return_trip": 2.0},
+            candidate.strata_weights,
+        )
+        self.assertEqual(default.raw["parameterCount"], candidate.raw["parameterCount"])
+        self.assertEqual(default.architecture, candidate.architecture)
+        self.assertEqual(
+            {key: value for key, value in default.training.items()},
+            {key: value for key, value in candidate.training.items() if key != "strataWeights"},
+        )
+
+    def test_strata_weights_reject_invalid_entries(self):
+        raw = json.loads(contract.DEFAULT_SPEC.read_text())
+        valid = {"long": 3.0, "double_letter": 2.0}
+        invalid = [
+            {"unknown_stratum": 2.0},
+            {"long": 0.5},
+            {"long": 9},
+            {"long": True},
+            {},
+            "long",
+        ]
+        with tempfile.TemporaryDirectory() as temp:
+            path = pathlib.Path(temp) / "model-spec.json"
+            for strata_weights in [valid, *invalid]:
+                candidate = json.loads(json.dumps(raw))
+                candidate["training"]["strataWeights"] = strata_weights
+                path.write_text(json.dumps(candidate))
+                if strata_weights is valid:
+                    self.assertEqual(valid, contract.load_spec(path).strata_weights)
+                else:
+                    with self.assertRaises(contract.SwipeModelContractError):
+                        contract.load_spec(path)
+
     def test_spec_rejects_tensor_and_parameter_drift(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)

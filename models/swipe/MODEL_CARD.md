@@ -62,6 +62,16 @@ The source fetch is intentionally explicit and is approximately 5.7 GB. A develo
 uses `--max-train-steps` and `--max-validation-steps`; its filenames contain `development` and it
 cannot produce release-eligible evidence.
 
+## Stratum-weighted candidate
+
+`models/swipe/model-spec-strata-candidate.json` is an experimental candidate spec that is identical
+to `model-spec.json` except for an optional `training.strataWeights` map of
+`{"double_letter": 3.0, "long": 3.0, "return_trip": 2.0}`. During training each prepared record is
+replicated by the maximum weight among its strata (never the product); integer parts always copy and
+the fractional part is sampled per record. The unweighted default spec is unchanged and consumes the
+identical shuffle RNG stream. Validation stays unweighted. Train, export, and evaluate with
+`--spec models/swipe/model-spec-strata-candidate.json`; no results are recorded yet.
+
 ## Required acceptance evidence
 
 A candidate is accepted only after its training/export reports, source/split hashes, ONNX operator

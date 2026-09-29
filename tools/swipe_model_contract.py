@@ -52,6 +52,16 @@ TRAINING_KEYS = {
     "geometryScaleStd",
     "geometryTranslationStd",
 }
+STRATA_NAMES = {
+    "short",
+    "medium",
+    "long",
+    "double_letter",
+    "return_trip",
+    "clean",
+    "sloppy",
+    "very_sloppy",
+}
 EXPORT_KEYS = {"opsetVersion", "quantization", "maximumModelBytes", "inputs", "outputs"}
 TENSOR_KEYS = {"name", "elementType", "shape"}
 EXPECTED_INPUTS = {
@@ -83,6 +93,11 @@ class SwipeModelSpec:
     @property
     def export(self) -> dict[str, Any]:
         return self.raw["export"]
+
+    @property
+    def strata_weights(self) -> dict[str, float] | None:
+        weights = self.raw["training"].get("strataWeights")
+        return None if weights is None else dict(weights)
 
 
 def expected_parameter_count(architecture: dict[str, Any]) -> int:
@@ -180,7 +195,17 @@ def load_spec(path: pathlib.Path = DEFAULT_SPEC) -> SwipeModelSpec:
             f"parameterCount {declared_parameters} does not match architecture {calculated_parameters}"
         )
 
-    training = _strict_object(raw["training"], TRAINING_KEYS, "swipe training config")
+    training = raw["training"]
+    if not isinstance(training, dict) or not (
+        set(training) == TRAINING_KEYS or set(training) == TRAINING_KEYS | {"strataWeights"}
+    ):
+        raise SwipeModelContractError("swipe training config has an unexpected schema")
+    if "strataWeights" in training:
+        strata_weights = training["strataWeights"]
+        if not isinstance(strata_weights, dict) or not strata_weights or not set(strata_weights) <= STRATA_NAMES:
+            raise SwipeModelContractError("training strataWeights must be a non-empty map of known strata")
+        for name, value in strata_weights.items():
+            _finite_float(value, f"training strataWeights {name}", 1.0, 8.0)
     for field in ("seed", "epochs", "batchSize", "shuffleBuffer"):
         _positive_int(training[field], f"training {field}")
     for field, lower, upper in (
