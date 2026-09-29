@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-only
 from __future__ import annotations
 
+import collections
 import importlib.util
+import json
 import pathlib
 import sys
 import tempfile
@@ -12,7 +14,113 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import train_swipe_model as trainer  # noqa: E402
 
 
+SHUFFLE_TEST_STRATA = [
+    ["short", "clean"],
+    ["long", "double_letter"],
+    ["medium"],
+    ["long", "double_letter"],
+    ["short", "sloppy"],
+    ["return_trip", "medium"],
+]
+SHUFFLE_TEST_BASELINE_ORDER = [
+    "0007", "0001", "0000", "0009", "000a", "000b", "000d", "0005",
+    "0003", "000c", "0011", "0012", "000f", "0008", "0015", "0002",
+    "0010", "0006", "0017", "0004", "0013", "0014", "0016", "000e",
+]
+
+
+def _write_shuffle_fixture(directory: pathlib.Path) -> pathlib.Path:
+    path = directory / "train.jsonl"
+    with path.open("wb") as stream:
+        for index in range(24):
+            record = {
+                "schemaVersion": 1,
+                "id": f"{index:064x}",
+                "split": "train",
+                "pathCoordinates": [0.1] * 128,
+                "ctcLabels": [1, 2, 3],
+                "strata": SHUFFLE_TEST_STRATA[index % 6],
+            }
+            stream.write(json.dumps(record).encode() + b"\n")
+    return path
+
+
+def _shuffled_ids(path, *, seed=1234, buffer_size=8, strata_weights=None):
+    return [
+        record["id"]
+        for record in trainer._shuffled_records(
+            path,
+            split="train",
+            seed=seed,
+            buffer_size=buffer_size,
+            path_points=64,
+            key_slots=64,
+            output_frames=32,
+            strata_weights=strata_weights,
+        )
+    ]
+
+
 class TrainSwipeModelTest(unittest.TestCase):
+    def test_unweighted_shuffle_matches_the_baseline_stream(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = _write_shuffle_fixture(pathlib.Path(temporary))
+            expected = [f"{int(suffix, 16):064x}" for suffix in SHUFFLE_TEST_BASELINE_ORDER]
+            self.assertEqual(expected, _shuffled_ids(path))
+
+    def test_integer_strata_weight_duplicates_only_matching_records(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = _write_shuffle_fixture(pathlib.Path(temporary))
+            counts = collections.Counter(
+                _shuffled_ids(path, strata_weights={"double_letter": 3.0})
+            )
+            for index in range(24):
+                identifier = f"{index:064x}"
+                expected = 3 if "double_letter" in SHUFFLE_TEST_STRATA[index % 6] else 1
+                self.assertEqual(expected, counts[identifier])
+
+    def test_strata_weights_combine_by_max_not_product(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = _write_shuffle_fixture(pathlib.Path(temporary))
+            counts = collections.Counter(
+                _shuffled_ids(path, strata_weights={"long": 3.0, "double_letter": 2.0})
+            )
+            for index in range(24):
+                identifier = f"{index:064x}"
+                expected = 3 if "long" in SHUFFLE_TEST_STRATA[index % 6] else 1
+                self.assertEqual(expected, counts[identifier])
+
+    def test_fractional_strata_weight_is_deterministic_and_bounded(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = _write_shuffle_fixture(pathlib.Path(temporary))
+            counts = collections.Counter(
+                _shuffled_ids(path, seed=99, strata_weights={"short": 1.5})
+            )
+            short_total = 0
+            for index in range(24):
+                identifier = f"{index:064x}"
+                if "short" in SHUFFLE_TEST_STRATA[index % 6]:
+                    self.assertIn(counts[identifier], (1, 2))
+                    short_total += counts[identifier]
+                else:
+                    self.assertEqual(1, counts[identifier])
+            self.assertEqual(14, short_total)
+
+    def test_parse_record_rejects_invalid_strata(self):
+        record = {
+            "schemaVersion": 1,
+            "id": "0" * 64,
+            "split": "train",
+            "pathCoordinates": [0.1] * 128,
+            "ctcLabels": [1, 2, 3],
+        }
+        for bad_strata in (None, [], "short", [1], [None]):
+            candidate = dict(record)
+            if bad_strata is not None:
+                candidate["strata"] = bad_strata
+            with self.assertRaises(trainer.SwipeTrainingError):
+                trainer._parse_record(json.dumps(candidate).encode(), "train", 64, 64, 32)
+
     def test_ctc_collapse_preserves_repeats_only_across_blank(self):
         self.assertEqual([4], trainer._collapse_ctc([0, 4, 4, 0]))
         self.assertEqual([4, 4], trainer._collapse_ctc([4, 0, 4]))

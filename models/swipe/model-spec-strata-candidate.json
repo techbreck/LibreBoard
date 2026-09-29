@@ -1,0 +1,85 @@
+{
+    "schemaVersion": 1,
+    "modelId": "swipe-latin-v1",
+    "engineAbi": 1,
+    "tensorAbi": "swipe-latin-v1",
+    "architectureName": "LayoutConditionedTransformerCTC-v1",
+    "license": "Apache-2.0",
+    "locales": [
+        "en-US",
+        "de"
+    ],
+    "parameterCount": 821121,
+    "architecture": {
+        "pathPoints": 64,
+        "keySlots": 64,
+        "outputFrames": 32,
+        "width": 128,
+        "heads": 4,
+        "layers": 6,
+        "feedForwardWidth": 256,
+        "dropout": 0.1,
+        "layoutTemperature": 32.0
+    },
+    "training": {
+        "seed": 24012026,
+        "epochs": 12,
+        "batchSize": 256,
+        "learningRate": 0.0003,
+        "weightDecay": 0.01,
+        "gradientClip": 1.0,
+        "shuffleBuffer": 8192,
+        "pathNoiseStd": 0.008,
+        "geometryScaleStd": 0.04,
+        "geometryTranslationStd": 0.02,
+        "strataWeights": {
+            "double_letter": 3.0,
+            "long": 3.0,
+            "return_trip": 2.0
+        }
+    },
+    "export": {
+        "opsetVersion": 18,
+        "quantization": "FP16",
+        "maximumModelBytes": 2621440,
+        "inputs": [
+            {
+                "name": "path_coordinates",
+                "elementType": "float32",
+                "shape": [
+                    1,
+                    64,
+                    2
+                ]
+            },
+            {
+                "name": "key_centers",
+                "elementType": "float32",
+                "shape": [
+                    1,
+                    64,
+                    2
+                ]
+            },
+            {
+                "name": "key_mask",
+                "elementType": "float32",
+                "shape": [
+                    1,
+                    64
+                ]
+            }
+        ],
+        "outputs": [
+            {
+                "name": "logits",
+                "elementType": "float32",
+                "shape": [
+                    1,
+                    32,
+                    65
+                ]
+            }
+        ]
+    }
+}

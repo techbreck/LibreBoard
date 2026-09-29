@@ -134,7 +134,10 @@ def _parse_record(line: bytes, split: str, path_points: int, key_slots: int, out
     required_frames = len(labels) + sum(labels[index] == labels[index - 1] for index in range(1, len(labels)))
     if required_frames > output_frames:
         raise SwipeTrainingError(f"prepared {split} record cannot align within the output frames")
-    return {"id": identifier, "path": [float(item) for item in path], "labels": labels}
+    strata = value.get("strata")
+    if not isinstance(strata, list) or not strata or any(not isinstance(item, str) for item in strata):
+        raise SwipeTrainingError(f"prepared {split} record has invalid strata")
+    return {"id": identifier, "path": [float(item) for item in path], "labels": labels, "strata": strata}
 
 
 def _shuffled_records(
@@ -146,18 +149,26 @@ def _shuffled_records(
     path_points: int,
     key_slots: int,
     output_frames: int,
+    strata_weights: dict[str, float] | None = None,
 ) -> Iterator[dict[str, Any]]:
     randomizer = random.Random(seed)
     buffer: list[dict[str, Any]] = []
     with path.open("rb") as stream:
         for line in stream:
             record = _parse_record(line, split, path_points, key_slots, output_frames)
-            if len(buffer) < buffer_size:
-                buffer.append(record)
-                continue
-            index = randomizer.randrange(len(buffer))
-            yield buffer[index]
-            buffer[index] = record
+            copies = 1
+            if strata_weights is not None:
+                weight = max(strata_weights.get(stratum, 1.0) for stratum in record["strata"])
+                copies = int(weight)
+                if weight - copies > 0 and randomizer.random() < weight - copies:
+                    copies += 1
+            for _ in range(copies):
+                if len(buffer) < buffer_size:
+                    buffer.append(record)
+                    continue
+                index = randomizer.randrange(len(buffer))
+                yield buffer[index]
+                buffer[index] = record
     randomizer.shuffle(buffer)
     yield from buffer
 
@@ -218,6 +229,7 @@ def _evaluate(model, path, split, layout, spec, device, batch_size, maximum_step
                 path_points=architecture["pathPoints"],
                 key_slots=architecture["keySlots"],
                 output_frames=architecture["outputFrames"],
+                strata_weights=None,
             )
 
     loader = DataLoader(
@@ -463,6 +475,7 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
                 path_points=architecture["pathPoints"],
                 key_slots=architecture["keySlots"],
                 output_frames=architecture["outputFrames"],
+                strata_weights=spec.strata_weights,
             )
 
     dataset = TrainingDataset()
@@ -602,6 +615,7 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
         "releaseEligible": not development,
         "parameterCount": actual_parameters,
         "modelSpecSha256": spec.sha256,
+        "strataWeights": spec.strata_weights,
         "dataManifestSha256": metadata["dataManifestSha256"],
         "weights": {
             "file": weights_name,
