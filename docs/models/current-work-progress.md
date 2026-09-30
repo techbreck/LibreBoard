@@ -162,6 +162,33 @@ Simulated on this shard: +136 top-1 / −73, 84.16% → 84.92%. Long +0.19 pp, r
 slate would be 94.1% top-1/top-3 — clears 90% top-1, still short of 95% top-3. Next lever is a new
 `swipe-latin-v1` candidate with stratum-weighted long / double-letter / return-trip training.
 
+## Stratum-weighted candidate, host CTC, 2026-09-29
+
+A `swipe-latin-v1` candidate was trained on Linux (CPU, 8 threads, 12 epochs) from
+`models/swipe/model-spec-strata-candidate.json` at commit `5156cceb`: same 64×32 ABI and
+architecture (821,121 parameters), with long / double-letter ×3 and return-trip ×2 sampling
+(1,416,329 examples per epoch; final validation greedy exact 73.1%, CER 8.7%). The exported ONNX is
+`f2ba9b7a…`; it is a candidate, not the pinned model, and is not committed.
+
+Host `evaluate_swipe_ctc.py` on the default 5,000-row stratified test sample, corpus lexicon
+(diagnostic only; the baseline row is the documented `1301f0d0…` run in
+`docs/swipe-ctc-evaluation.md`):
+
+| Test split | Baseline top-1 / top-3 | Candidate top-1 / top-3 |
+|---|---|---|
+| CTC overall | 85.24% / 90.98% | 86.88% / 92.02% |
+| CTC + geometric union overall | 86.32% / 92.66% | 86.82% / 92.84% |
+
+Candidate CTC by stratum, test (validation): long 75.04%/79.26% (79.36%/83.42%), return-trip
+81.32%/85.75% (82.89%/87.34%), double-letter 76.50%/83.11% (76.74%/85.27%). Per-stratum baseline
+CTC was not recorded, so per-stratum deltas are not available from this run.
+
+On in-vocabulary test rows the candidate's CTC is 91.0%/96.3% overall, long 90.9%/96.0%,
+return-trip 90.8%/95.7%, double-letter 85.7%/93.0%. The remaining host top-3 gap on long and
+return-trip is lexicon coverage (82.6% and 89.6%), not model ranking; double-letter still loses on
+ranking. Device replay of the 500 shard-1 IDs on the measure APK is the next measurement; these host
+numbers are not Phase 0 evidence.
+
 ## Completed
 
 - Integrated the corrected shared-session corpus split, tokenizer binding, and teacher manifest from `codex/context-shared-splits`. Main retains the smaller explicit candidate profile and newer evaluation gates.
