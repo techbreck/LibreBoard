@@ -70,7 +70,8 @@ to `model-spec.json` except for an optional `training.strataWeights` map of
 replicated by the maximum weight among its strata (never the product); integer parts always copy and
 the fractional part is sampled per record. The unweighted default spec is unchanged and consumes the
 identical shuffle RNG stream. Validation stays unweighted. Train, export, and evaluate with
-`--spec models/swipe/model-spec-strata-candidate.json`; no results are recorded yet.
+`--spec models/swipe/model-spec-strata-candidate.json`. Host results for the first candidate are in
+`docs/models/current-work-progress.md`.
 
 ## Required acceptance evidence
 

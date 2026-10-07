@@ -162,6 +162,40 @@ Simulated on this shard: +136 top-1 / −73, 84.16% → 84.92%. Long +0.19 pp, r
 slate would be 94.1% top-1/top-3 — clears 90% top-1, still short of 95% top-3. Next lever is a new
 `swipe-latin-v1` candidate with stratum-weighted long / double-letter / return-trip training.
 
+## Stratum-weighted candidate, host CTC, 2026-09-29
+
+A `swipe-latin-v1` candidate was trained on Linux (CPU, 8 threads, 12 epochs) from
+`models/swipe/model-spec-strata-candidate.json` at commit `5156cceb`: same 64×32 ABI and
+architecture (821,121 parameters), with long / double-letter ×3 and return-trip ×2 sampling
+(1,416,329 examples per epoch; final validation greedy exact 73.1%, CER 8.7%). The exported ONNX is
+`f2ba9b7a…`; it is a candidate, not the pinned model, and is not committed.
+
+A matched baseline was retrained from the unweighted `model-spec.json` on the same host, commit,
+data manifest, toolchain and thread count (ONNX `46c3bece…`; final validation greedy exact 67.9%).
+Host `evaluate_swipe_ctc.py`, default 5,000-row stratified sample, corpus lexicon (diagnostic only;
+both models on identical rows), CTC top-1 / top-3:
+
+| Test stratum | Rows | Matched baseline | Candidate | Δ |
+|---|---|---|---|---|
+| Overall | 5,000 | 85.28% / 91.58% | 86.88% / 92.02% | +1.60 / +0.44 pp |
+| Long | 569 | 69.24% / 76.45% | 75.04% / 79.26% | +5.80 / +2.81 pp |
+| Return-trip | 1,467 | 77.37% / 84.19% | 81.32% / 85.75% | +3.95 / +1.57 pp |
+| Double-letter | 515 | 67.18% / 80.39% | 76.50% / 83.11% | +9.32 / +2.72 pp |
+| Short | 1,844 | 95.34% / 98.32% | 95.17% / 98.16% | −0.16 / −0.16 pp |
+
+Validation agrees: overall 85.94%/91.50% → 87.44%/92.48%, long +2.20/+2.03, return-trip
++2.50/+1.81, double-letter +8.33/+6.40 pp. The matched baseline is within 0.04 pp of the
+documented `1301f0d0…` overall CTC top-1 (85.24%; its top-3 is 0.6 pp higher), so the gain is
+attributable to the weighting rather than to retraining. The
+CTC + geometric union moves less (test overall 86.34%/92.78% → 86.82%/92.84%; long top-1
++1.23 pp): the geometric fallback already recovered part of what the candidate now gets from CTC.
+
+On in-vocabulary test rows the candidate's CTC is 91.0%/96.3% overall, long 90.9%/96.0%,
+return-trip 90.8%/95.7%, double-letter 85.7%/93.0%. The remaining host top-3 gap on long and
+return-trip is lexicon coverage (82.6% and 89.6%), not model ranking; double-letter still loses on
+ranking. Device replay of the 500 shard-1 IDs on the measure APK is the next measurement; these host
+numbers are not Phase 0 evidence.
+
 ## Completed
 
 - Integrated the corrected shared-session corpus split, tokenizer binding, and teacher manifest from `codex/context-shared-splits`. Main retains the smaller explicit candidate profile and newer evaluation gates.
