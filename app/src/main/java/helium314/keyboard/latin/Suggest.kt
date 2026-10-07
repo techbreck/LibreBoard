@@ -757,7 +757,12 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
 
         private const val LEXICAL_PROPOSAL_BUDGET_MILLIS = 8L
         private const val CONTEXT_RESCORING_BUDGET_MILLIS = 35L
-        private const val SWIPE_PROPOSAL_BUDGET_MILLIS = 200L
+        // 200 ms left fused-path CTC empty on 357/500 GrapheneOS rows after incomplete beams
+        // stopped publishing: the 32-frame loop missed the deadline and fusion fell back to
+        // geometric. Standalone CTC on the same device is p95 ~154 ms; 400 ms is headroom for
+        // LiveSwipeModelSlot plus the slower fused-path tail. Phase 0 still scores fused_swipe
+        // p95 against 200 ms.
+        private const val SWIPE_PROPOSAL_BUDGET_MILLIS = 400L
         private const val SWIPE_CONTEXT_RESCORING_BUDGET_MILLIS = 50L
         private val TAG: String = Suggest::class.java.simpleName
 

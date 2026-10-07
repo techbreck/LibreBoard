@@ -17,7 +17,7 @@ import kotlin.math.sqrt
  * CTC owns the swipe slate whenever it proposes. Geometric runs only after CTC misses, using
  * leftover proposal budget (or a short grace window if CTC already exhausted it).
  *
- * Speculative parallel geometric scan was burning the 200 ms proposal budget even after CTC had
+ * Speculative parallel geometric scan was burning the proposal budget even after CTC had
  * finished: cancel() does not stop the scan, TIMEOUT partials were treated as a miss, and the
  * caller then waited out the remainder.
  */

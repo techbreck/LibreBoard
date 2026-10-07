@@ -215,7 +215,7 @@ class CtcSwipeDecoderTest {
     }
 
     @Test
-    fun timeoutPublishesTheLastCompletedBeam() {
+    fun incompleteFrameLoopDoesNotPublishARankedPartialSlate() {
         var decoding = false
         var frameChecks = 0
         val deadline = Deadline.afterMillis(1) {
@@ -234,8 +234,7 @@ class CtcSwipeDecoderTest {
         val result = decoder.decode(request(), deadline)
 
         assertEquals(EngineAvailability.TIMEOUT, result.availability)
-        assertEquals("al", result.candidates.first().surface)
-        assertTrue(result.candidates.none { it.surface == "all" })
+        assertTrue(result.candidates.isEmpty())
     }
 
     @Test

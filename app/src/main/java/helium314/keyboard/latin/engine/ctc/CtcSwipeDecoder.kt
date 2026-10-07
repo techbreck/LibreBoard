@@ -133,9 +133,10 @@ class CtcSwipeDecoder(
 
         for (frame in 0 until inference.frameCount) {
             if (deadline.expired) {
-                return SwipeDecodeResult(
-                    EngineAvailability.TIMEOUT, candidatesForBeam(beam, trie, inference.frameCount, greedy),
-                )
+                // An incomplete frame loop is not a ranked CTC slate: prefixes are short, every
+                // word under a node shares one spatial score, and frequency then promotes I/a/he.
+                // Empty TIMEOUT lets ParallelSwipeDecoder fall back to geometric.
+                return SwipeDecodeResult(EngineAvailability.TIMEOUT)
             }
             val frameOffset = frame * inference.classCount
             val logProbabilities = logSoftmax(logits, frameOffset, inference.classCount)
@@ -179,8 +180,7 @@ class CtcSwipeDecoder(
                 .take(beamWidth)
                 .associateTo(LinkedHashMap()) { it.key to it.value }
         }
-        // Intermediate slates are never published. Materialize only the final (or timed-out)
-        // beam, retaining the same scores and ordering without sorting 32 candidate lists.
+        // Intermediate slates are never published. Materialize only a completed frame loop.
         return SwipeDecodeResult(
             EngineAvailability.AVAILABLE, candidatesForBeam(beam, trie, inference.frameCount, greedy),
         )
