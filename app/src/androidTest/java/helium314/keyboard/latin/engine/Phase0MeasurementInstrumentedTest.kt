@@ -31,6 +31,7 @@ import helium314.keyboard.latin.common.CoordinateUtils
 import helium314.keyboard.latin.common.InputPointers
 import helium314.keyboard.latin.engine.context.BpeContextTokenizer
 import helium314.keyboard.latin.engine.context.ContextCandidateRescorer
+import helium314.keyboard.latin.engine.ctc.CtcDecodeTrace
 import helium314.keyboard.latin.engine.ctc.CtcSwipeDecoder
 import helium314.keyboard.latin.engine.geometric.GeometricSwipeDecoder
 import helium314.keyboard.latin.engine.integration.HeliBoardGeometricFallback
@@ -42,6 +43,7 @@ import helium314.keyboard.latin.engine.onnx.OnnxCtcInferenceSession
 import helium314.keyboard.latin.engine.onnx.OnnxRuntimeSessionFactory
 import helium314.keyboard.latin.engine.personal.PersonalizationRuntime
 import helium314.keyboard.latin.engine.runtime.LiveTypingEngine
+import helium314.keyboard.latin.engine.runtime.SwipeSlotTrace
 import helium314.keyboard.latin.settings.Settings
 import helium314.keyboard.latin.utils.DeviceProtectedUtils
 import helium314.keyboard.latin.utils.LayoutType
@@ -78,6 +80,7 @@ import org.junit.runner.RunWith
  *   phase0SwipeCorpusFile  prepared swipe JSONL under filesDir, or an absolute path (gates the swipe test)
  *   phase0SwipeOutputFile  swipe measurement JSONL filename beside the swipe corpus, or an absolute path
  *   phase0SwipeModelFile   optional filesDir-relative or absolute CTC swipe .onnx
+ *   phase0SwipeWarmArms    diagnostic "true": interleave rows across cluster-warmth arms (see [WarmArm])
  *
  * Absolute paths exist so a non-debuggable testOnly APK can be measured without `run-as`. The
  * driver then stages corpora under /data/local/tmp and pulls outputs from the same directory.
@@ -671,6 +674,73 @@ class Phase0MeasurementInstrumentedTest {
         )
     }
 
+    /**
+     * Diagnostic arms for phase0SwipeWarmArms, assigned by measured-row index so all three share
+     * thermal state, session and corpus. CONTROL is the normal replay, where standalone CTC runs
+     * beside the geometric scan. CTC_ALONE runs standalone CTC first with no concurrent work and
+     * the geometric scan afterwards. FUSED_WARMED keeps [ClusterWarmer] spinning through the
+     * fused_swipe call. Rows record their arm as auxiliaryLatencyMs.warm_arm (the ordinal).
+     */
+    private enum class WarmArm { CONTROL, CTC_ALONE, FUSED_WARMED }
+
+    /** Busy-spins one unpinned thread on request so the scheduler keeps a cluster clocked up. */
+    private class ClusterWarmer : AutoCloseable {
+        @Volatile private var spinning = false
+        @Volatile private var closed = false
+        @Volatile private var sink = 0L
+        private val thread = Thread({
+            var local = 0L
+            while (!closed) {
+                if (spinning) local += System.nanoTime() and 1L
+                else java.util.concurrent.locks.LockSupport.parkNanos(1_000_000L)
+            }
+            sink = local
+        }, "Phase0Warmer").apply { isDaemon = true; start() }
+
+        /** Starts spinning and gives utilization and frequency [WARM_LEAD_MS] to ramp. */
+        fun start() {
+            spinning = true
+            Thread.sleep(WARM_LEAD_MS)
+        }
+
+        fun stop() {
+            spinning = false
+        }
+
+        override fun close() {
+            closed = true
+            thread.join()
+        }
+    }
+
+    /** A CTC trace with per-thread CPU time and the core/clock the decode ran on. */
+    private fun placementTrace() = CtcDecodeTrace(Debug::threadCpuTimeNanos, ::currentCpu, ::cpuFreqMhz)
+
+    /** The core the calling thread is on: field 39 of its own /proc stat, counted after comm. */
+    private fun currentCpu(): Int = runCatching {
+        val stat = File("/proc/self/task/${android.os.Process.myTid()}/stat").readText()
+        stat.substring(stat.lastIndexOf(')') + 2).split(' ')[36].toInt()
+    }.getOrDefault(-1)
+
+    private fun cpuFreqMhz(cpu: Int): Int = runCatching {
+        File("/sys/devices/system/cpu/cpu$cpu/cpufreq/scaling_cur_freq").readText().trim().toInt() / 1000
+    }.getOrDefault(-1)
+
+    private fun putCtcStages(target: JSONObject, prefix: String, trace: CtcDecodeTrace) {
+        target.put("${prefix}_core_start", trace.startCpu.toDouble())
+        target.put("${prefix}_core_beam", trace.beamStartCpu.toDouble())
+        target.put("${prefix}_core_end", trace.endCpu.toDouble())
+        target.put("${prefix}_freq_start", trace.startFreqMhz.toDouble())
+        target.put("${prefix}_freq_end", trace.endFreqMhz.toDouble())
+        target.put("${prefix}_features", trace.featuresMs)
+        target.put("${prefix}_infer", trace.inferMs)
+        target.put("${prefix}_trie", trace.trieMs)
+        target.put("${prefix}_trie_hit", if (trace.trieCacheHit) 1.0 else 0.0)
+        target.put("${prefix}_beam", trace.beamMs)
+        target.put("${prefix}_wall", trace.wallMs)
+        target.put("${prefix}_cpu", trace.cpuMs)
+    }
+
     private fun swipeSurfaces(result: SwipeDecodeResult): JSONArray {
         val seen = LinkedHashSet<String>()
         val out = JSONArray()
@@ -782,6 +852,8 @@ class Phase0MeasurementInstrumentedTest {
 
         val writer = output.bufferedWriter()
         val swipeExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
+        val warmArms = args.getString("phase0SwipeWarmArms") == "true"
+        val warmer = if (warmArms) ClusterWarmer() else null
         val fusion = LegacySuggestionFusion()
         var measured = 0
         var ordinal = 0
@@ -805,17 +877,24 @@ class Phase0MeasurementInstrumentedTest {
                 val latency = JSONObject()
                 val availability = JSONObject()
 
+                val arm = if (warmArms) WarmArm.entries[measured % WarmArm.entries.size] else WarmArm.CONTROL
+
                 // Decode geometric and CTC concurrently under a standalone budget wider than the
                 // production 125 ms proposal deadline so each decoder's candidate set is visible.
-                val geometricFuture = swipeExecutor.submit<Pair<SwipeDecodeResult, Double>> {
+                val decodeGeometric = java.util.concurrent.Callable<Pair<SwipeDecodeResult, Double>> {
                     val decodeStart = System.nanoTime()
                     geometricDecoder.decode(request, Deadline.afterMillis(SWIPE_STANDALONE_BUDGET_MS)) to
                         (System.nanoTime() - decodeStart) / 1_000_000.0
                 }
+                val geometricFuture = if (arm == WarmArm.CTC_ALONE) null else swipeExecutor.submit(decodeGeometric)
+                // Fresh traces per row: a timed-out fused decode from the previous row may still
+                // be writing into the trace it captured when it started.
+                val standaloneCtcTrace = placementTrace()
+                ctcDecoder?.decodeTrace = standaloneCtcTrace
                 var start = System.nanoTime()
                 val ctc = ctcDecoder?.decode(request, Deadline.afterMillis(SWIPE_STANDALONE_BUDGET_MS))
                 latency.put("ctc", (System.nanoTime() - start) / 1_000_000.0)
-                val (geometric, geometricMs) = geometricFuture.get()
+                val (geometric, geometricMs) = (geometricFuture ?: swipeExecutor.submit(decodeGeometric)).get()
                 latency.put("geometric", geometricMs)
                 predictions.put("geometric", swipeSurfaces(geometric))
                 predictions.put("ctc", ctc?.let { swipeSurfaces(it) } ?: JSONArray())
@@ -828,6 +907,11 @@ class Phase0MeasurementInstrumentedTest {
                 composer.setBatchInputPointers(pointers)
                 val swipeTrace = Suggest.SwipeBatchTrace()
                 fixture.suggest.swipeBatchTrace = swipeTrace
+                val fusedCtcTrace = placementTrace()
+                val slotTrace = SwipeSlotTrace()
+                ctcDecoder?.decodeTrace = fusedCtcTrace
+                LiveTypingEngine.swipeDecoder.decodeTrace = slotTrace
+                if (arm == WarmArm.FUSED_WARMED) warmer?.start()
                 start = System.nanoTime()
                 val fused = fixture.suggest.getSuggestedWords(
                     composer, ngramContext,
@@ -835,7 +919,10 @@ class Phase0MeasurementInstrumentedTest {
                     SuggestedWords.INPUT_STYLE_UPDATE_BATCH, measured + 1,
                 )
                 latency.put("fused_swipe", (System.nanoTime() - start) / 1_000_000.0)
+                warmer?.stop()
                 fixture.suggest.swipeBatchTrace = null
+                ctcDecoder?.decodeTrace = null
+                LiveTypingEngine.swipeDecoder.decodeTrace = null
                 predictions.put("fused_swipe", surfaces(fused).also {
                     if (it.length() == 0) it.put(EMPTY_PREDICTION_SENTINEL)
                 })
@@ -846,6 +933,18 @@ class Phase0MeasurementInstrumentedTest {
                 auxiliaryLatency.put("fused_next_word", swipeTrace.nextWordMs)
                 auxiliaryLatency.put("fused_ctc_candidates", swipeTrace.ctcCandidates.toDouble())
                 auxiliaryLatency.put("fused_geometric_candidates", swipeTrace.geometricCandidates.toDouble())
+                // Stage split of the same CTC decoder called standalone (instrumentation thread)
+                // and through LiveSwipeModelSlot inside fused_swipe. fused_ctc_traced is 0 when
+                // the slot ran some other installed decoder, so its stage keys are meaningless.
+                putCtcStages(auxiliaryLatency, "ctc", standaloneCtcTrace)
+                putCtcStages(auxiliaryLatency, "fused_ctc", fusedCtcTrace)
+                auxiliaryLatency.put("fused_ctc_traced", if (fusedCtcTrace.threadName.isEmpty()) 0.0 else 1.0)
+                auxiliaryLatency.put("fused_ctc_on_slot_thread",
+                    if (fusedCtcTrace.threadName == "LibreBoardLiveSwipe") 1.0 else 0.0)
+                auxiliaryLatency.put("fused_slot_await_idle", slotTrace.awaitIdleMs)
+                auxiliaryLatency.put("fused_slot_queue", slotTrace.queueMs)
+                auxiliaryLatency.put("fused_slot_run", slotTrace.runMs)
+                if (warmArms) auxiliaryLatency.put("warm_arm", arm.ordinal.toDouble())
 
                 // fused_relaxed composes the same fusion boundary the production batch path uses,
                 // but feeds it the standalone decoded candidates and the geometric-trace fallback
@@ -900,6 +999,7 @@ class Phase0MeasurementInstrumentedTest {
             }
         }
         swipeExecutor.shutdown()
+        warmer?.close()
         writer.close()
         assertTrue("swipe corpus produced no measurable test rows", measured > 0)
         val sidecar = File(output.parentFile, "environment.json")
@@ -953,6 +1053,9 @@ class Phase0MeasurementInstrumentedTest {
     private companion object {
         /** Standalone decoder budget; production gives decoders 125 ms inside fused_swipe. */
         const val SWIPE_STANDALONE_BUDGET_MS = 1500L
+
+        /** Spinner lead before a FUSED_WARMED call; long enough for PELT and schedutil to ramp. */
+        const val WARM_LEAD_MS = 50L
 
         /** Placeholder emitted when a system returns no candidates; always a miss. */
         const val EMPTY_PREDICTION_SENTINEL = "__no_candidates__"

@@ -40,6 +40,23 @@ class LiveSwipeModelSlotTest {
     }
 
     @Test
+    fun traceSeparatesSlotOverheadFromDecoderRunTime() {
+        LiveSwipeModelSlot().use { slot ->
+            slot.install(SwipeDecoder { _, _ ->
+                Thread.sleep(20)
+                SwipeDecodeResult(EngineAvailability.AVAILABLE)
+            }, AutoCloseable {})
+            val trace = SwipeSlotTrace()
+            slot.decodeTrace = trace
+
+            assertEquals(EngineAvailability.AVAILABLE, slot.decode(request(), Deadline.afterMillis(1_000)).availability)
+            assertTrue(trace.runMs >= 20.0)
+            assertTrue(trace.queueMs >= 0.0)
+            assertTrue(trace.awaitIdleMs >= 0.0)
+        }
+    }
+
+    @Test
     fun installedDecoderPublishesAndOwnerClosesExactlyOnce() {
         var closes = 0
         LiveSwipeModelSlot().use { slot ->

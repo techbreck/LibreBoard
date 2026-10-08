@@ -12,7 +12,9 @@ import helium314.keyboard.latin.engine.TypingRequest
 import helium314.keyboard.latin.engine.WordLock
 import helium314.keyboard.latin.engine.geometric.LexiconWord
 import helium314.keyboard.latin.engine.geometric.SwipeLexicon
+import helium314.keyboard.latin.engine.integration.RevisingSwipeLexicon
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -45,6 +47,49 @@ class CtcSwipeDecoderTest {
         assertEquals(labels, features.keyLabels.take(labels.size))
         assertTrue(features.keyMask.take(labels.size).all { it == 1f })
         assertTrue(features.keyMask.drop(labels.size).all { it == 0f })
+    }
+
+    @Test
+    fun decodeTraceSplitsStagesAndReportsTrieCacheReuse() {
+        val lexicon = object : RevisingSwipeLexicon {
+            override val contentRevision: Any = 1
+            override fun words(languageTags: List<String>, approximateLength: Int) =
+                sequenceOf(LexiconWord("all", "en-US", 100))
+        }
+        val decoder = CtcSwipeDecoder(
+            fixedSession(listOf(classFor("a"), classFor("l"), 0, classFor("l"))),
+            lexicon,
+        )
+        var cpuNanos = 0L
+        val cores = ArrayDeque(listOf(1, 4, 6))
+        val first = CtcDecodeTrace(
+            threadCpuNanos = { cpuNanos.also { cpuNanos += 3_000_000L } },
+            currentCpu = { cores.removeFirst() },
+            cpuFreqMhz = { cpu -> cpu * 100 },
+        )
+        decoder.decodeTrace = first
+
+        assertEquals("all", decoder.decode(request(), Deadline.afterMillis(500)).candidates.first().surface)
+        assertFalse(first.trieCacheHit)
+        assertEquals(Thread.currentThread().name, first.threadName)
+        assertEquals(3.0, first.cpuMs, 0.0)
+        assertEquals(listOf(1, 4, 6), listOf(first.startCpu, first.beamStartCpu, first.endCpu))
+        assertEquals(100, first.startFreqMhz)
+        assertEquals(600, first.endFreqMhz)
+        assertTrue(first.beamMs > 0.0)
+        assertTrue(first.featuresMs + first.inferMs + first.trieMs + first.beamMs <= first.wallMs + 1e-6)
+
+        val second = CtcDecodeTrace()
+        decoder.decodeTrace = second
+        decoder.decode(request(), Deadline.afterMillis(500))
+        assertTrue(second.trieCacheHit)
+        assertEquals(-1.0, second.cpuMs, 0.0)
+        assertEquals(-1, second.startCpu)
+        assertEquals(-1, second.endFreqMhz)
+
+        decoder.decodeTrace = null
+        assertEquals("all", decoder.decode(request(), Deadline.afterMillis(500)).candidates.first().surface)
+        assertTrue(second.trieCacheHit)
     }
 
     @Test

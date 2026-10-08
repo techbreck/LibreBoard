@@ -421,6 +421,10 @@ def main(argv=None) -> int:
     parser.add_argument("--rescorer-budget-ms", type=int,
                         help="diagnostic-only: override the production rescorer budget so neural "
                              "scores can be observed on runtimes too slow to meet it")
+    parser.add_argument("--swipe-warm-arms", action="store_true",
+                        help="diagnostic-only: interleave swipe rows across three arms by row "
+                             "index (control, standalone CTC without concurrent geometric, fused "
+                             "under a busy spinner) to test cluster-warmth effects on latency")
     parser.add_argument("--output", type=pathlib.Path, required=True)
     parser.add_argument("--metadata", type=pathlib.Path,
                         help="schema-%d metadata JSON to create or update with this run's environment"
@@ -522,6 +526,8 @@ def main(argv=None) -> int:
             "-e", "phase0SwipeCorpusFile", extra_path("swipe-corpus.jsonl"),
             "-e", "phase0SwipeOutputFile", extra_output("swipe-measurement.jsonl"),
         ]
+        if args.swipe_warm_arms:
+            instrument_args += ["-e", "phase0SwipeWarmArms", "true"]
         if args.swipe_model is not None:
             inject(args.swipe_model, "swipe.onnx", swipe_model_sha256)
             instrument_args += ["-e", "phase0SwipeModelFile", extra_path("swipe.onnx")]

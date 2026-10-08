@@ -52,6 +52,85 @@ fun interface CtcInferenceSession {
 }
 
 /**
+ * Measurement hook: stage timings for one [CtcSwipeDecoder.decode], recorded on whichever thread
+ * ran it. Production never sets this; the Phase 0 harness uses it to split standalone and fused
+ * decode latency. [threadCpuNanos] lets an Android caller supply per-thread CPU time; without it
+ * [cpuMs] stays negative. [currentCpu] and [cpuFreqMhz] let it record which core the decode ran
+ * on (at start, at beam start and at end) and that core's clock; probe costs are excluded from
+ * the stage times, and unavailable probes leave -1. Times are milliseconds; stages a decode did
+ * not reach stay zero.
+ */
+class CtcDecodeTrace(
+    private val threadCpuNanos: (() -> Long)? = null,
+    private val currentCpu: (() -> Int)? = null,
+    private val cpuFreqMhz: ((Int) -> Int)? = null,
+) {
+    @Volatile var featuresMs = 0.0
+    @Volatile var inferMs = 0.0
+    /** Greedy emission plus trie cache lookup or rebuild, including the lexicon query. */
+    @Volatile var trieMs = 0.0
+    @Volatile var trieCacheHit = false
+    /** Frame loop plus slate materialization. */
+    @Volatile var beamMs = 0.0
+    @Volatile var wallMs = 0.0
+    @Volatile var cpuMs = -1.0
+    @Volatile var threadName = ""
+    @Volatile var startCpu = -1
+    /** Core after inference, where the Kotlin beam search starts. */
+    @Volatile var beamStartCpu = -1
+    @Volatile var endCpu = -1
+    @Volatile var startFreqMhz = -1
+    @Volatile var endFreqMhz = -1
+
+    private var startNanos = 0L
+    private var startCpuNanos = 0L
+    private var markNanos = 0L
+    private var probeNanos = 0L
+
+    internal fun begin() {
+        featuresMs = 0.0
+        inferMs = 0.0
+        trieMs = 0.0
+        trieCacheHit = false
+        beamMs = 0.0
+        beamStartCpu = -1
+        threadName = Thread.currentThread().name
+        startCpu = currentCpu?.invoke() ?: -1
+        startFreqMhz = frequencyOf(startCpu)
+        probeNanos = 0L
+        startCpuNanos = threadCpuNanos?.invoke() ?: 0L
+        startNanos = System.nanoTime()
+        markNanos = startNanos
+    }
+
+    /** Milliseconds since the previous stage boundary. */
+    internal fun lap(): Double {
+        val now = System.nanoTime()
+        return ((now - markNanos) / 1_000_000.0).also { markNanos = now }
+    }
+
+    /** Samples the core the beam search starts on without charging the probe to a stage. */
+    internal fun sampleBeamStart() {
+        val probe = currentCpu ?: return
+        val before = System.nanoTime()
+        beamStartCpu = probe()
+        val after = System.nanoTime()
+        probeNanos += after - before
+        markNanos = after
+    }
+
+    internal fun end() {
+        wallMs = (System.nanoTime() - startNanos - probeNanos) / 1_000_000.0
+        cpuMs = threadCpuNanos?.let { (it() - startCpuNanos) / 1_000_000.0 } ?: -1.0
+        endCpu = currentCpu?.invoke() ?: -1
+        endFreqMhz = frequencyOf(endCpu)
+    }
+
+    private fun frequencyOf(cpu: Int): Int =
+        if (cpu < 0) -1 else cpuFreqMhz?.invoke(cpu) ?: -1
+}
+
+/**
  * Layout-conditioned CTC swipe decoder with lexicon-constrained prefix beam search.
  *
  * Runtime absence and malformed output are explicit states. They never throw through the shared
@@ -68,15 +147,33 @@ class CtcSwipeDecoder(
         require(maximumLexiconWords > 0)
     }
 
+    /** Measurement hook; production never sets this. Read once at the start of each decode. */
+    @Volatile var decodeTrace: CtcDecodeTrace? = null
+
     override fun decode(request: TypingRequest, deadline: Deadline): SwipeDecodeResult {
+        val trace = decodeTrace ?: return decodeStages(request, deadline, null)
+        trace.begin()
+        try {
+            return decodeStages(request, deadline, trace)
+        } finally {
+            trace.end()
+        }
+    }
+
+    private fun decodeStages(request: TypingRequest, deadline: Deadline, trace: CtcDecodeTrace?): SwipeDecodeResult {
         require(request.inputStyle == InputStyle.SWIPE)
         if (request.path.size < 2) return SwipeDecodeResult(EngineAvailability.AVAILABLE)
         if (deadline.expired) return SwipeDecodeResult(EngineAvailability.TIMEOUT)
 
         val features = runCatching { featureTensor(request.path, request.geometry) }
             .getOrElse { return SwipeDecodeResult(EngineAvailability.INCOMPATIBLE) }
+        trace?.let { it.featuresMs = it.lap() }
         val inference = runCatching { inferenceSession.infer(features, deadline) }
             .getOrElse { return SwipeDecodeResult(EngineAvailability.UNAVAILABLE) }
+        trace?.let {
+            it.inferMs = it.lap()
+            it.sampleBeamStart()
+        }
         if (inference.availability != EngineAvailability.AVAILABLE) {
             return SwipeDecodeResult(inference.availability)
         }
@@ -96,7 +193,9 @@ class CtcSwipeDecoder(
         // deadline, so keep a bounded cache keyed on the lexicon's own revision token.
         val revision = (lexicon as? RevisingSwipeLexicon)?.contentRevision
         val cacheKey = revision?.let { TrieCacheKey(it, languageTags, approximateLength, features.keyLabels) }
-        val trie = (cacheKey?.let { key -> synchronized(trieCache) { trieCache[key] } }
+        val cached = cacheKey?.let { key -> synchronized(trieCache) { trieCache[key] } }
+        trace?.trieCacheHit = cached != null
+        val trie = (cached
             ?: buildTrie(
                 lexicon.words(languageTags, approximateLength),
                 features.keyLabels,
@@ -105,9 +204,10 @@ class CtcSwipeDecoder(
             )?.also { built ->
                 if (cacheKey != null) synchronized(trieCache) { trieCache[cacheKey] = built }
             }) ?: return SwipeDecodeResult(EngineAvailability.TIMEOUT)
+        trace?.let { it.trieMs = it.lap() }
         if (trie.wordCount == 0) return SwipeDecodeResult(EngineAvailability.AVAILABLE)
 
-        return decodeLogits(inference, trie, deadline, greedy)
+        return decodeLogits(inference, trie, deadline, greedy).also { trace?.let { it.beamMs = it.lap() } }
     }
 
     private data class TrieCacheKey(

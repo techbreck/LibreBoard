@@ -19,6 +19,21 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicReference
 
+/**
+ * Measurement hook: where one [LiveSwipeModelSlot.decode] spent its wall time. Production never
+ * sets this; the Phase 0 harness uses it to separate slot overhead from decoder work. Times are
+ * milliseconds. [runMs] is written on the decoder thread and may land after a timed-out decode
+ * has already returned.
+ */
+class SwipeSlotTrace {
+    /** Waiting for leftover inference from the previous swipe before submitting. */
+    @Volatile var awaitIdleMs = 0.0
+    /** From submit until the decoder thread started the task. */
+    @Volatile var queueMs = 0.0
+    /** Decoder run time on the decoder thread. */
+    @Volatile var runMs = 0.0
+}
+
 /** Hard-deadline process owner for the optional CTC model session. */
 class LiveSwipeModelSlot(
     private val circuitBreaker: DeadlineCircuitBreaker = DeadlineCircuitBreaker(),
@@ -31,6 +46,9 @@ class LiveSwipeModelSlot(
     private var installed: Entry? = null
     private var closed = false
     private val inFlight = AtomicReference<Future<SwipeDecodeResult>?>()
+
+    /** Measurement hook; production never sets this. Read once at the start of each decode. */
+    @Volatile var decodeTrace: SwipeSlotTrace? = null
 
     fun install(decoder: SwipeDecoder, owner: AutoCloseable) {
         var closeNow: AutoCloseable? = null
@@ -72,18 +90,25 @@ class LiveSwipeModelSlot(
         synchronized(monitor) {
             if (closed || installed == null) return SwipeDecodeResult(EngineAvailability.UNAVAILABLE)
         }
+        val trace = decodeTrace
+        val idleStart = System.nanoTime()
         if (!awaitIdle(deadline)) {
             circuitBreaker.recordOverrun()
             return SwipeDecodeResult(EngineAvailability.TIMEOUT)
         }
         val remaining = deadline.remainingMillis
         if (remaining <= 0) return SwipeDecodeResult(EngineAvailability.TIMEOUT)
+        val submitted = System.nanoTime()
+        trace?.awaitIdleMs = (submitted - idleStart) / 1_000_000.0
         val future = executor.submit<SwipeDecodeResult> {
+            val started = System.nanoTime()
+            trace?.queueMs = (started - submitted) / 1_000_000.0
             val entry = acquire() ?: return@submit SwipeDecodeResult(EngineAvailability.UNAVAILABLE)
             try {
                 entry.decoder.decode(request, deadline)
             } finally {
                 release(entry)
+                trace?.runMs = (System.nanoTime() - started) / 1_000_000.0
             }
         }
         inFlight.set(future)
