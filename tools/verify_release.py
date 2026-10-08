@@ -141,19 +141,26 @@ SHA256 = re.compile(r"^[0-9a-f]{64}$")
 GIT_COMMIT = re.compile(r"^[0-9a-f]{40,64}$")
 SECURITY_PATCH = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 UTC_TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+# Checks every passing Phase 0 report carries (docs/phase-0.md, gate amendments).
 PHASE0_CHECKS = {
     "tap_relative_error_reduction",
-    "neural_valid_word_relative_error_reduction",
-    "neural_valid_word_absolute_gain",
-    "false_correction_ceiling",
-    "swipe_top1",
-    "swipe_top3",
-    "swipe_short_top3",
-    "swipe_return_trip_top3",
+    "shipped_false_correction_ceiling",
+    "swipe_lexicon_coverage",
+    "swipe_in_lexicon_top1",
+    "swipe_in_lexicon_top3",
+    "swipe_in_lexicon_short_top3",
+    "swipe_in_lexicon_return_trip_top3",
     "swipe_geometric_relative_error_reduction",
     "tap_p95_latency",
     "swipe_p95_latency",
     "peak_neural_memory",
+}
+# Required with a qualifying context model. Release verification does not accept an unavailable
+# context model yet: nothing here proves such a release never loads it.
+PHASE0_CONTEXT_MODEL_CHECKS = {
+    "neural_valid_word_relative_error_reduction",
+    "neural_valid_word_absolute_gain",
+    "false_correction_ceiling",
 }
 MINIMUM_PHASE0_COUNTS = {
     "tap_error": 3_000,
@@ -1354,11 +1361,18 @@ def validate_phase0_report(errors: list[str], report: dict, apk_hash: str) -> di
         fail(errors, "Phase 0 report has an unsupported schema")
     if report.get("passed") is not True:
         fail(errors, "Phase 0 report did not pass")
+    context = report.get("contextModel")
+    if not isinstance(context, dict) or context.get("mode") != "qualifying":
+        fail(errors, "Phase 0 report must qualify the context model; release verification cannot yet "
+                     "prove that a release with an unavailable context model never loads it")
     checks = report.get("checks")
     if (not isinstance(checks, dict)
-            or set(checks) != PHASE0_CHECKS
+            or set(checks) != PHASE0_CHECKS | PHASE0_CONTEXT_MODEL_CHECKS
             or any(value is not True for value in checks.values())):
         fail(errors, "Phase 0 report does not contain every passing release check")
+    vocabulary = report.get("swipeVocabulary")
+    if not isinstance(vocabulary, dict) or vocabulary.get("measuredApkSha256") != apk_hash:
+        fail(errors, "Phase 0 swipe vocabulary is not bound to this APK")
     counts = report.get("counts")
     if not isinstance(counts, dict) or any(
         isinstance(counts.get(category), bool)
@@ -1541,6 +1555,7 @@ def evidence_checks(
     phase0_measurements_path: pathlib.Path,
     grapheneos_path: pathlib.Path,
     instrumentation_path: pathlib.Path,
+    swipe_lexicon_path: pathlib.Path | None,
 ) -> None:
     if not apk.is_file() or not rebuilt_apk.is_file():
         fail(errors, "both reproducibility APKs must exist")
@@ -1566,12 +1581,17 @@ def evidence_checks(
         if phase0_evidence.get("measurementDatasetSha256") != measurement_hash:
             fail(errors, "Phase 0 report references a different measurement dataset")
         try:
+            if swipe_lexicon_path is None:
+                raise evaluate_engine.EvaluationError("the swipe vocabulary export is required")
+            # Bound to the release APK itself: it must ship the dictionary the export enumerated.
+            vocabulary = evaluate_engine.load_swipe_vocabulary(swipe_lexicon_path, apk)
             measurements = evaluate_engine.read_jsonl(phase0_measurements_path)
             recomputed = evaluate_engine.evaluate(
                 measurements,
                 {"schemaVersion": evaluate_engine.SCHEMA_VERSION, **phase0_evidence},
                 measurement_sha256=measurement_hash,
                 enforce_minimum_counts=True,
+                swipe_vocabulary=vocabulary,
             )
         except (OSError, evaluate_engine.EvaluationError) as exc:
             fail(errors, f"Phase 0 measurements cannot be independently evaluated: {exc}")
@@ -2159,6 +2179,11 @@ def main() -> int:
         type=pathlib.Path,
         help="raw output from the GrapheneOS device run",
     )
+    parser.add_argument(
+        "--swipe-lexicon",
+        type=pathlib.Path,
+        help="production swipe vocabulary export the Phase 0 report was evaluated with",
+    )
     args = parser.parse_args()
     evidence_values = (
         args.rebuilt_apk,
@@ -2166,6 +2191,7 @@ def main() -> int:
         args.phase0_measurements,
         args.grapheneos_evidence,
         args.instrumentation_output,
+        args.swipe_lexicon,
     )
     has_evidence = any(value is not None for value in evidence_values)
     if not args.source and not args.apk and not args.model_pack_apk and not has_evidence:
@@ -2173,8 +2199,8 @@ def main() -> int:
     if has_evidence and (len(args.apk) != 1 or any(value is None for value in evidence_values)):
         parser.error(
             "GrapheneOS evidence requires exactly one --apk plus --rebuilt-apk, "
-            "--phase0-report, --phase0-measurements, --grapheneos-evidence, and "
-            "--instrumentation-output"
+            "--phase0-report, --phase0-measurements, --grapheneos-evidence, "
+            "--instrumentation-output, and --swipe-lexicon"
         )
     if args.model_pack_apk and args.model_public_key is None:
         parser.error("--model-pack-apk requires --model-public-key")
@@ -2201,6 +2227,7 @@ def main() -> int:
             args.phase0_measurements.resolve(),
             args.grapheneos_evidence.resolve(),
             args.instrumentation_output.resolve(),
+            args.swipe_lexicon.resolve(),
         )
     if errors:
         for error in errors:

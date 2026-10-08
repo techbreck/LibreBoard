@@ -32,12 +32,79 @@ Runtime path and does not count as quality evidence. Earlier Android kernel-pari
 other weights and do not qualify the canonical export. No accepted full-quality or physical-device
 measurement exists yet. Synthetic smoke results never count as Phase 0 evidence.
 
-Phase 1 remains blocked until all original gates pass: tap relative error reduction, context-sensitive
-and valid-word gains, false-correction ceiling, swipe top-1/top-3 strata, 80/200 ms p95 budgets, 64 MiB
-added peak memory, reproducibility, licensing, and the physical GrapheneOS matrix.
+Phase 1 remains blocked until all gates pass as amended on 2026-10-08 (below): tap relative error
+reduction, context-sensitive and valid-word gains while the context model qualifies, false-correction
+ceilings, in-lexicon swipe top-1/top-3 and strata with the vocabulary-coverage floor, 80/200 ms p95
+budgets, 64 MiB added peak memory, reproducibility, licensing, and the physical GrapheneOS matrix.
 
 The repository may ship core keyboard improvements before then, but releases must describe the neural
 components as unavailable and must keep the classic/geometric fallback fully usable.
+
+## Gate amendments, 2026-10-08
+
+Approved by the project owner on 2026-10-08 and implemented in `tools/evaluate_engine.py` and
+`tools/verify_release.py`. Three original gates could not pass on this corpus with the current
+models, however much engineering went in. The measured device matrix is still incomplete.
+
+**1. Swipe accuracy is scored on targets the production vocabulary can produce.**
+
+- About 5% of swipe test targets are outside the 100,000-word production vocabulary: place names
+  (`abashiri`, `dunkeld`), hyphenated forms (`almost-complete`) and British spellings (`centre`).
+  The full dictionary would raise coverage only to 95.7% (`full-dictionary-validation-coverage.json`).
+  No lexicon-constrained decoder can produce these words.
+- That makes two all-target gates unreachable. Top-3 ≥ 95% would need perfect top-3 on every
+  in-vocabulary row. Return-trip targets were only 92.3% in-vocabulary on the GrapheneOS rows below,
+  so return-trip top-3 ≥ 90% would need about 97.5% on the in-vocabulary ones.
+- **Amended checks.** `swipe_in_lexicon_top1` ≥ 90%, `swipe_in_lexicon_top3` ≥ 95%,
+  `swipe_in_lexicon_short_top3` ≥ 90% and `swipe_in_lexicon_return_trip_top3` ≥ 90%. They are scored
+  on targets in the decodable production vocabulary. Possibly offensive words are excluded, as the
+  default policy never offers them.
+- **New guard.** `swipe_lexicon_coverage` ≥ 94% of swipe test targets, so a smaller vocabulary
+  cannot drop hard targets.
+- **Unchanged.** All-target accuracy stays in the report, and the geometric relative-error-reduction
+  gate is unchanged.
+- **Binding.** `--swipe-lexicon` takes the instrumented `static-swipe-lexicon.json` export.
+  `--swipe-lexicon-apk` takes the measured APK: its SHA-256 must equal metadata `coreApkSha256`, and
+  its dictionary asset must be byte-identical to the one the export enumerated. Without both
+  options, the four checks and the coverage guard fail.
+- **Diagnostic data.** On the first 500 rows of GrapheneOS swipe shard 1/3
+  (`grapheneos-placement-500-1`, one environment): coverage 95.0%; in-lexicon top-1/top-3
+  91.8%/98.3%, short top-3 99.5%, return-trip top-3 97.0%. The all-target figures are 87.2%/93.4%
+  and 89.5%.
+
+**2. A release may ship the context model unavailable.**
+
+- The pinned context model changes no commit decision at any permitted strength, and its two gain
+  gates read 0.0 (`context-shared-tap-neural-evaluation.json`).
+- **Amended mode.** `--context-model unavailable` lists `neural_valid_word_relative_error_reduction`,
+  `neural_valid_word_absolute_gain` and `false_correction_ceiling` as not applicable; their values
+  stay in the report. The tap latency gate is then scored on `fused_personal`, the path that ships.
+- **Release requirement.** A release qualified this way must not load the context model. Until
+  `tools/verify_release.py` can prove that, it rejects reports in this mode, so a release cannot use
+  the amendment yet.
+- **Default unchanged.** The default mode, `qualifying`, keeps every original gate.
+- **New in both modes.** `shipped_false_correction_ceiling`: the shipped tap path (`fused_neural` or
+  `fused_personal`) may not add more than 0.5 percentage points of false corrections on valid-word
+  keeps over classic HeliBoard. Without it, dropping the context-model gates would leave the shipped
+  path with no false-correction check. Both hardware legs measured 0%.
+
+**3. The 64 MiB memory gate needs an isolated measurement (definition only).**
+
+- `peakAddedNeuralMemoryMiB` is whole-process peak PSS minus one sample taken after fixture setup.
+  Across three otherwise identical GrapheneOS swipe runs, that baseline sample ranged from 102 to
+  275 MiB while the peak stayed near 410 MiB. The headline figure therefore mostly measures noise in
+  the baseline.
+- The 1.5–2.4 MiB recorded for tap runs is only the extra memory of running inference with the
+  models already loaded. The models' resident cost has never been isolated, so whether the gate is
+  met is unknown.
+- **Definition.** Compare two otherwise identical replays, each in a fresh process, one
+  with the swipe and context models installed and one without. Sample each repeatedly after a forced
+  GC, and gate on the difference in both steady-state and peak PSS.
+- **Until then.** This needs harness work. The evaluator keeps the current upper bound, which does
+  not pass.
+
+**Unchanged:** tap relative error reduction ≥ 20%, the 80/200 ms p95 budgets per environment, the
+device matrix, minimum counts, reproducibility, licensing and signing.
 
 ## Current evidence and remaining gates, 2026-09-08
 

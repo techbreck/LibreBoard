@@ -97,8 +97,17 @@ cannot supply or override it.
 ```sh
 python3 tools/evaluate_engine.py measurements.jsonl \
   --metadata measurement-metadata.json \
+  --swipe-lexicon build/device-evidence/static-swipe-lexicon.json \
+  --swipe-lexicon-apk path/to/measured.apk \
   --report build/reports/phase-0.json
 ```
+
+`--swipe-lexicon` is the instrumented production vocabulary export. `--swipe-lexicon-apk` is the
+measured APK: its SHA-256 must equal metadata `coreApkSha256`, and its dictionary asset must be
+byte-identical to the one the export enumerated. Swipe accuracy gates score targets in that
+vocabulary, and without both options they fail (see the gate amendments in
+[Phase 0](phase-0.md)). `--context-model unavailable` evaluates a release that ships without the
+context model; the default, `qualifying`, keeps every context-model gate.
 
 The normal command enforces the release-size dataset minimums. `--allow-small-dataset` exists only
 for developing the evaluator and cannot produce release evidence. A report passes only when every

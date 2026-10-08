@@ -49,8 +49,13 @@ python3 tools/verify_release.py --source \
   --phase0-report build/reports/phase-0.json \
   --phase0-measurements build/reports/phase-0-measurements.jsonl \
   --grapheneos-evidence build/reports/grapheneos.json \
-  --instrumentation-output build/reports/grapheneos-instrumentation.txt
+  --instrumentation-output build/reports/grapheneos-instrumentation.txt \
+  --swipe-lexicon build/device-evidence/static-swipe-lexicon.json
 ```
+
+The verifier recomputes the Phase 0 report with that vocabulary export, bound to the release APK's own
+dictionary. It accepts only a report whose context model is `qualifying`, until it can prove that a
+release with an unavailable context model never loads it.
 
 This gate supplements APK inspection; it does not manufacture device evidence. Until a qualifying
 physical run exists, the correct result is a blocked release.

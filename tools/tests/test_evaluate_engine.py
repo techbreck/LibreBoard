@@ -1,19 +1,24 @@
 # SPDX-License-Identifier: GPL-3.0-only
 from __future__ import annotations
 
+import hashlib
+import json
 import pathlib
 import sys
 import tempfile
 import unittest
+import zipfile
 
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from evaluate_engine import (  # noqa: E402
     EvaluationError,
+    SwipeVocabulary,
     accuracy,
     auto_correction_rate,
     evaluate,
     false_correction_rate,
+    load_swipe_vocabulary,
     parse_example,
     read_jsonl,
     validate_swipe_strata,
@@ -65,6 +70,11 @@ def example(
             for system, slate in predictions.items()
         }
     return parse_example(value, number)
+
+
+def vocabulary(*words: str, apk: str = "b" * 64) -> SwipeVocabulary:
+    """A production vocabulary bound to the metadata() APK unless told otherwise."""
+    return SwipeVocabulary(frozenset(words), {"measuredApkSha256": apk, "decodableWords": len(words)})
 
 
 def metadata():
@@ -361,14 +371,111 @@ class EvaluateEngineTest(unittest.TestCase):
             metadata(),
             measurement_sha256="e" * 64,
             enforce_minimum_counts=False,
+            swipe_vocabulary=vocabulary("target"),
         )
         self.assertTrue(result["passed"])
         self.assertTrue(all(result["checks"].values()))
+        self.assertEqual({}, result["notApplicable"])
         self.assertEqual("b" * 64, result["evidence"]["coreApkSha256"])
         self.assertEqual("context-shared-session-v2", result["evidence"]["artifactPin"]["candidateId"])
         self.assertEqual(1, result["swipeStrataCounts"]["short"])
         self.assertEqual(1.0, result["gates"]["neuralContextRelativeErrorReduction"])
         self.assertEqual({"correct": 1, "keep": 1}, result["validWordCounts"])
+
+    def test_swipe_gates_score_in_lexicon_targets_and_fail_closed_without_a_vocabulary(self):
+        rows = self._minimum_rows()
+        miss = {system: ["venue"] for system in ("geometric", "ctc", "fused_swipe")}
+        rows.append(example(19, "swipe", "venango", "", miss, strata=["short", "return_trip"]))
+
+        unbound = evaluate(rows, metadata(), measurement_sha256="e" * 64, enforce_minimum_counts=False)
+        self.assertIsNone(unbound["swipeVocabulary"])
+        for name in ("swipe_lexicon_coverage", "swipe_in_lexicon_top1", "swipe_in_lexicon_top3",
+                     "swipe_in_lexicon_short_top3", "swipe_in_lexicon_return_trip_top3"):
+            self.assertFalse(unbound["checks"][name], name)
+
+        # The place name is outside the vocabulary: it no longer counts against accuracy, and it
+        # still counts against coverage, so a vocabulary cannot shrink its way past the gates.
+        bound = evaluate(rows, metadata(), measurement_sha256="e" * 64, enforce_minimum_counts=False,
+                         swipe_vocabulary=vocabulary("target"))
+        self.assertEqual(0.75, bound["systems"]["fused_swipe"]["top1"])
+        self.assertEqual(1.0, bound["systems"]["fused_swipe"]["inLexicon"]["top1"])
+        self.assertEqual(0.5, bound["gates"]["swipeReturnTripTop3"])
+        self.assertTrue(bound["checks"]["swipe_in_lexicon_top1"])
+        self.assertTrue(bound["checks"]["swipe_in_lexicon_return_trip_top3"])
+        self.assertEqual(0.75, bound["gates"]["swipeLexiconCoverage"])
+        self.assertFalse(bound["checks"]["swipe_lexicon_coverage"])
+
+        with self.assertRaisesRegex(EvaluationError, "not bound to the measured APK"):
+            evaluate(rows, metadata(), measurement_sha256="e" * 64, enforce_minimum_counts=False,
+                     swipe_vocabulary=vocabulary("target", apk="f" * 64))
+
+    def test_unavailable_context_model_reports_neural_gates_and_scores_the_shipped_path(self):
+        rows = self._minimum_rows()
+        tap = {
+            "heliboard": ["target"],
+            "fused": ["target", "raw"],
+            "fused_personal": ["target", "raw"],
+            "fused_neural": ["target", "raw"],
+        }
+        rows[3] = example(14, "tap_error", "target", "raw", tap, environment_kind="grapheneos_hardware",
+                          test_run_id="graphene-run", latency_overrides={"fused_personal": 81.0})
+
+        def run(mode):
+            return evaluate(rows, metadata(), measurement_sha256="e" * 64, enforce_minimum_counts=False,
+                            swipe_vocabulary=vocabulary("target"), context_model=mode)
+
+        qualifying, unavailable = run("qualifying"), run("unavailable")
+        self.assertIn("neural_valid_word_absolute_gain", qualifying["checks"])
+        self.assertTrue(qualifying["checks"]["tap_p95_latency"])
+        for name in ("neural_valid_word_relative_error_reduction", "neural_valid_word_absolute_gain",
+                     "false_correction_ceiling"):
+            self.assertNotIn(name, unavailable["checks"])
+            self.assertIn(name, unavailable["notApplicable"])
+        self.assertIn("neuralValidWordAbsoluteGain", unavailable["gates"])
+        self.assertEqual("fused_personal", unavailable["contextModel"]["shippedTapSystem"])
+        self.assertFalse(unavailable["checks"]["tap_p95_latency"])
+        with self.assertRaisesRegex(EvaluationError, "context model mode"):
+            run("disabled")
+
+    def test_shipped_tap_path_may_not_add_false_corrections_over_classic(self):
+        rows = self._minimum_rows()
+        rows.append(example(20, "valid_word", "form", "form", {
+            "heliboard": ["form"], "fused": ["form"],
+            "fused_personal": ["from", "form"], "fused_neural": ["form"],
+        }, should_correct=False))
+        result = evaluate(rows, metadata(), measurement_sha256="e" * 64, enforce_minimum_counts=False,
+                          swipe_vocabulary=vocabulary("target"), context_model="unavailable")
+        self.assertEqual(0.5, result["gates"]["shippedFalseCorrectionIncreaseOverClassic"])
+        self.assertFalse(result["checks"]["shipped_false_correction_ceiling"])
+
+    def test_swipe_vocabulary_is_bound_to_the_dictionary_the_measured_apk_ships(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            apk = root / "measured.apk"
+            with zipfile.ZipFile(apk, "w") as archive:
+                archive.writestr("assets/dicts/main_en-US.dict", b"dictionary bytes")
+            words = [
+                {"word": "Target", "languageTag": "en-US", "frequency": 200, "possiblyOffensive": False},
+                {"word": "rude", "languageTag": "en-US", "frequency": 90, "possiblyOffensive": True},
+            ]
+
+            def export(dictionary_sha256, maximum=100_000):
+                path = root / "export.json"
+                path.write_text(json.dumps({
+                    "schemaVersion": 1, "source": "bundled-static-dictionary",
+                    "dictionaryAsset": "dicts/main_en-US.dict", "dictionarySha256": dictionary_sha256,
+                    "apkSha256": "0" * 64, "visited": 2, "maximumWords": maximum, "words": words,
+                }), encoding="utf-8")
+                return path
+
+            shipped = hashlib.sha256(b"dictionary bytes").hexdigest()
+            loaded = load_swipe_vocabulary(export(shipped), apk)
+            self.assertEqual(frozenset({"target"}), loaded.words)
+            self.assertEqual(hashlib.sha256(apk.read_bytes()).hexdigest(), loaded.provenance["measuredApkSha256"])
+            with self.assertRaisesRegex(EvaluationError, "different dictionary"):
+                load_swipe_vocabulary(export("1" * 64), apk)
+            with self.assertRaisesRegex(EvaluationError, "bound differs from production"):
+                load_swipe_vocabulary(export(shipped, maximum=200_000), apk)
 
     def test_session_crossing_splits_is_rejected(self):
         systems = {

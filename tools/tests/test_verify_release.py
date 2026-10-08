@@ -716,9 +716,25 @@ class VerifyReleaseEvidenceTest(unittest.TestCase):
         self.root = pathlib.Path(self.temporary.name)
         self.apk = self.root / "LibreBoard_release.apk"
         self.rebuilt = self.root / "rebuilt.apk"
-        self.apk.write_bytes(b"reproducible apk")
+        with zipfile.ZipFile(self.apk, "w") as archive:
+            archive.writestr("assets/dicts/main_en-US.dict", b"release dictionary")
         self.rebuilt.write_bytes(self.apk.read_bytes())
         self.apk_hash = sha256(self.apk.read_bytes())
+        # The production vocabulary export enumerating the dictionary this APK ships.
+        self.swipe_lexicon_path = self.root / "static-swipe-lexicon.json"
+        self.swipe_lexicon_path.write_text(json.dumps({
+            "schemaVersion": 1,
+            "source": "bundled-static-dictionary",
+            "dictionaryAsset": "dicts/main_en-US.dict",
+            "dictionarySha256": sha256(b"release dictionary"),
+            "apkSha256": self.apk_hash,
+            "visited": 5_000,
+            "maximumWords": 100_000,
+            "words": [
+                {"word": f"swipe-{index}", "languageTag": "en-US", "frequency": 100, "possiblyOffensive": False}
+                for index in range(5_000)
+            ],
+        }), encoding="utf-8")
         self.phase0_path = self.root / "phase0.json"
         self.phase0_measurements_path = self.root / "phase0-measurements.jsonl"
         self.phase0_measurements_path.write_bytes(self.measurement_payload)
@@ -730,6 +746,7 @@ class VerifyReleaseEvidenceTest(unittest.TestCase):
             self.phase0_metadata(),
             measurement_sha256=sha256(self.measurement_payload),
             enforce_minimum_counts=True,
+            swipe_vocabulary=evaluate_engine.load_swipe_vocabulary(self.swipe_lexicon_path, self.apk),
         )
 
     def tearDown(self):
@@ -828,7 +845,7 @@ class VerifyReleaseEvidenceTest(unittest.TestCase):
             grapheneos_mutator(grapheneos)
         self.grapheneos_path.write_text(json.dumps(grapheneos), encoding="utf-8")
 
-    def verify(self):
+    def verify(self, swipe_lexicon: pathlib.Path | None = None, *, omit_swipe_lexicon: bool = False):
         errors = []
         evidence_checks(
             errors,
@@ -838,12 +855,36 @@ class VerifyReleaseEvidenceTest(unittest.TestCase):
             self.phase0_measurements_path,
             self.grapheneos_path,
             self.instrumentation_path,
+            None if omit_swipe_lexicon else swipe_lexicon or self.swipe_lexicon_path,
         )
         return errors
 
     def test_accepts_matching_reproducible_grapheneos_evidence(self):
         self.write_reports()
         self.assertEqual([], self.verify())
+
+    def test_rejects_an_unavailable_context_model_until_release_can_prove_it(self):
+        phase0 = self.phase0()
+        phase0["contextModel"]["mode"] = "unavailable"
+        self.write_reports(phase0=phase0)
+        self.assertIn(
+            "Phase 0 report must qualify the context model; release verification cannot yet "
+            "prove that a release with an unavailable context model never loads it",
+            self.verify(),
+        )
+
+    def test_swipe_vocabulary_must_be_bound_to_the_release_apk_and_supplied(self):
+        phase0 = self.phase0()
+        phase0["swipeVocabulary"]["measuredApkSha256"] = "e" * 64
+        self.write_reports(phase0=phase0)
+        self.assertIn("Phase 0 swipe vocabulary is not bound to this APK", self.verify())
+
+        self.write_reports()
+        self.assertIn(
+            "Phase 0 measurements cannot be independently evaluated: "
+            "the swipe vocabulary export is required",
+            self.verify(omit_swipe_lexicon=True),
+        )
 
     def test_rejects_non_reproducible_apk(self):
         self.write_reports()

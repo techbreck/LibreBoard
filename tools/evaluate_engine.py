@@ -15,6 +15,7 @@ import pathlib
 import re
 import sys
 import unicodedata
+import zipfile
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from typing import Any, Iterable
@@ -54,6 +55,13 @@ MINIMUM_VALID_WORD_CORRECTIONS = 500
 MINIMUM_VALID_WORD_KEEPS = 500
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 GIT_COMMIT = re.compile(r"^[0-9a-f]{40,64}$")
+MAXIMUM_SWIPE_LEXICON_WORDS = 100_000
+MAXIMUM_SWIPE_LEXICON_EXPORT_BYTES = 32 * 1024 * 1024
+# Swipe accuracy gates score targets the production vocabulary can emit (docs/phase-0.md,
+# gate amendments). This floor stops a smaller vocabulary from dropping hard targets: the 100k
+# production bound covers 95.0-95.4% of measured targets, and the full dictionary only 95.7%.
+MINIMUM_SWIPE_LEXICON_COVERAGE = 0.94
+CONTEXT_MODEL_MODES = ("qualifying", "unavailable")
 MAXIMUM_JSONL_LINE_BYTES = 1024 * 1024
 MAXIMUM_IDENTITY_LENGTH = 512
 MAXIMUM_TEXT_LENGTH = 4_096
@@ -83,6 +91,66 @@ class Example:
 
 def normalized(value: str) -> str:
     return unicodedata.normalize("NFKC", value).casefold()
+
+
+@dataclass(frozen=True)
+class SwipeVocabulary:
+    """Normalized surfaces the production swipe decoders can emit, with their provenance."""
+
+    words: frozenset[str]
+    provenance: dict[str, Any]
+
+
+def load_swipe_vocabulary(export: pathlib.Path, apk: pathlib.Path) -> SwipeVocabulary:
+    """Read the instrumented production vocabulary export and bind it to the measured APK.
+
+    The export may come from any build; what binds it is the dictionary asset, which the measured
+    APK must ship byte-identical to the bytes the export enumerated. Possibly offensive words are
+    excluded because the default keyboard policy never offers them as swipe candidates.
+    """
+    if export.stat().st_size > MAXIMUM_SWIPE_LEXICON_EXPORT_BYTES:
+        raise EvaluationError("swipe lexicon export exceeds its size bound")
+    try:
+        value = json.loads(export.read_bytes())
+    except (ValueError, UnicodeDecodeError) as failure:
+        raise EvaluationError("swipe lexicon export is invalid JSON") from failure
+    if (not isinstance(value, dict) or value.get("schemaVersion") != 1
+            or value.get("source") != "bundled-static-dictionary"):
+        raise EvaluationError("swipe lexicon export has an incompatible identity")
+    if value.get("maximumWords") != MAXIMUM_SWIPE_LEXICON_WORDS:
+        raise EvaluationError("swipe lexicon export bound differs from production")
+    asset = value.get("dictionaryAsset")
+    if not isinstance(asset, str) or not re.fullmatch(r"dicts/[A-Za-z0-9_.-]+\.dict", asset):
+        raise EvaluationError("swipe lexicon export names an invalid dictionary asset")
+    try:
+        with zipfile.ZipFile(apk) as archive:
+            dictionary_sha256 = hashlib.sha256(archive.read("assets/" + asset)).hexdigest()
+    except (KeyError, zipfile.BadZipFile) as failure:
+        raise EvaluationError("measured APK lacks the exported dictionary asset") from failure
+    if dictionary_sha256 != value.get("dictionarySha256"):
+        raise EvaluationError("measured APK ships a different dictionary than the export enumerated")
+    words = value.get("words")
+    if not isinstance(words, list) or not 1 <= len(words) <= MAXIMUM_SWIPE_LEXICON_WORDS:
+        raise EvaluationError("swipe lexicon export has an invalid vocabulary size")
+    decodable = set()
+    for word in words:
+        if (not isinstance(word, dict)
+                or set(word) != {"word", "languageTag", "frequency", "possiblyOffensive"}
+                or not isinstance(word["word"], str) or not 1 <= len(word["word"]) <= 128
+                or not isinstance(word["languageTag"], str)
+                or type(word["possiblyOffensive"]) is not bool):
+            raise EvaluationError("swipe lexicon export has an invalid word")
+        if not word["possiblyOffensive"]:
+            decodable.add(normalized(word["word"]))
+    return SwipeVocabulary(frozenset(decodable), {
+        "exportSha256": sha256_file(export),
+        "exportApkSha256": value.get("apkSha256"),
+        "measuredApkSha256": sha256_file(apk),
+        "dictionaryAsset": asset,
+        "dictionarySha256": dictionary_sha256,
+        "decodableWords": len(decodable),
+        "possiblyOffensiveWordsExcluded": True,
+    })
 
 
 def parse_example(raw: dict[str, Any], line_number: int) -> Example:
@@ -542,9 +610,16 @@ def evaluate(
     *,
     measurement_sha256: str,
     enforce_minimum_counts: bool = True,
+    swipe_vocabulary: SwipeVocabulary | None = None,
+    context_model: str = "qualifying",
 ) -> dict[str, Any]:
     if not isinstance(measurement_sha256, str) or not SHA256.fullmatch(measurement_sha256):
         raise EvaluationError("measurement dataset requires a lowercase SHA-256")
+    if context_model not in CONTEXT_MODEL_MODES:
+        raise EvaluationError(f"context model mode must be one of {CONTEXT_MODEL_MODES}")
+    # The tap path a release actually ships: fused_neural when the context model qualifies; when it
+    # ships unavailable, production runs the fused path with personal words and no neural rescoring.
+    shipped_tap = "fused_neural" if context_model == "qualifying" else "fused_personal"
     evidence = validate_metadata(metadata)
     test, counts, swipe_strata, environment_counts, valid_word_counts, lexical_counts = check_dataset(
         examples,
@@ -567,6 +642,7 @@ def evaluate(
         "lexicalCounts": lexical_counts,
         "environmentCounts": environment_counts,
         "environmentLatencyMs": {},
+        "contextModel": {"mode": context_model, "shippedTapSystem": shipped_tap},
         "systems": {},
     }
     for system in TAP_SYSTEMS:
@@ -599,9 +675,9 @@ def evaluate(
         environment_swipes = [row for row in swipe if row.test_run_id == run_id]
         metrics["environmentLatencyMs"][kind] = {
             "tap": {
-                "p50": percentile([row.latency_ms["fused_neural"] for row in environment_taps], 0.50),
-                "p95": percentile([row.latency_ms["fused_neural"] for row in environment_taps], 0.95),
-                "p99": percentile([row.latency_ms["fused_neural"] for row in environment_taps], 0.99),
+                "p50": percentile([row.latency_ms[shipped_tap] for row in environment_taps], 0.50),
+                "p95": percentile([row.latency_ms[shipped_tap] for row in environment_taps], 0.95),
+                "p99": percentile([row.latency_ms[shipped_tap] for row in environment_taps], 0.99),
             },
             "swipe": {
                 "p50": percentile([row.latency_ms["fused_swipe"] for row in environment_swipes], 0.50),
@@ -609,6 +685,30 @@ def evaluate(
                 "p99": percentile([row.latency_ms["fused_swipe"] for row in environment_swipes], 0.99),
             },
         }
+
+    # Swipe accuracy gates score only targets the production vocabulary can emit; an out-of-
+    # vocabulary target is unreachable for every lexicon-constrained decoder. Without a bound
+    # vocabulary those gates fail rather than fall back to the unreachable all-target definition.
+    in_lexicon: list[Example] | None = None
+    if swipe_vocabulary is not None:
+        if swipe_vocabulary.provenance.get("measuredApkSha256") != evidence["coreApkSha256"]:
+            raise EvaluationError("swipe lexicon is not bound to the measured APK")
+        in_lexicon = [row for row in swipe if normalized(row.target) in swipe_vocabulary.words]
+        if not in_lexicon:
+            raise EvaluationError("no swipe target is in the production vocabulary")
+        metrics["swipeVocabulary"] = {
+            **swipe_vocabulary.provenance,
+            "swipeRows": len(swipe),
+            "inLexiconRows": len(in_lexicon),
+            "coverage": len(in_lexicon) / len(swipe),
+        }
+        for system in SWIPE_SYSTEMS:
+            metrics["systems"][system]["inLexicon"] = {
+                "top1": accuracy(in_lexicon, system),
+                "top3": accuracy(in_lexicon, system, 3),
+            }
+    else:
+        metrics["swipeVocabulary"] = None
 
     heliboard_tap = accuracy(tap_error, "heliboard")
     fused_tap = accuracy(tap_error, "fused")
@@ -625,21 +725,41 @@ def evaluate(
         "neuralValidWordAbsoluteGain": neural_valid - fused_valid,
         "falseCorrectionIncrease": false_correction_rate(valid_word, "fused_neural")
             - false_correction_rate(valid_word, "fused"),
+        "shippedFalseCorrectionIncreaseOverClassic": false_correction_rate(valid_word, shipped_tap)
+            - false_correction_rate(valid_word, "heliboard"),
         "swipeGeometricRelativeErrorReduction": relative_error_reduction(geometric_swipe, final_swipe),
+        # All-target values stay reported for comparison; the checks below use in-lexicon targets.
         "swipeShortTop3": accuracy([row for row in swipe if "short" in row.strata], "fused_swipe", 3),
         "swipeReturnTripTop3": accuracy([row for row in swipe if "return_trip" in row.strata], "fused_swipe", 3),
         "peakAddedNeuralMemoryMiB": float(peak_memory),
     }
     gates = metrics["gates"]
-    checks = {
-        "tap_relative_error_reduction": gates["tapRelativeErrorReduction"] >= 0.20,
+    if in_lexicon is not None:
+        gates.update({
+            "swipeLexiconCoverage": metrics["swipeVocabulary"]["coverage"],
+            "swipeInLexiconTop1": accuracy(in_lexicon, "fused_swipe"),
+            "swipeInLexiconTop3": accuracy(in_lexicon, "fused_swipe", 3),
+            "swipeInLexiconShortTop3": accuracy(
+                [row for row in in_lexicon if "short" in row.strata], "fused_swipe", 3),
+            "swipeInLexiconReturnTripTop3": accuracy(
+                [row for row in in_lexicon if "return_trip" in row.strata], "fused_swipe", 3),
+        })
+    vocabulary = in_lexicon is not None
+    neural_checks = {
         "neural_valid_word_relative_error_reduction": gates["neuralContextRelativeErrorReduction"] >= 0.15,
         "neural_valid_word_absolute_gain": gates["neuralValidWordAbsoluteGain"] >= 0.05,
         "false_correction_ceiling": gates["falseCorrectionIncrease"] <= 0.005,
-        "swipe_top1": metrics["systems"]["fused_swipe"]["top1"] >= 0.90,
-        "swipe_top3": metrics["systems"]["fused_swipe"]["top3"] >= 0.95,
-        "swipe_short_top3": gates["swipeShortTop3"] >= 0.90,
-        "swipe_return_trip_top3": gates["swipeReturnTripTop3"] >= 0.90,
+    }
+    checks = {
+        "tap_relative_error_reduction": gates["tapRelativeErrorReduction"] >= 0.20,
+        **(neural_checks if context_model == "qualifying" else {}),
+        "shipped_false_correction_ceiling": gates["shippedFalseCorrectionIncreaseOverClassic"] <= 0.005,
+        "swipe_lexicon_coverage": vocabulary
+            and gates["swipeLexiconCoverage"] >= MINIMUM_SWIPE_LEXICON_COVERAGE,
+        "swipe_in_lexicon_top1": vocabulary and gates["swipeInLexiconTop1"] >= 0.90,
+        "swipe_in_lexicon_top3": vocabulary and gates["swipeInLexiconTop3"] >= 0.95,
+        "swipe_in_lexicon_short_top3": vocabulary and gates["swipeInLexiconShortTop3"] >= 0.90,
+        "swipe_in_lexicon_return_trip_top3": vocabulary and gates["swipeInLexiconReturnTripTop3"] >= 0.90,
         "swipe_geometric_relative_error_reduction": gates["swipeGeometricRelativeErrorReduction"] >= 0.20,
         "tap_p95_latency": all(
             values["tap"]["p95"] <= 80.0
@@ -652,6 +772,11 @@ def evaluate(
         "peak_neural_memory": peak_memory <= 64.0,
     }
     metrics["checks"] = checks
+    # Context-model gates are reported, never silently passed: an unavailable release lists them
+    # here, and the release must not load the context model.
+    metrics["notApplicable"] = {} if context_model == "qualifying" else {
+        name: "context model ships unavailable; the release must not load it" for name in neural_checks
+    }
     metrics["passed"] = all(checks.values())
     return metrics
 
@@ -676,7 +801,20 @@ def render(metrics: dict[str, Any]) -> str:
             f"swipe-p95={values['swipe']['p95']:.1f}ms"
         )
     lines.append("")
+    context = metrics["contextModel"]
+    lines.append(f"context model: {context['mode']} (tap gates score {context['shippedTapSystem']})")
+    vocabulary = metrics["swipeVocabulary"]
+    if vocabulary is None:
+        lines.append("swipe vocabulary: not supplied, so in-lexicon swipe gates fail "
+                     "(pass --swipe-lexicon and --swipe-lexicon-apk)")
+    else:
+        lines.append(
+            f"swipe vocabulary: {vocabulary['inLexiconRows']}/{vocabulary['swipeRows']} targets "
+            f"({vocabulary['coverage']:.2%}) in {vocabulary['decodableWords']} decodable words"
+        )
+    lines.append("")
     lines.extend(f"{'PASS' if passed else 'FAIL'} {name}" for name, passed in metrics["checks"].items())
+    lines.extend(f"N/A  {name}: {reason}" for name, reason in metrics["notApplicable"].items())
     lines.append("")
     lines.append("OVERALL PASS" if metrics["passed"] else "OVERALL FAIL")
     return "\n".join(lines)
@@ -688,17 +826,30 @@ def main() -> int:
     parser.add_argument("--metadata", required=True, type=pathlib.Path, help="measurement metadata JSON")
     parser.add_argument("--report", type=pathlib.Path, help="write the complete JSON report")
     parser.add_argument("--allow-small-dataset", action="store_true", help="test the harness without release-size data")
+    parser.add_argument("--swipe-lexicon", type=pathlib.Path,
+                        help="production swipe vocabulary export (static-swipe-lexicon.json); "
+                             "without it the in-lexicon swipe gates fail")
+    parser.add_argument("--swipe-lexicon-apk", type=pathlib.Path,
+                        help="the measured APK, which must ship the dictionary the export enumerated")
+    parser.add_argument("--context-model", choices=CONTEXT_MODEL_MODES, default="qualifying",
+                        help="'unavailable' qualifies a release that ships without the context model")
     args = parser.parse_args()
     try:
+        if (args.swipe_lexicon is None) != (args.swipe_lexicon_apk is None):
+            raise EvaluationError("--swipe-lexicon and --swipe-lexicon-apk go together")
         examples = read_jsonl(args.dataset)
         metadata = json.loads(args.metadata.read_text(encoding="utf-8"))
         if not isinstance(metadata, dict):
             raise EvaluationError("metadata must be an object")
+        vocabulary = (load_swipe_vocabulary(args.swipe_lexicon, args.swipe_lexicon_apk)
+                      if args.swipe_lexicon is not None else None)
         metrics = evaluate(
             examples,
             metadata,
             measurement_sha256=sha256_file(args.dataset),
             enforce_minimum_counts=not args.allow_small_dataset,
+            swipe_vocabulary=vocabulary,
+            context_model=args.context_model,
         )
     except (OSError, json.JSONDecodeError, EvaluationError) as failure:
         print(f"ERROR: {failure}", file=sys.stderr)
