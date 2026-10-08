@@ -1,0 +1,213 @@
+{
+  "bindings": {
+    "artifactPinCandidateId": null,
+    "artifactPinNote": "Not run under docs/phase-0-artifact-pin.json: the swipe model is the stratum-weighted candidate, not the pinned 1301f0d0…, and the measure APK is not the pinned debug APK.",
+    "contextModelOnnxSha256": "8566382e57ea5a9af76ddf600e189572d62fcc8b227de8415ce88ad0e172022b",
+    "contextTokenizerSha256": "e2089ddfa01ff69eba73195cb3623c86703a812a712ec356ec5fe837297a8cc9",
+    "onnxRuntimeAarSha256": "54118ac8e37bc4833d32e2cb197ef6bd251f56e5aa9e4e51c3899fb616210d88",
+    "sameApkAsPinnedDebugLeg": false,
+    "swipeCorpusSha256": "176fe51975742e8378668ae8e7531a2d4f3d94fe5f27434a72577a840bec19fa",
+    "swipeModelOnnxSha256": "245dc5ea64ff7738e1cc327bffa88f8dd395fb2a577bba43d0a8d1ee361a10ea",
+    "swipeModelNote": "Stratum-weighted swipe-latin-v1 candidate; byte-identical Linux A/B exports under build/linux-exports/swipe-stratum-{a,b}. Open PR #2 records a host export of the candidate as f2ba9b7a…; the two hashes need reconciling before any adoption.",
+    "modelBinding": "Metadata carries no model hashes: these runs passed neither --artifact-pin nor --swipe-model-sha256/--context-model-sha256. The driver injected build/model-export/swipe-latin-v1-stratum-weighted/swipe-latin-v1.onnx and build/linux-exports/context-shared-a/export/{context-en-de-v1.onnx,tokenizer.json} and verified each on-device copy hashes the same as the local file. Those files hash to the values above and were last modified 2026-10-07 12:39 and 2026-09-15, before the first run.",
+    "coreApkSha256": "8740f270c87e08d297f14a2ba84c915a40e3816dc0d143d5241a5f51a050baf4",
+    "testApkSha256": "f98db210348f55ba3839908fc180ad269380a24bfd40bb4c355cc9db60b0901e",
+    "sourceTree": "Content-identical to the commit that adds this file: a rebuild of that tree differs only in META-INF/version-control-info.textproto (HEAD stamp); the test APK is byte-identical.",
+    "variant": "measure; production default: InstalledModelRuntime.ensureLoaded installs AdpfSwipeDecodeBoost (TARGET_NANOS 100 ms) on LiveTypingEngine.swipeDecoder; no harness flag"
+  },
+  "comparedTo": {
+    "runId": "grapheneos-placement-500-1",
+    "sameRowIds": 100
+  },
+  "device": {
+    "artCompilerFilter": "speed",
+    "cpuTopology": {
+      "little": "cpu0-3, 1.95 GHz, capacity 188",
+      "mid": "cpu4-6, 2.60 GHz, capacity 731",
+      "big": "cpu7, 3.105 GHz, capacity 1024"
+    },
+    "device": "komodo",
+    "foregroundCpuset": "0-6",
+    "inspectedUser": 0,
+    "jit": false,
+    "serial": "47311FDAS00026",
+    "apiLevel": 37,
+    "buildFingerprint": "google/komodo/komodo:17/CP3A.260905.009/2026100201:user/release-keys",
+    "grapheneOsBuildNumber": "2026100201",
+    "model": "Pixel 9 Pro XL",
+    "physicalDevice": true,
+    "sandboxedGooglePlayInstalled": false
+  },
+  "environmentKind": "grapheneos_hardware",
+  "findings": [
+    "The harness logged productionBoost=true before touching the slot, and the boost was active on 100/100 fused decodes.",
+    "Against the same 100 rows of grapheneos-placement-500-1 (no boost): fused_swipe p50/p95 126.9/197.3 vs 202.6/272.4 ms, rows over 200 ms 5 vs 53, fused starts on a little core 57% vs 81%, top-1 90.0% in both.",
+    "100 rows only, and a different run: the 500-row within-run A/B (grapheneos-hint-session-500-1) puts the boosted p95 at 221.1 ms, so the 200 ms swipe gate is not claimed."
+  ],
+  "limitations": [
+    "Diagnostic only; releaseEligible is false. The measure APK (non-debuggable, testOnly, ART speed) is not the pinned debugNoMinify APK, and the swipe model is a candidate, not the pinned model.",
+    "Swipe shard 1/3 of build/model-data/swipe-latin-v1/test.jsonl, first rows only; every run here replays the same row ids, so cross-run comparisons share rows but not device state.",
+    "Cross-run drift is about ±10% in CPU time (phone temperature 34–38 °C across the session); arm comparisons within one run are the reliable ones.",
+    "The instrumentation process runs in the /foreground cpuset (cores 0–6, no big core) and AOSP Instrumentation runs the harness thread at nice −8 (THREAD_PRIORITY_URGENT_DISPLAY). A visible IME may be scheduled differently; a live-keyboard measurement is still owed.",
+    "latencyMs times the suggestion call only, not end-to-end IME latency. Each row also runs standalone geometric (1500 ms budget) and standalone CTC before fused_swipe.",
+    "CtcDecodeTrace placement probes read /proc and sysfs at decode start and end; that adds about 5 ms to fused_swipe (slot-plus-decoder overhead 1.8 → 6.7 ms p50), so absolute fused_swipe latencies here read slightly high.",
+    "100 rows; the phone was at 37.7 °C at the start of this run."
+  ],
+  "measurement": {
+    "completedLocal": "2026-10-08 07:52",
+    "driverLog": "build/device-evidence/grapheneos-boost-default-100-1.host.log",
+    "instrumentedTests": {
+      "passed": 1,
+      "skipped": 3,
+      "failed": 0
+    },
+    "limit": 100,
+    "metadataFile": "build/device-evidence/grapheneos-boost-default-100-1.metadata.json",
+    "outputFile": "build/device-evidence/grapheneos-boost-default-100-1.jsonl",
+    "outputSha256": "2e8c897c7bd88ccc9d3f25453284a50efdaf5d190e256a7bf82c83f6f3063db0",
+    "shardCount": 3,
+    "shardIndex": 1,
+    "swipeRows": 100
+  },
+  "releaseEligible": false,
+  "results": {
+    "fixtureReadinessMs": {
+      "mainDictionary": 27,
+      "swipeLexicon": 8871
+    },
+    "peakAddedNeuralMemoryMiB": 165.86,
+    "swipe": {
+      "geometric": {
+        "top1": 0.47,
+        "top3": 0.76,
+        "latencyP50Ms": 1500.5,
+        "latencyP95Ms": 1500.8,
+        "over200Ms": 100
+      },
+      "ctc": {
+        "top1": 0.83,
+        "top3": 0.91,
+        "latencyP50Ms": 135.3,
+        "latencyP95Ms": 627.1,
+        "over200Ms": 14,
+        "available": 100,
+        "timeouts": 0
+      },
+      "fused_swipe": {
+        "top1": 0.9,
+        "top3": 0.94,
+        "latencyP50Ms": 126.9,
+        "latencyP95Ms": 197.3,
+        "over200Ms": 5,
+        "timeouts": 0
+      },
+      "fused_relaxed": {
+        "top1": 0.9,
+        "top3": 0.95
+      },
+      "stagesMs": {
+        "decodeP50": 115.8,
+        "decodeP95": 172.7,
+        "fusionP50": 8.4,
+        "fusionP95": 56.5
+      }
+    },
+    "ctcStageSplit": {
+      "standalone": {
+        "featuresP50Ms": 0.5,
+        "inferP50Ms": 22.6,
+        "trieP50Ms": 0.2,
+        "beamP50Ms": 98.2,
+        "wallP50Ms": 133.3,
+        "cpuP50Ms": 128.0,
+        "cpuOverWallP50": 0.97,
+        "trieCacheHitRate": 0.89
+      },
+      "fused": {
+        "featuresP50Ms": 1.5,
+        "inferP50Ms": 25.7,
+        "trieP50Ms": 0.2,
+        "beamP50Ms": 84.0,
+        "wallP50Ms": 110.0,
+        "cpuP50Ms": 103.2,
+        "cpuOverWallP50": 0.98,
+        "trieCacheHitRate": 1.0
+      },
+      "slot": {
+        "queueP50Ms": 0.4,
+        "queueP95Ms": 1.0,
+        "awaitIdleP50Ms": 0.0,
+        "overheadP50Ms": 5.2
+      }
+    },
+    "placement": {
+      "standalone": {
+        "startCluster": {
+          "little": 0.03,
+          "mid": 0.97,
+          "big": 0.0
+        },
+        "beamStartCluster": {
+          "little": 0.0,
+          "mid": 1.0,
+          "big": 0.0
+        },
+        "changedClusterDuringDecode": 0.03,
+        "byBeamStartCluster": {
+          "mid": {
+            "rows": 100,
+            "cpuP50Ms": 128.0,
+            "beamP50Ms": 98.2,
+            "startClockP50Mhz": 1065
+          }
+        }
+      },
+      "fused": {
+        "startCluster": {
+          "little": 0.57,
+          "mid": 0.43,
+          "big": 0.0
+        },
+        "beamStartCluster": {
+          "little": 0.23,
+          "mid": 0.77,
+          "big": 0.0
+        },
+        "changedClusterDuringDecode": 0.57,
+        "byBeamStartCluster": {
+          "little": {
+            "rows": 23,
+            "cpuP50Ms": 117.8,
+            "beamP50Ms": 95.1,
+            "startClockP50Mhz": 820
+          },
+          "mid": {
+            "rows": 77,
+            "cpuP50Ms": 99.8,
+            "beamP50Ms": 82.3,
+            "startClockP50Mhz": 1795
+          }
+        }
+      }
+    },
+    "productionDefault": {
+      "rows": 100,
+      "fusedSwipeP50Ms": 126.9,
+      "fusedSwipeP95Ms": 197.3,
+      "over200Ms": 5,
+      "decodeP50Ms": 115.8,
+      "decodeP95Ms": 172.7,
+      "standaloneCtcWallP50Ms": 133.3,
+      "standaloneCtcCpuP50Ms": 128.0,
+      "standaloneCpuOverWallP50": 0.97,
+      "fusedCtcWallP50Ms": 110.0,
+      "fusedCtcCpuP50Ms": 103.2,
+      "fusedCpuOverWallP50": 0.98,
+      "fusedStartOnLittle": 0.57,
+      "boostActiveRows": 100
+    }
+  },
+  "runId": "grapheneos-boost-default-100-1",
+  "schemaVersion": 1,
+  "scope": "Diagnostic 100-row check that the production code path enables the decode boost by default."
+}

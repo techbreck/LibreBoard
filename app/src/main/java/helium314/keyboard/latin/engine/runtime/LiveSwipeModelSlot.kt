@@ -32,6 +32,18 @@ class SwipeSlotTrace {
     @Volatile var queueMs = 0.0
     /** Decoder run time on the decoder thread. */
     @Volatile var runMs = 0.0
+    /** Whether a [SwipeDecodeBoost] was active for this decode. */
+    @Volatile var boosted = false
+}
+
+/**
+ * Optional platform performance hint for the decoder thread. It is created, used and closed only
+ * on that thread, so an implementation may bind the thread's id; its failures never reach
+ * decoding.
+ */
+interface SwipeDecodeBoost : AutoCloseable {
+    /** Reports one decode's wall time on the decoder thread. */
+    fun afterDecode(elapsedNanos: Long)
 }
 
 /** Hard-deadline process owner for the optional CTC model session. */
@@ -49,6 +61,16 @@ class LiveSwipeModelSlot(
 
     /** Measurement hook; production never sets this. Read once at the start of each decode. */
     @Volatile var decodeTrace: SwipeSlotTrace? = null
+
+    /**
+     * Creates the [SwipeDecodeBoost] on the decoder thread at its next decode; null disables it.
+     * Assigning a different factory closes the previous boost and creates a new one.
+     */
+    @Volatile var boostFactory: (() -> SwipeDecodeBoost?)? = null
+
+    // Decoder thread only.
+    private var boost: SwipeDecodeBoost? = null
+    private var boostSource: (() -> SwipeDecodeBoost?)? = null
 
     fun install(decoder: SwipeDecoder, owner: AutoCloseable) {
         var closeNow: AutoCloseable? = null
@@ -103,12 +125,16 @@ class LiveSwipeModelSlot(
         val future = executor.submit<SwipeDecodeResult> {
             val started = System.nanoTime()
             trace?.queueMs = (started - submitted) / 1_000_000.0
+            val activeBoost = currentBoost()
+            trace?.boosted = activeBoost != null
             val entry = acquire() ?: return@submit SwipeDecodeResult(EngineAvailability.UNAVAILABLE)
             try {
                 entry.decoder.decode(request, deadline)
             } finally {
                 release(entry)
-                trace?.runMs = (System.nanoTime() - started) / 1_000_000.0
+                val elapsed = System.nanoTime() - started
+                trace?.runMs = elapsed / 1_000_000.0
+                activeBoost?.let { runCatching { it.afterDecode(elapsed) } }
             }
         }
         inFlight.set(future)
@@ -130,6 +156,17 @@ class LiveSwipeModelSlot(
             Thread.currentThread().interrupt()
             SwipeDecodeResult(EngineAvailability.UNAVAILABLE)
         }
+    }
+
+    /** Decoder thread only: follows [boostFactory], closing a replaced boost. */
+    private fun currentBoost(): SwipeDecodeBoost? {
+        val factory = boostFactory
+        if (factory !== boostSource) {
+            boost?.let { runCatching { it.close() } }
+            boost = factory?.let { runCatching { it() }.getOrNull() }
+            boostSource = factory
+        }
+        return boost
     }
 
     /**

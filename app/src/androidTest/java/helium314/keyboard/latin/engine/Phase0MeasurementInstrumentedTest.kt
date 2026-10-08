@@ -42,6 +42,7 @@ import helium314.keyboard.latin.engine.onnx.OnnxContextInferenceSession
 import helium314.keyboard.latin.engine.onnx.OnnxCtcInferenceSession
 import helium314.keyboard.latin.engine.onnx.OnnxRuntimeSessionFactory
 import helium314.keyboard.latin.engine.personal.PersonalizationRuntime
+import helium314.keyboard.latin.engine.runtime.AdpfSwipeDecodeBoost
 import helium314.keyboard.latin.engine.runtime.LiveTypingEngine
 import helium314.keyboard.latin.engine.runtime.SwipeSlotTrace
 import helium314.keyboard.latin.settings.Settings
@@ -81,6 +82,8 @@ import org.junit.runner.RunWith
  *   phase0SwipeOutputFile  swipe measurement JSONL filename beside the swipe corpus, or an absolute path
  *   phase0SwipeModelFile   optional filesDir-relative or absolute CTC swipe .onnx
  *   phase0SwipeWarmArms    diagnostic "true": interleave rows across cluster-warmth arms (see [WarmArm])
+ *   phase0SwipeHintSession diagnostic "true": alternate [HINT_BLOCK_ROWS]-row blocks with the production
+ *                          ADPF decode boost disabled and enabled (hint_on in auxiliaryLatencyMs)
  *
  * Absolute paths exist so a non-debuggable testOnly APK can be measured without `run-as`. The
  * driver then stages corpora under /data/local/tmp and pulls outputs from the same directory.
@@ -854,6 +857,14 @@ class Phase0MeasurementInstrumentedTest {
         val swipeExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
         val warmArms = args.getString("phase0SwipeWarmArms") == "true"
         val warmer = if (warmArms) ClusterWarmer() else null
+        val hintBlocks = args.getString("phase0SwipeHintSession") == "true"
+        // Suggest construction already installed the production boost; hint blocks toggle it.
+        val productionBoost = LiveTypingEngine.swipeDecoder.boostFactory
+        android.util.Log.i("Phase0Swipe", "ADPF preferredUpdateRateNanos=" +
+            "${AdpfSwipeDecodeBoost.preferredUpdateRateNanos(context)} productionBoost=${productionBoost != null}")
+        val hintFactory = if (hintBlocks) {
+            productionBoost ?: AdpfSwipeDecodeBoost.factory(context, AdpfSwipeDecodeBoost.TARGET_NANOS)
+        } else null
         val fusion = LegacySuggestionFusion()
         var measured = 0
         var ordinal = 0
@@ -911,6 +922,9 @@ class Phase0MeasurementInstrumentedTest {
                 val slotTrace = SwipeSlotTrace()
                 ctcDecoder?.decodeTrace = fusedCtcTrace
                 LiveTypingEngine.swipeDecoder.decodeTrace = slotTrace
+                // Blocks rather than alternate rows, so a boost cannot carry into the next row.
+                val hintOn = hintBlocks && (measured / HINT_BLOCK_ROWS) % 2 == 1
+                if (hintBlocks) LiveTypingEngine.swipeDecoder.boostFactory = if (hintOn) hintFactory else null
                 if (arm == WarmArm.FUSED_WARMED) warmer?.start()
                 start = System.nanoTime()
                 val fused = fixture.suggest.getSuggestedWords(
@@ -945,6 +959,8 @@ class Phase0MeasurementInstrumentedTest {
                 auxiliaryLatency.put("fused_slot_queue", slotTrace.queueMs)
                 auxiliaryLatency.put("fused_slot_run", slotTrace.runMs)
                 if (warmArms) auxiliaryLatency.put("warm_arm", arm.ordinal.toDouble())
+                auxiliaryLatency.put("fused_slot_boosted", if (slotTrace.boosted) 1.0 else 0.0)
+                if (hintBlocks) auxiliaryLatency.put("hint_on", if (hintOn) 1.0 else 0.0)
 
                 // fused_relaxed composes the same fusion boundary the production batch path uses,
                 // but feeds it the standalone decoded candidates and the geometric-trace fallback
@@ -1000,6 +1016,7 @@ class Phase0MeasurementInstrumentedTest {
         }
         swipeExecutor.shutdown()
         warmer?.close()
+        if (hintBlocks) LiveTypingEngine.swipeDecoder.boostFactory = productionBoost
         writer.close()
         assertTrue("swipe corpus produced no measurable test rows", measured > 0)
         val sidecar = File(output.parentFile, "environment.json")
@@ -1056,6 +1073,9 @@ class Phase0MeasurementInstrumentedTest {
 
         /** Spinner lead before a FUSED_WARMED call; long enough for PELT and schedutil to ramp. */
         const val WARM_LEAD_MS = 50L
+
+        /** Rows per phase0SwipeHintSession block; blocks alternate hint off, on, off, ... */
+        const val HINT_BLOCK_ROWS = 50
 
         /** Placeholder emitted when a system returns no candidates; always a miss. */
         const val EMPTY_PREDICTION_SENTINEL = "__no_candidates__"

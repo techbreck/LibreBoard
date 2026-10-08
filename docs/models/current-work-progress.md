@@ -162,6 +162,55 @@ Simulated on this shard: +136 top-1 / −73, 84.16% → 84.92%. Long +0.19 pp, r
 slate would be 94.1% top-1/top-3 — clears 90% top-1, still short of 95% top-3. Next lever is a new
 `swipe-latin-v1` candidate with stratum-weighted long / double-letter / return-trip training.
 
+## Swipe decoder core placement and ADPF boost, 2026-10-08
+
+`fused_decode` ran 62–101 ms (p50) slower than the same row's standalone CTC on every earlier
+GrapheneOS fusion run, although both call the same decoder object, ONNX session and lexicon. Six
+runs on Pixel 9 Pro XL (`47311FDAS00026`, GrapheneOS 2026100201, ART `speed`) replayed the first 500
+rows of swipe shard 1/3 with the stratum-weighted candidate `245dc5ea…` to find out why. All are
+diagnostic: measure APKs, a candidate swipe model, no artifact pin. Evidence is under
+`docs/models/evidence/grapheneos-{decode-split,decode-split-prio,warm-arms,placement,hint-session}-500-1.json`
+and `grapheneos-boost-default-100-1.json`.
+
+- Stage split (`decode-split-500-1`): slot queue 0.3 ms and slot overhead 1.8 ms; trie cache hits
+  97–100%. The gap is compute: inference +13.8 ms and beam +33.5 ms. Fused CTC used 144 vs 106 ms CPU
+  for identical work and waited for a core 16% of the time (cpu/wall 0.84 vs 0.97).
+- Thread priority is not the cause. AOSP `Instrumentation` runs the harness thread, and the ONNX
+  intra-op threads it spawns, at nice −8, while `LibreBoardLiveSwipe` ran at 0. Running the decoder
+  at −8 (`decode-split-prio-500-1`, reverted) removed most of the waiting (cpu/wall 0.94) but left
+  the wall p50 at 180 ms.
+- Cluster warmth is not the cause (`warm-arms-500-1`, arms interleaved by row). Standalone CTC
+  without the concurrent geometric scan did not slow down (122 vs 129 ms). `fused_swipe` under a busy
+  spinner got slower (194 vs 169 ms) at unchanged CPU time.
+- Core placement is the cause (`placement-500-1`). Standalone CTC started on a mid core on 100% of
+  rows. `LibreBoardLiveSwipe` woke on a little core (cpu0–3, 820 MHz) on 83% and migrated
+  mid-decode. On the same cluster the costs match: mid-start fused CPU 123.9 ms vs standalone
+  121.3 ms; little-start fused 168.0 ms. The decoder thread idles between swipes, so the scheduler
+  places it for energy. The busy harness thread stays on mid cores, which makes standalone CTC
+  latency optimistic for production. Cache locality is ruled out.
+- ADPF hint session (`hint-session-500-1`, alternating 50-row blocks): a
+  `PerformanceHintManager` session on `LibreBoardLiveSwipe` reports each decode against a 100 ms
+  target. The public SDK 36 API has no `sendHint`. With the hint on vs off: `fused_swipe` p50/p95
+  121.1/221.1 vs 162.2/234.4 ms, 17 vs 42 rows over 200 ms, decode p95 198.3 vs 212.3 ms, and
+  little-core starts 44% vs 72%. All five on blocks beat both neighbouring off blocks, with no
+  carryover. Every remaining row over 200 ms is a decode that still woke on a little core.
+- Production default (`boost-default-100-1`): `InstalledModelRuntime.ensureLoaded` now installs
+  `AdpfSwipeDecodeBoost` on the swipe slot once per process; it is a no-op below Android 12 or
+  without hint support. The boost was active on 100/100 decodes. On the same 100 rows without the
+  boost: `fused_swipe` p50/p95 126.9/197.3 vs 202.6/272.4 ms, top-1 unchanged at 90.0%.
+
+Whole-run swipe accuracy is unchanged in every run (`fused_swipe` 87.2%/93.4% on the 500 rows). The
+200 ms swipe gate is not claimed: the 500-row within-run A/B puts the boosted p95 at 221.1 ms.
+
+Further limitations:
+- The harness process sits in the `/foreground` cpuset (cores 0–6, no big core), so a visible
+  keyboard still needs measuring.
+- The placement probes add about 5 ms to `fused_swipe`.
+- Cross-run CPU time drifts about ±10%, so the arm comparisons inside one run are the reliable ones.
+
+The next lever for the remaining little-core starts is to begin decode work while the finger is
+still moving, so the thread is already running and boosted at finger-up.
+
 ## Completed
 
 - Integrated the corrected shared-session corpus split, tokenizer binding, and teacher manifest from `codex/context-shared-splits`. Main retains the smaller explicit candidate profile and newer evaluation gates.

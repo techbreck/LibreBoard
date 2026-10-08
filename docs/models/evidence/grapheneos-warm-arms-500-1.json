@@ -1,0 +1,185 @@
+{
+  "bindings": {
+    "artifactPinCandidateId": null,
+    "artifactPinNote": "Not run under docs/phase-0-artifact-pin.json: the swipe model is the stratum-weighted candidate, not the pinned 1301f0d0…, and the measure APK is not the pinned debug APK.",
+    "contextModelOnnxSha256": "8566382e57ea5a9af76ddf600e189572d62fcc8b227de8415ce88ad0e172022b",
+    "contextTokenizerSha256": "e2089ddfa01ff69eba73195cb3623c86703a812a712ec356ec5fe837297a8cc9",
+    "onnxRuntimeAarSha256": "54118ac8e37bc4833d32e2cb197ef6bd251f56e5aa9e4e51c3899fb616210d88",
+    "sameApkAsPinnedDebugLeg": false,
+    "swipeCorpusSha256": "176fe51975742e8378668ae8e7531a2d4f3d94fe5f27434a72577a840bec19fa",
+    "swipeModelOnnxSha256": "245dc5ea64ff7738e1cc327bffa88f8dd395fb2a577bba43d0a8d1ee361a10ea",
+    "swipeModelNote": "Stratum-weighted swipe-latin-v1 candidate; byte-identical Linux A/B exports under build/linux-exports/swipe-stratum-{a,b}. Open PR #2 records a host export of the candidate as f2ba9b7a…; the two hashes need reconciling before any adoption.",
+    "modelBinding": "Metadata carries no model hashes: these runs passed neither --artifact-pin nor --swipe-model-sha256/--context-model-sha256. The driver injected build/model-export/swipe-latin-v1-stratum-weighted/swipe-latin-v1.onnx and build/linux-exports/context-shared-a/export/{context-en-de-v1.onnx,tokenizer.json} and verified each on-device copy hashes the same as the local file. Those files hash to the values above and were last modified 2026-10-07 12:39 and 2026-09-15, before the first run.",
+    "coreApkSha256": "b145f57b715f266e0427c1b1f69e95ff0d2a1cfcb1a4abbf2dad10ffb48bc77b",
+    "testApkSha256": "58252d761be6c440d2d43f8e11b6d1d8f85ec2027d271d7127401211a8583410",
+    "sourceTree": "Uncommitted intermediate working tree on f794230f (the APK's version-control stamp records f794230f). The app APK is the grapheneos-decode-split-500-1 APK; only the test APK changed.",
+    "variant": "measure; production decoder thread (nice 0); harness --swipe-warm-arms interleaving three arms by row index"
+  },
+  "device": {
+    "artCompilerFilter": "speed",
+    "cpuTopology": {
+      "little": "cpu0-3, 1.95 GHz, capacity 188",
+      "mid": "cpu4-6, 2.60 GHz, capacity 731",
+      "big": "cpu7, 3.105 GHz, capacity 1024"
+    },
+    "device": "komodo",
+    "foregroundCpuset": "0-6",
+    "inspectedUser": 0,
+    "jit": false,
+    "serial": "47311FDAS00026",
+    "apiLevel": 37,
+    "buildFingerprint": "google/komodo/komodo:17/CP3A.260905.009/2026100201:user/release-keys",
+    "grapheneOsBuildNumber": "2026100201",
+    "model": "Pixel 9 Pro XL",
+    "physicalDevice": true,
+    "sandboxedGooglePlayInstalled": false
+  },
+  "environmentKind": "grapheneos_hardware",
+  "findings": [
+    "Refuted in both directions. Standalone CTC without the concurrent geometric scan did not slow down (wall p50 122.3 vs 128.9 ms control).",
+    "fused_swipe under a busy spinner got slower, not faster (fused CTC wall p50 194.3 vs 169.4 ms), with fused CPU time unchanged (148.1 vs 148.9 ms) and cpu/wall falling to 0.80: the spinner competed for CPU.",
+    "Randomly relabelled thirds of grapheneos-decode-split-500-1 agree within about 2–3 ms, so these arm differences are well above the within-run noise floor."
+  ],
+  "limitations": [
+    "Diagnostic only; releaseEligible is false. The measure APK (non-debuggable, testOnly, ART speed) is not the pinned debugNoMinify APK, and the swipe model is a candidate, not the pinned model.",
+    "Swipe shard 1/3 of build/model-data/swipe-latin-v1/test.jsonl, first rows only; every run here replays the same row ids, so cross-run comparisons share rows but not device state.",
+    "Cross-run drift is about ±10% in CPU time (phone temperature 34–38 °C across the session); arm comparisons within one run are the reliable ones.",
+    "The instrumentation process runs in the /foreground cpuset (cores 0–6, no big core) and AOSP Instrumentation runs the harness thread at nice −8 (THREAD_PRIORITY_URGENT_DISPLAY). A visible IME may be scheduled differently; a live-keyboard measurement is still owed.",
+    "latencyMs times the suggestion call only, not end-to-end IME latency. Each row also runs standalone geometric (1500 ms budget) and standalone CTC before fused_swipe."
+  ],
+  "measurement": {
+    "completedLocal": "2026-10-07 22:36",
+    "driverLog": "build/device-evidence/grapheneos-warm-arms-500-1.host.log",
+    "instrumentedTests": {
+      "passed": 1,
+      "skipped": 3,
+      "failed": 0
+    },
+    "limit": 500,
+    "metadataFile": "build/device-evidence/grapheneos-warm-arms-500-1.metadata.json",
+    "outputFile": "build/device-evidence/grapheneos-warm-arms-500-1.jsonl",
+    "outputSha256": "b922eb6d4ab61a9805d383768df71d0c8284db5d42fa8f95ab315c9a1faa6dde",
+    "shardCount": 3,
+    "shardIndex": 1,
+    "swipeRows": 500
+  },
+  "releaseEligible": false,
+  "results": {
+    "fixtureReadinessMs": {
+      "mainDictionary": 25,
+      "swipeLexicon": 14723
+    },
+    "peakAddedNeuralMemoryMiB": 292.91,
+    "swipe": {
+      "geometric": {
+        "top1": 0.502,
+        "top3": 0.748,
+        "latencyP50Ms": 1500.5,
+        "latencyP95Ms": 1500.8,
+        "over200Ms": 500
+      },
+      "ctc": {
+        "top1": 0.844,
+        "top3": 0.924,
+        "latencyP50Ms": 125.8,
+        "latencyP95Ms": 195.0,
+        "over200Ms": 24,
+        "available": 500,
+        "timeouts": 0
+      },
+      "fused_swipe": {
+        "top1": 0.872,
+        "top3": 0.934,
+        "latencyP50Ms": 193.9,
+        "latencyP95Ms": 275.9,
+        "over200Ms": 226,
+        "timeouts": 0
+      },
+      "fused_relaxed": {
+        "top1": 0.874,
+        "top3": 0.936
+      },
+      "stagesMs": {
+        "decodeP50": 181.4,
+        "decodeP95": 256.3,
+        "fusionP50": 8.8,
+        "fusionP95": 56.1
+      }
+    },
+    "ctcStageSplit": {
+      "standalone": {
+        "featuresP50Ms": 0.5,
+        "inferP50Ms": 22.5,
+        "trieP50Ms": 0.3,
+        "beamP50Ms": 102.3,
+        "wallP50Ms": 125.7,
+        "cpuP50Ms": 118.9,
+        "cpuOverWallP50": 0.96,
+        "trieCacheHitRate": 0.972
+      },
+      "fused": {
+        "featuresP50Ms": 1.5,
+        "inferP50Ms": 36.0,
+        "trieP50Ms": 0.7,
+        "beamP50Ms": 131.2,
+        "wallP50Ms": 179.4,
+        "cpuP50Ms": 148.2,
+        "cpuOverWallP50": 0.88,
+        "trieCacheHitRate": 1.0
+      },
+      "slot": {
+        "queueP50Ms": 0.3,
+        "queueP95Ms": 0.7,
+        "awaitIdleP50Ms": 0.0,
+        "overheadP50Ms": 1.8
+      }
+    },
+    "warmArms": {
+      "control": {
+        "rows": 167,
+        "fusedSwipeP50Ms": 184.2,
+        "fusedSwipeP95Ms": 261.7,
+        "over200Ms": 60,
+        "decodeP50Ms": 170.4,
+        "decodeP95Ms": 250.8,
+        "standaloneCtcWallP50Ms": 128.9,
+        "standaloneCtcCpuP50Ms": 122.3,
+        "standaloneCpuOverWallP50": 0.96,
+        "fusedCtcWallP50Ms": 169.4,
+        "fusedCtcCpuP50Ms": 148.9,
+        "fusedCpuOverWallP50": 0.95
+      },
+      "ctcAloneNoConcurrentGeometric": {
+        "rows": 167,
+        "fusedSwipeP50Ms": 186.7,
+        "fusedSwipeP95Ms": 275.7,
+        "over200Ms": 67,
+        "decodeP50Ms": 176.4,
+        "decodeP95Ms": 259.2,
+        "standaloneCtcWallP50Ms": 122.3,
+        "standaloneCtcCpuP50Ms": 115.4,
+        "standaloneCpuOverWallP50": 0.96,
+        "fusedCtcWallP50Ms": 173.9,
+        "fusedCtcCpuP50Ms": 148.2,
+        "fusedCpuOverWallP50": 0.95
+      },
+      "fusedUnderSpinner": {
+        "rows": 166,
+        "fusedSwipeP50Ms": 210.6,
+        "fusedSwipeP95Ms": 289.3,
+        "over200Ms": 99,
+        "decodeP50Ms": 196.1,
+        "decodeP95Ms": 264.2,
+        "standaloneCtcWallP50Ms": 127.0,
+        "standaloneCtcCpuP50Ms": 119.0,
+        "standaloneCpuOverWallP50": 0.96,
+        "fusedCtcWallP50Ms": 194.3,
+        "fusedCtcCpuP50Ms": 148.1,
+        "fusedCpuOverWallP50": 0.8
+      }
+    }
+  },
+  "runId": "grapheneos-warm-arms-500-1",
+  "schemaVersion": 1,
+  "scope": "Diagnostic 500-row test of whether cluster warmth from the concurrent geometric scan explains the gap."
+}

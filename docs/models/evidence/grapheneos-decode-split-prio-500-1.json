@@ -1,0 +1,145 @@
+{
+  "bindings": {
+    "artifactPinCandidateId": null,
+    "artifactPinNote": "Not run under docs/phase-0-artifact-pin.json: the swipe model is the stratum-weighted candidate, not the pinned 1301f0d0…, and the measure APK is not the pinned debug APK.",
+    "contextModelOnnxSha256": "8566382e57ea5a9af76ddf600e189572d62fcc8b227de8415ce88ad0e172022b",
+    "contextTokenizerSha256": "e2089ddfa01ff69eba73195cb3623c86703a812a712ec356ec5fe837297a8cc9",
+    "onnxRuntimeAarSha256": "54118ac8e37bc4833d32e2cb197ef6bd251f56e5aa9e4e51c3899fb616210d88",
+    "sameApkAsPinnedDebugLeg": false,
+    "swipeCorpusSha256": "176fe51975742e8378668ae8e7531a2d4f3d94fe5f27434a72577a840bec19fa",
+    "swipeModelOnnxSha256": "245dc5ea64ff7738e1cc327bffa88f8dd395fb2a577bba43d0a8d1ee361a10ea",
+    "swipeModelNote": "Stratum-weighted swipe-latin-v1 candidate; byte-identical Linux A/B exports under build/linux-exports/swipe-stratum-{a,b}. Open PR #2 records a host export of the candidate as f2ba9b7a…; the two hashes need reconciling before any adoption.",
+    "modelBinding": "Metadata carries no model hashes: these runs passed neither --artifact-pin nor --swipe-model-sha256/--context-model-sha256. The driver injected build/model-export/swipe-latin-v1-stratum-weighted/swipe-latin-v1.onnx and build/linux-exports/context-shared-a/export/{context-en-de-v1.onnx,tokenizer.json} and verified each on-device copy hashes the same as the local file. Those files hash to the values above and were last modified 2026-10-07 12:39 and 2026-09-15, before the first run.",
+    "coreApkSha256": "b679afce5c39e9a637ef6c62f39f31843f623bed7bc0f4305d54b96a6c011311",
+    "testApkSha256": "74da6152dbef70226ec7737cf102a6b81a03953230360031ddff0f638a481f70",
+    "sourceTree": "Uncommitted intermediate working tree on f794230f (the APK's version-control stamp records f794230f).",
+    "variant": "measure; as grapheneos-decode-split-500-1 plus LibreBoardLiveSwipe at Thread.MAX_PRIORITY (experiment, reverted)"
+  },
+  "comparedTo": {
+    "runId": "grapheneos-decode-split-500-1",
+    "sameRowIds": 500
+  },
+  "device": {
+    "artCompilerFilter": "speed",
+    "cpuTopology": {
+      "little": "cpu0-3, 1.95 GHz, capacity 188",
+      "mid": "cpu4-6, 2.60 GHz, capacity 731",
+      "big": "cpu7, 3.105 GHz, capacity 1024"
+    },
+    "device": "komodo",
+    "foregroundCpuset": "0-6",
+    "inspectedUser": 0,
+    "jit": false,
+    "serial": "47311FDAS00026",
+    "apiLevel": 37,
+    "buildFingerprint": "google/komodo/komodo:17/CP3A.260905.009/2026100201:user/release-keys",
+    "grapheneOsBuildNumber": "2026100201",
+    "model": "Pixel 9 Pro XL",
+    "physicalDevice": true,
+    "sandboxedGooglePlayInstalled": false
+  },
+  "environmentKind": "grapheneos_hardware",
+  "findings": [
+    "ART maps Thread.MAX_PRIORITY to nice −8; /proc confirmed LibreBoardLiveSwipe at −8 during the run.",
+    "Priority removed most of the runnable wait (fused cpu/wall 0.84 → 0.94) but not the gap: fused CTC wall p50 177.4 → 180.0 ms and fused CPU 144.0 → 158.9 ms. fused_swipe p50 192.4 → 193.8 ms.",
+    "fused_decode p95 257.1 → 239.0 ms suggests a tail benefit, but standalone CPU drifted 106.2 → 117.4 ms between the two runs, so the cross-run p95 change is not claimed. The priority change was reverted."
+  ],
+  "limitations": [
+    "Diagnostic only; releaseEligible is false. The measure APK (non-debuggable, testOnly, ART speed) is not the pinned debugNoMinify APK, and the swipe model is a candidate, not the pinned model.",
+    "Swipe shard 1/3 of build/model-data/swipe-latin-v1/test.jsonl, first rows only; every run here replays the same row ids, so cross-run comparisons share rows but not device state.",
+    "Cross-run drift is about ±10% in CPU time (phone temperature 34–38 °C across the session); arm comparisons within one run are the reliable ones.",
+    "The instrumentation process runs in the /foreground cpuset (cores 0–6, no big core) and AOSP Instrumentation runs the harness thread at nice −8 (THREAD_PRIORITY_URGENT_DISPLAY). A visible IME may be scheduled differently; a live-keyboard measurement is still owed.",
+    "latencyMs times the suggestion call only, not end-to-end IME latency. Each row also runs standalone geometric (1500 ms budget) and standalone CTC before fused_swipe."
+  ],
+  "measurement": {
+    "completedLocal": "2026-10-07 22:20",
+    "driverLog": "build/device-evidence/grapheneos-decode-split-prio-500-1.host.log",
+    "instrumentedTests": {
+      "passed": 1,
+      "skipped": 3,
+      "failed": 0
+    },
+    "limit": 500,
+    "metadataFile": "build/device-evidence/grapheneos-decode-split-prio-500-1.metadata.json",
+    "outputFile": "build/device-evidence/grapheneos-decode-split-prio-500-1.jsonl",
+    "outputSha256": "c13836d15bad95f7befda7f62f92ce2eff22506fde25207a36ea3b838dcf3f45",
+    "shardCount": 3,
+    "shardIndex": 1,
+    "swipeRows": 500
+  },
+  "releaseEligible": false,
+  "results": {
+    "fixtureReadinessMs": {
+      "mainDictionary": 25,
+      "swipeLexicon": 15634
+    },
+    "peakAddedNeuralMemoryMiB": 103.4,
+    "swipe": {
+      "geometric": {
+        "top1": 0.502,
+        "top3": 0.75,
+        "latencyP50Ms": 1500.5,
+        "latencyP95Ms": 1500.8,
+        "over200Ms": 500
+      },
+      "ctc": {
+        "top1": 0.844,
+        "top3": 0.924,
+        "latencyP50Ms": 123.8,
+        "latencyP95Ms": 177.0,
+        "over200Ms": 20,
+        "available": 499,
+        "timeouts": 1
+      },
+      "fused_swipe": {
+        "top1": 0.872,
+        "top3": 0.934,
+        "latencyP50Ms": 193.8,
+        "latencyP95Ms": 263.2,
+        "over200Ms": 214,
+        "timeouts": 1
+      },
+      "fused_relaxed": {
+        "top1": 0.874,
+        "top3": 0.936
+      },
+      "stagesMs": {
+        "decodeP50": 182.5,
+        "decodeP95": 239.0,
+        "fusionP50": 9.3,
+        "fusionP95": 57.1
+      }
+    },
+    "ctcStageSplit": {
+      "standalone": {
+        "featuresP50Ms": 0.6,
+        "inferP50Ms": 23.0,
+        "trieP50Ms": 0.2,
+        "beamP50Ms": 99.3,
+        "wallP50Ms": 123.7,
+        "cpuP50Ms": 117.4,
+        "cpuOverWallP50": 0.96,
+        "trieCacheHitRate": 0.97
+      },
+      "fused": {
+        "featuresP50Ms": 1.6,
+        "inferP50Ms": 36.2,
+        "trieP50Ms": 0.8,
+        "beamP50Ms": 138.5,
+        "wallP50Ms": 180.0,
+        "cpuP50Ms": 158.9,
+        "cpuOverWallP50": 0.94,
+        "trieCacheHitRate": 0.998
+      },
+      "slot": {
+        "queueP50Ms": 0.3,
+        "queueP95Ms": 0.6,
+        "awaitIdleP50Ms": 0.0,
+        "overheadP50Ms": 2.1
+      }
+    }
+  },
+  "runId": "grapheneos-decode-split-prio-500-1",
+  "schemaVersion": 1,
+  "scope": "Diagnostic 500-row check whether the decoder thread's nice 0 explains the fused CTC gap."
+}

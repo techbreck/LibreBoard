@@ -1,0 +1,199 @@
+{
+  "bindings": {
+    "artifactPinCandidateId": null,
+    "artifactPinNote": "Not run under docs/phase-0-artifact-pin.json: the swipe model is the stratum-weighted candidate, not the pinned 1301f0d0…, and the measure APK is not the pinned debug APK.",
+    "contextModelOnnxSha256": "8566382e57ea5a9af76ddf600e189572d62fcc8b227de8415ce88ad0e172022b",
+    "contextTokenizerSha256": "e2089ddfa01ff69eba73195cb3623c86703a812a712ec356ec5fe837297a8cc9",
+    "onnxRuntimeAarSha256": "54118ac8e37bc4833d32e2cb197ef6bd251f56e5aa9e4e51c3899fb616210d88",
+    "sameApkAsPinnedDebugLeg": false,
+    "swipeCorpusSha256": "176fe51975742e8378668ae8e7531a2d4f3d94fe5f27434a72577a840bec19fa",
+    "swipeModelOnnxSha256": "245dc5ea64ff7738e1cc327bffa88f8dd395fb2a577bba43d0a8d1ee361a10ea",
+    "swipeModelNote": "Stratum-weighted swipe-latin-v1 candidate; byte-identical Linux A/B exports under build/linux-exports/swipe-stratum-{a,b}. Open PR #2 records a host export of the candidate as f2ba9b7a…; the two hashes need reconciling before any adoption.",
+    "modelBinding": "Metadata carries no model hashes: these runs passed neither --artifact-pin nor --swipe-model-sha256/--context-model-sha256. The driver injected build/model-export/swipe-latin-v1-stratum-weighted/swipe-latin-v1.onnx and build/linux-exports/context-shared-a/export/{context-en-de-v1.onnx,tokenizer.json} and verified each on-device copy hashes the same as the local file. Those files hash to the values above and were last modified 2026-10-07 12:39 and 2026-09-15, before the first run.",
+    "coreApkSha256": "7f180beffa53fef2e30d3427912b96a15c83fa2f10e2e1f6f0c02b1d91ed7e39",
+    "testApkSha256": "57a1066dd642b616366149ff361288d408e6244dac500df77e45d7c47f7b702f",
+    "sourceTree": "Content-identical to commit e9df0019 (\"Trace CTC decode stages and core placement in swipe replay\"): a rebuild of that commit differs from this APK only in META-INF/version-control-info.textproto, which records the HEAD the tree was built on (f794230f here, e9df0019 there); the test APK is byte-identical.",
+    "variant": "measure; CtcDecodeTrace with core and clock probes at decode start, beam start and end"
+  },
+  "device": {
+    "artCompilerFilter": "speed",
+    "cpuTopology": {
+      "little": "cpu0-3, 1.95 GHz, capacity 188",
+      "mid": "cpu4-6, 2.60 GHz, capacity 731",
+      "big": "cpu7, 3.105 GHz, capacity 1024"
+    },
+    "device": "komodo",
+    "foregroundCpuset": "0-6",
+    "inspectedUser": 0,
+    "jit": false,
+    "serial": "47311FDAS00026",
+    "apiLevel": 37,
+    "buildFingerprint": "google/komodo/komodo:17/CP3A.260905.009/2026100201:user/release-keys",
+    "grapheneOsBuildNumber": "2026100201",
+    "model": "Pixel 9 Pro XL",
+    "physicalDevice": true,
+    "sandboxedGooglePlayInstalled": false
+  },
+  "environmentKind": "grapheneos_hardware",
+  "findings": [
+    "Root cause: core placement. Standalone CTC started on a mid core on 100% of rows. Fused CTC on LibreBoardLiveSwipe started on a little core on 83% of rows (79% still little at beam start), at the little cluster's 820 MHz idle clock, and changed cluster mid-decode on 83%.",
+    "On the same cluster the work costs the same: beam starting on mid, fused CPU p50 123.9 ms (105 rows) vs standalone 121.3 ms (499 rows); fused starting little 168.0 ms (395 rows). Mid-start CPU at the standalone cpu/wall ratio projects to ~129 ms wall against 187 ms observed, consistent with placement explaining the whole ~59 ms gap.",
+    "Cache locality is ruled out: fused decodes starting on the very core the standalone decode just used were not faster (137 vs 117 ms CPU p50, 32 vs 55 rows).",
+    "Mechanism: the decoder thread idles between swipes, its utilization decays, and the energy-aware scheduler wakes it on a little core. The busy harness thread stays on mid cores, so standalone CTC latency is optimistic for production."
+  ],
+  "limitations": [
+    "Diagnostic only; releaseEligible is false. The measure APK (non-debuggable, testOnly, ART speed) is not the pinned debugNoMinify APK, and the swipe model is a candidate, not the pinned model.",
+    "Swipe shard 1/3 of build/model-data/swipe-latin-v1/test.jsonl, first rows only; every run here replays the same row ids, so cross-run comparisons share rows but not device state.",
+    "Cross-run drift is about ±10% in CPU time (phone temperature 34–38 °C across the session); arm comparisons within one run are the reliable ones.",
+    "The instrumentation process runs in the /foreground cpuset (cores 0–6, no big core) and AOSP Instrumentation runs the harness thread at nice −8 (THREAD_PRIORITY_URGENT_DISPLAY). A visible IME may be scheduled differently; a live-keyboard measurement is still owed.",
+    "latencyMs times the suggestion call only, not end-to-end IME latency. Each row also runs standalone geometric (1500 ms budget) and standalone CTC before fused_swipe.",
+    "CtcDecodeTrace placement probes read /proc and sysfs at decode start and end; that adds about 5 ms to fused_swipe (slot-plus-decoder overhead 1.8 → 6.7 ms p50), so absolute fused_swipe latencies here read slightly high."
+  ],
+  "measurement": {
+    "completedLocal": "2026-10-08 00:21",
+    "driverLog": "build/device-evidence/grapheneos-placement-500-1.host.log",
+    "instrumentedTests": {
+      "passed": 1,
+      "skipped": 3,
+      "failed": 0
+    },
+    "limit": 500,
+    "metadataFile": "build/device-evidence/grapheneos-placement-500-1.metadata.json",
+    "outputFile": "build/device-evidence/grapheneos-placement-500-1.jsonl",
+    "outputSha256": "44d33832395d6a6452e4c893d8e23f1502ea98d74aedce0291a320d66b294103",
+    "shardCount": 3,
+    "shardIndex": 1,
+    "swipeRows": 500
+  },
+  "releaseEligible": false,
+  "results": {
+    "fixtureReadinessMs": {
+      "mainDictionary": 25,
+      "swipeLexicon": 8714
+    },
+    "peakAddedNeuralMemoryMiB": 302.05,
+    "swipe": {
+      "geometric": {
+        "top1": 0.496,
+        "top3": 0.738,
+        "latencyP50Ms": 1500.5,
+        "latencyP95Ms": 1500.8,
+        "over200Ms": 500
+      },
+      "ctc": {
+        "top1": 0.844,
+        "top3": 0.924,
+        "latencyP50Ms": 131.9,
+        "latencyP95Ms": 192.4,
+        "over200Ms": 24,
+        "available": 500,
+        "timeouts": 0
+      },
+      "fused_swipe": {
+        "top1": 0.872,
+        "top3": 0.934,
+        "latencyP50Ms": 207.7,
+        "latencyP95Ms": 264.0,
+        "over200Ms": 284,
+        "timeouts": 0
+      },
+      "fused_relaxed": {
+        "top1": 0.874,
+        "top3": 0.936
+      },
+      "stagesMs": {
+        "decodeP50": 194.0,
+        "decodeP95": 246.6,
+        "fusionP50": 8.8,
+        "fusionP95": 56.8
+      }
+    },
+    "ctcStageSplit": {
+      "standalone": {
+        "featuresP50Ms": 0.5,
+        "inferP50Ms": 23.0,
+        "trieP50Ms": 0.2,
+        "beamP50Ms": 104.8,
+        "wallP50Ms": 129.3,
+        "cpuP50Ms": 121.3,
+        "cpuOverWallP50": 0.96,
+        "trieCacheHitRate": 0.972
+      },
+      "fused": {
+        "featuresP50Ms": 1.5,
+        "inferP50Ms": 36.0,
+        "trieP50Ms": 0.8,
+        "beamP50Ms": 142.2,
+        "wallP50Ms": 187.2,
+        "cpuP50Ms": 158.0,
+        "cpuOverWallP50": 0.85,
+        "trieCacheHitRate": 1.0
+      },
+      "slot": {
+        "queueP50Ms": 0.4,
+        "queueP95Ms": 0.7,
+        "awaitIdleP50Ms": 0.0,
+        "overheadP50Ms": 6.7
+      }
+    },
+    "placement": {
+      "standalone": {
+        "startCluster": {
+          "little": 0.004,
+          "mid": 0.996,
+          "big": 0.0
+        },
+        "beamStartCluster": {
+          "little": 0.002,
+          "mid": 0.998,
+          "big": 0.0
+        },
+        "changedClusterDuringDecode": 0.006,
+        "byBeamStartCluster": {
+          "little": {
+            "rows": 1,
+            "cpuP50Ms": 160.6,
+            "beamP50Ms": 160.3,
+            "startClockP50Mhz": 820
+          },
+          "mid": {
+            "rows": 499,
+            "cpuP50Ms": 121.3,
+            "beamP50Ms": 104.8,
+            "startClockP50Mhz": 910
+          }
+        }
+      },
+      "fused": {
+        "startCluster": {
+          "little": 0.826,
+          "mid": 0.174,
+          "big": 0.0
+        },
+        "beamStartCluster": {
+          "little": 0.79,
+          "mid": 0.21,
+          "big": 0.0
+        },
+        "changedClusterDuringDecode": 0.826,
+        "byBeamStartCluster": {
+          "little": {
+            "rows": 395,
+            "cpuP50Ms": 168.0,
+            "beamP50Ms": 150.2,
+            "startClockP50Mhz": 820
+          },
+          "mid": {
+            "rows": 105,
+            "cpuP50Ms": 123.9,
+            "beamP50Ms": 110.7,
+            "startClockP50Mhz": 1328
+          }
+        }
+      }
+    }
+  },
+  "runId": "grapheneos-placement-500-1",
+  "schemaVersion": 1,
+  "scope": "Diagnostic 500-row attribution of the fused CTC CPU-time gap to core placement or cache locality."
+}

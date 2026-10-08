@@ -425,6 +425,9 @@ def main(argv=None) -> int:
                         help="diagnostic-only: interleave swipe rows across three arms by row "
                              "index (control, standalone CTC without concurrent geometric, fused "
                              "under a busy spinner) to test cluster-warmth effects on latency")
+    parser.add_argument("--swipe-hint-session", action="store_true",
+                        help="diagnostic-only: alternate 50-row swipe blocks without and with an "
+                             "ADPF performance-hint session on the swipe decoder thread")
     parser.add_argument("--output", type=pathlib.Path, required=True)
     parser.add_argument("--metadata", type=pathlib.Path,
                         help="schema-%d metadata JSON to create or update with this run's environment"
@@ -528,6 +531,8 @@ def main(argv=None) -> int:
         ]
         if args.swipe_warm_arms:
             instrument_args += ["-e", "phase0SwipeWarmArms", "true"]
+        if args.swipe_hint_session:
+            instrument_args += ["-e", "phase0SwipeHintSession", "true"]
         if args.swipe_model is not None:
             inject(args.swipe_model, "swipe.onnx", swipe_model_sha256)
             instrument_args += ["-e", "phase0SwipeModelFile", extra_path("swipe.onnx")]

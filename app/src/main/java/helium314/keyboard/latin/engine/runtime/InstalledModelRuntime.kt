@@ -118,6 +118,7 @@ internal object InstalledModelRuntime {
     private var swipeModel: LoadedSwipeModel? = null
     private var swipeLexicon: SwipeLexicon? = null
     private var contextReady = false
+    private var decodeBoostConfigured = false
 
     fun installFromUri(
         context: Context,
@@ -132,6 +133,7 @@ internal object InstalledModelRuntime {
     }
 
     fun ensureLoaded(context: Context, lexicon: SwipeLexicon) {
+        enableSwipeDecodeBoost(context)
         if (!BuildConfig.LIBREBOARD_ONNX_RUNTIME_PACKAGED || !BuildConfig.LIBREBOARD_SIGNED_MODELS_PACKAGED) {
             return
         }
@@ -156,6 +158,21 @@ internal object InstalledModelRuntime {
                 synchronized(monitor) { refreshRunning = false }
             }
         }
+    }
+
+    /**
+     * The swipe decoder thread idles between swipes and otherwise wakes on a little core; see
+     * [AdpfSwipeDecodeBoost]. Set before the packaging check so any installed decoder, including
+     * one a measurement harness injects, gets it. Configured once per process so a deliberate
+     * override sticks; without a decoder no hint session is ever created.
+     */
+    private fun enableSwipeDecodeBoost(context: Context) {
+        synchronized(monitor) {
+            if (decodeBoostConfigured) return
+            decodeBoostConfigured = true
+        }
+        LiveTypingEngine.swipeDecoder.boostFactory =
+            AdpfSwipeDecodeBoost.factory(context, AdpfSwipeDecodeBoost.TARGET_NANOS)
     }
 
     private fun refresh(context: Context, lexicon: SwipeLexicon) {

@@ -57,6 +57,68 @@ class LiveSwipeModelSlotTest {
     }
 
     @Test
+    fun boostLivesOnTheDecoderThreadAndFollowsItsFactory() {
+        LiveSwipeModelSlot().use { slot ->
+            var decoderThread: Thread? = null
+            slot.install(SwipeDecoder { _, _ ->
+                decoderThread = Thread.currentThread()
+                SwipeDecodeResult(EngineAvailability.AVAILABLE)
+            }, AutoCloseable {})
+            val createdOn = mutableListOf<Thread>()
+            val reported = mutableListOf<Long>()
+            var closes = 0
+            slot.boostFactory = {
+                createdOn += Thread.currentThread()
+                object : SwipeDecodeBoost {
+                    override fun afterDecode(elapsedNanos: Long) {
+                        reported += elapsedNanos
+                    }
+
+                    override fun close() {
+                        closes++
+                    }
+                }
+            }
+            val boostedTrace = SwipeSlotTrace()
+            slot.decodeTrace = boostedTrace
+
+            slot.decode(request(), Deadline.afterMillis(1_000))
+            slot.decode(request(), Deadline.afterMillis(1_000))
+            assertEquals(listOf(decoderThread), createdOn)
+            assertEquals(2, reported.size)
+            assertTrue(reported.all { it > 0 })
+            assertTrue(boostedTrace.boosted)
+
+            slot.boostFactory = null
+            val plainTrace = SwipeSlotTrace()
+            slot.decodeTrace = plainTrace
+            slot.decode(request(), Deadline.afterMillis(1_000))
+            assertEquals(1, closes)
+            assertEquals(2, reported.size)
+            assertFalse(plainTrace.boosted)
+        }
+    }
+
+    @Test
+    fun failingBoostNeverReachesDecoding() {
+        LiveSwipeModelSlot().use { slot ->
+            slot.install(SwipeDecoder { _, _ -> SwipeDecodeResult(EngineAvailability.AVAILABLE) }, AutoCloseable {})
+            slot.boostFactory = { throw IllegalStateException("hint service unavailable") }
+            assertEquals(EngineAvailability.AVAILABLE, slot.decode(request(), Deadline.afterMillis(1_000)).availability)
+
+            slot.boostFactory = {
+                object : SwipeDecodeBoost {
+                    override fun afterDecode(elapsedNanos: Long) = throw IllegalStateException("session closed")
+                    override fun close() = throw IllegalStateException("session closed")
+                }
+            }
+            assertEquals(EngineAvailability.AVAILABLE, slot.decode(request(), Deadline.afterMillis(1_000)).availability)
+            slot.boostFactory = null
+            assertEquals(EngineAvailability.AVAILABLE, slot.decode(request(), Deadline.afterMillis(1_000)).availability)
+        }
+    }
+
+    @Test
     fun installedDecoderPublishesAndOwnerClosesExactlyOnce() {
         var closes = 0
         LiveSwipeModelSlot().use { slot ->
